@@ -38,7 +38,8 @@ Apply the database migrations first — see [`../supabase/README.md`](../supabas
 
 The repository includes a Render Blueprint at [`../render.yaml`](../render.yaml). It declares
 this directory as the service root, pins Node.js, installs the locked pnpm dependencies, builds
-TypeScript, starts `dist/index.js`, and checks `/health` after deployment. Render's native Node
+TypeScript into `dist/`, starts `dist/index.js`, and checks `/health` after deployment. Test and
+seed sources are deliberately excluded from the production artifact. Render's native Node
 environment already provides pnpm, so the build deliberately does not run `corepack enable`.
 The install uses `--prod=false` because TypeScript and the `@types/*` declaration packages are
 build-time development dependencies even though the deployed process runs with
