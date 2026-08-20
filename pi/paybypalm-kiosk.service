@@ -1,0 +1,38 @@
+# /etc/systemd/system/paybypalm-kiosk.service
+#
+#   sudo cp paybypalm-kiosk.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now paybypalm-kiosk
+#
+# Logs:    journalctl -u paybypalm-kiosk -f
+# Restart: sudo systemctl restart paybypalm-kiosk
+
+[Unit]
+Description=PayByPalm terminal kiosk
+# graphical.target alone is not enough — X may still be coming up when the unit
+# fires, and Chromium exits immediately if it cannot open the display.
+After=graphical.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/pi/.Xauthority
+
+# The device key is read by the launcher, not injected here, so it never shows
+# up in `systemctl show` or in the journal.
+ExecStart=/usr/local/bin/paybypalm-kiosk.sh
+
+# A kiosk that dies must come back on its own — nobody is going to SSH into a
+# till during service.
+Restart=always
+RestartSec=5
+
+# Chromium is chatty; keep the journal useful.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical.target

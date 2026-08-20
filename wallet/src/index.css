@@ -1,0 +1,149 @@
+@import 'tailwindcss';
+
+/**
+ * PayByPalm design tokens.
+ *
+ * Royal-blue fintech palette on a soft periwinkle canvas. Surfaces are white and
+ * generously rounded; depth comes from the canvas/surface contrast and hairline
+ * borders rather than shadows, so the UI stays crisp on a cheap phone screen.
+ *
+ * The wordmark is a neutral placeholder. This app must never use Wema Bank's
+ * name, logo, or trademarks.
+ */
+@theme {
+  /* The single accent. */
+  --color-accent: #3b68e8;
+  --color-accent-strong: #2c51c9;
+  --color-accent-soft: #6b8ef0;
+  --color-accent-tint: #eaf0fe;
+
+  --color-ink: #0f1729;
+  --color-ink-muted: #6b7690;
+  --color-ink-faint: #9aa3b8;
+
+  --color-surface: #ffffff;
+  /* Periwinkle page ground, as in the reference. */
+  --color-canvas: #eef1fb;
+  --color-hairline: #e6eaf5;
+
+  --color-danger: #d92d20;
+  --color-danger-tint: #fdecea;
+  --color-warning: #b25e02;
+  --color-warning-tint: #fef4e6;
+  --color-success: #0f9d58;
+
+  --radius-card: 24px;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-ink antialiased;
+    font-family: var(--font-sans);
+    padding-top: env(safe-area-inset-top);
+  }
+
+  /* Never let a focus ring disappear — this app handles money. */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-accent;
+  }
+
+  button {
+    /* Stops iOS Safari zooming in on tap for anything below 16px. */
+    font-size: inherit;
+  }
+}
+
+@layer utilities {
+  /* Money and any other figure that must not shift width as it changes. */
+  .numeric {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  .skeleton {
+    @apply bg-hairline animate-pulse rounded;
+  }
+
+  /* Minimum comfortable touch target. */
+  .tap {
+    min-height: 48px;
+  }
+
+  /* Clears the fixed bottom navigation plus the home indicator. */
+  .pb-nav {
+    padding-bottom: calc(104px + env(safe-area-inset-bottom));
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.animate-sheet {
+  animation: sheet-up 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ===========================================================================
+ * Terminal (kiosk) type scale
+ * ===========================================================================
+ * TWO SIZES ONLY, and this is the whole set. The operator reads standing over
+ * the screen; the customer reads the same 7" panel from about 60cm away. A
+ * third size would inevitably be a compromise between those two distances and
+ * would be legible at neither.
+ *
+ * .t-lg — everything the customer must read: amounts, names, prompts, keypad
+ *         digits, outcomes.
+ * .t-sm — everything only the operator needs up close: labels, captions,
+ *         countdowns, status.
+ */
+.t-lg {
+  font-size: 40px;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.t-sm {
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 500;
+}
+
+/* No cursor on a touch panel, so no hover affordances and no text selection
+   artefacts from a stray drag. */
+.kiosk {
+  cursor: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}

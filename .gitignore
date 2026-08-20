@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment — never commit real keys.
+# The service role key and the palm provider key both live in these files.
+.env
+.env.*
+!.env.example
+
+# Local tooling
+.vite/
+coverage/
+*.log
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Schema test staging directory (created by supabase/tests/run.sh)
+.pbp-schema-test/
