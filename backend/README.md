@@ -49,8 +49,9 @@ build-time development dependencies even though the deployed process runs with
 2. In Render, choose **New → Blueprint** and connect the repository. Render detects the
    root-level `render.yaml` automatically.
 3. Supply the values Render requests during Blueprint creation:
-   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, `WALLET_BASE_URL`, and
+   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, and
    `TENCENT_PALM_API_KEY`. The Tencent key can be left unused while `PALM_PROVIDER=mock`.
+   `WALLET_BASE_URL` is already set to the production Vercel origin in the Blueprint.
 4. Deploy the Blueprint, then confirm `https://<service-name>.onrender.com/health` returns
    `{"status":"ok", ...}`.
 

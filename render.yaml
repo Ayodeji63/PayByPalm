@@ -29,10 +29,10 @@ services:
       - key: SUPABASE_ANON_KEY
         sync: false
 
-      # Public URL of the deployed wallet, without a trailing slash, for example
-      # https://paybypalm.vercel.app. Used for CORS and terminal enrolment links.
+      # Public production wallet origin, without a trailing slash. Used for CORS
+      # and terminal enrolment links. This is public configuration, not a secret.
       - key: WALLET_BASE_URL
-        sync: false
+        value: https://pay-by-palm.vercel.app
       - key: EXTRA_CORS_ORIGINS
         value: ""
 
