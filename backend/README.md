@@ -34,6 +34,29 @@ pnpm dev
 
 Apply the database migrations first — see [`../supabase/README.md`](../supabase/README.md).
 
+## Deploying on Render
+
+The repository includes a Render Blueprint at [`../render.yaml`](../render.yaml). It declares
+this directory as the service root, installs the locked pnpm dependencies, builds TypeScript,
+starts `dist/index.js`, and checks `/health` after deployment.
+
+1. Push this repository to GitHub, GitLab, or Bitbucket.
+2. In Render, choose **New → Blueprint** and connect the repository. Render detects the
+   root-level `render.yaml` automatically.
+3. Supply the four values Render requests during Blueprint creation:
+   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, and `WALLET_BASE_URL`.
+4. Deploy the Blueprint, then confirm `https://<service-name>.onrender.com/health` returns
+   `{"status":"ok", ...}`.
+
+The Blueprint starts with `PALM_PROVIDER=mock`, so no Tencent credential is required. To use
+Tencent, set `PALM_PROVIDER=tencent` and add the secret `TENCENT_PALM_API_KEY` in the Render
+service's Environment page.
+
+Render supplies `PORT` automatically; do not hard-code it in the Blueprint. Before deploying,
+apply the Supabase migrations and seed data described in the database README. A `503` health
+response means the service started but cannot query Supabase—usually because the database
+migrations or one of the Supabase environment values is missing.
+
 ### Running with no Tencent access
 
 `PALM_PROVIDER=mock` is the default, and the entire application works end to end on it: enrol

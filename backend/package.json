@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@9.15.9",
   "description": "PayByPalm API — palm-biometric payment for a closed-loop campus wallet",
   "engines": {
     "node": ">=20"

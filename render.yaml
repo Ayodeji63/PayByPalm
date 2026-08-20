@@ -1,0 +1,53 @@
+services:
+  - type: web
+    name: paybypalm-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+
+      # Supabase project settings. Render asks for these during initial
+      # Blueprint creation and never stores their values in this repository.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+
+      # Public URL of the deployed wallet, without a trailing slash. It is used
+      # for CORS and for enrolment links displayed by the terminal.
+      - key: WALLET_BASE_URL
+        sync: false
+      - key: EXTRA_CORS_ORIGINS
+        value: ""
+
+      # Keep the deploy usable without third-party palm credentials. Switch to
+      # tencent in Render and add TENCENT_PALM_API_KEY when the key is available.
+      - key: PALM_PROVIDER
+        value: mock
+      - key: TENCENT_BASE_URL
+        value: https://open.intl.palm.tencent.com
+      - key: MOCK_PALM_SCORE
+        value: "92"
+      - key: PALM_ACCEPT_SCORE
+        value: "85"
+      - key: PALM_STEP_UP_SCORE
+        value: "70"
+      - key: MAX_CANDIDATES
+        value: "4"
+
+      - key: ENROL_SESSION_TTL_SECONDS
+        value: "90"
+      - key: AUTH_VALIDITY_SECONDS
+        value: "60"
+      - key: MAX_IMAGE_BYTES
+        value: "2097152"
