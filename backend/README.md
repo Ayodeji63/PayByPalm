@@ -40,6 +40,9 @@ The repository includes a Render Blueprint at [`../render.yaml`](../render.yaml)
 this directory as the service root, pins Node.js, installs the locked pnpm dependencies, builds
 TypeScript, starts `dist/index.js`, and checks `/health` after deployment. Render's native Node
 environment already provides pnpm, so the build deliberately does not run `corepack enable`.
+The install uses `--prod=false` because TypeScript and the `@types/*` declaration packages are
+build-time development dependencies even though the deployed process runs with
+`NODE_ENV=production`.
 
 1. Push this repository to GitHub, GitLab, or Bitbucket.
 2. In Render, choose **New → Blueprint** and connect the repository. Render detects the

@@ -4,7 +4,9 @@ services:
     runtime: node
     plan: free
     rootDir: backend
-    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    # TypeScript and its declaration packages are devDependencies, so they must
+    # be present during compilation even though the service runs in production.
+    buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm build
     startCommand: pnpm start
     healthCheckPath: /health
     autoDeploy: true
