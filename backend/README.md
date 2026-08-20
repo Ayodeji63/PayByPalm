@@ -43,14 +43,15 @@ starts `dist/index.js`, and checks `/health` after deployment.
 1. Push this repository to GitHub, GitLab, or Bitbucket.
 2. In Render, choose **New → Blueprint** and connect the repository. Render detects the
    root-level `render.yaml` automatically.
-3. Supply the four values Render requests during Blueprint creation:
-   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, and `WALLET_BASE_URL`.
+3. Supply the values Render requests during Blueprint creation:
+   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, `WALLET_BASE_URL`, and
+   `TENCENT_PALM_API_KEY`. The Tencent key can be left unused while `PALM_PROVIDER=mock`.
 4. Deploy the Blueprint, then confirm `https://<service-name>.onrender.com/health` returns
    `{"status":"ok", ...}`.
 
-The Blueprint starts with `PALM_PROVIDER=mock`, so no Tencent credential is required. To use
-Tencent, set `PALM_PROVIDER=tencent` and add the secret `TENCENT_PALM_API_KEY` in the Render
-service's Environment page.
+The Blueprint starts with `PALM_PROVIDER=mock`, so the Tencent credential is not read. To use
+Tencent, set `PALM_PROVIDER=tencent`; the Blueprint already declares both
+`TENCENT_BASE_URL` and the secret `TENCENT_PALM_API_KEY`.
 
 Render supplies `PORT` automatically; do not hard-code it in the Blueprint. Before deploying,
 apply the Supabase migrations and seed data described in the database README. A `503` health
