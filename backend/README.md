@@ -37,8 +37,9 @@ Apply the database migrations first — see [`../supabase/README.md`](../supabas
 ## Deploying on Render
 
 The repository includes a Render Blueprint at [`../render.yaml`](../render.yaml). It declares
-this directory as the service root, installs the locked pnpm dependencies, builds TypeScript,
-starts `dist/index.js`, and checks `/health` after deployment.
+this directory as the service root, pins Node.js, installs the locked pnpm dependencies, builds
+TypeScript, starts `dist/index.js`, and checks `/health` after deployment. Render's native Node
+environment already provides pnpm, so the build deliberately does not run `corepack enable`.
 
 1. Push this repository to GitHub, GitLab, or Bitbucket.
 2. In Render, choose **New → Blueprint** and connect the repository. Render detects the

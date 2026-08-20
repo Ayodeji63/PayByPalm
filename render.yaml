@@ -4,11 +4,15 @@ services:
     runtime: node
     plan: free
     rootDir: backend
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
     startCommand: pnpm start
     healthCheckPath: /health
     autoDeploy: true
     envVars:
+      # Pin the runtime instead of letting an open-ended package.json range
+      # resolve to a newly released Node major.
+      - key: NODE_VERSION
+        value: "22.22.0"
       - key: NODE_ENV
         value: production
       - key: LOG_LEVEL

@@ -6,7 +6,7 @@
   "packageManager": "pnpm@9.15.9",
   "description": "PayByPalm API — palm-biometric payment for a closed-loop campus wallet",
   "engines": {
-    "node": ">=20"
+    "node": ">=20 <25"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
