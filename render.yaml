@@ -36,10 +36,10 @@ services:
       - key: EXTRA_CORS_ORIGINS
         value: ""
 
-      # Use `mock` until Tencent credentials are available. To enable the real
-      # provider, change this value to `tencent` in Render.
+      # Production biometric provider. The corresponding credential is stored
+      # only in Render as TENCENT_PALM_API_KEY.
       - key: PALM_PROVIDER
-        value: mock
+        value: tencent
       - key: TENCENT_BASE_URL
         value: https://open.intl.palm.tencent.com
       # Secret Tencent credential. The backend adds the required Bearer prefix.
