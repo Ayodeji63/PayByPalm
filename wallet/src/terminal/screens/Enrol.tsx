@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { terminalApi, TerminalApiError, type EnrolSessionView } from '../api.js';
 import { TIMINGS } from '../config.js';
-import { useCamera } from '../useCamera.js';
+import { useAutoCapture, useCamera } from '../useCamera.js';
 import { CameraPane, Pane, PalmGlyph, TButton } from '../ui.js';
 
 type Phase = 'creating' | 'waiting' | 'capturing' | 'done' | 'expired' | 'failed';
@@ -35,6 +35,11 @@ export function Enrol({ onExit }: { onExit: () => void }) {
   // device open through the whole QR wait would light the indicator at an idle
   // kiosk for no reason.
   const { videoRef, status, retry, captureBest } = useCamera(phase === 'capturing');
+  const autoCaptureState = useAutoCapture(
+    videoRef,
+    phase === 'capturing' && status === 'ready' && !busy,
+  );
+  const autoCaptureFired = useRef(false);
 
   const newSession = useCallback(async () => {
     setPhase('creating');
@@ -126,6 +131,24 @@ export function Enrol({ onExit }: { onExit: () => void }) {
     }
   }
 
+  useEffect(() => {
+    if (autoCaptureState === 'calibrating' || autoCaptureState === 'place') {
+      autoCaptureFired.current = false;
+    }
+    if (autoCaptureState !== 'ready' || autoCaptureFired.current || busy) return;
+    autoCaptureFired.current = true;
+    void capture();
+  }, [autoCaptureState, busy]);
+
+  const captureCaption =
+    autoCaptureState === 'calibrating'
+      ? 'Keep the frame empty for a moment'
+      : autoCaptureState === 'place'
+        ? 'Place your whole hand inside the outline'
+        : autoCaptureState === 'moving'
+          ? 'Hold still — capturing automatically'
+          : 'Perfect — capturing now';
+
   // --- done ---------------------------------------------------------------
   if (phase === 'done') {
     return (
@@ -188,7 +211,8 @@ export function Enrol({ onExit }: { onExit: () => void }) {
               status={status}
               onRetry={retry}
               busy={busy}
-              caption="Hold your palm still inside the outline"
+              autoCaptureState={autoCaptureState}
+              caption={captureCaption}
             />
           </div>
 
@@ -197,7 +221,8 @@ export function Enrol({ onExit }: { onExit: () => void }) {
               Place your palm{displayName ? `, ${displayName}` : ''}
             </p>
             <p className="t-sm mt-3 text-ink-muted">
-              Hold your hand flat inside the outline until the terminal says it is done.
+              Keep the frame empty briefly, then place your whole hand flat inside the guide. The
+              terminal captures automatically when you are steady.
             </p>
             {error && <p className="t-sm mt-4 text-danger">{error}</p>}
 
@@ -206,7 +231,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
               disabled={busy || status !== 'ready'}
               onClick={() => void capture()}
             >
-              {busy ? 'Reading…' : 'Capture'}
+              {busy ? 'Reading…' : 'Capture now'}
             </TButton>
           </div>
         </div>

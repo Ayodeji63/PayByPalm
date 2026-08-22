@@ -15,7 +15,7 @@
  * copy so the whole burst costs a few milliseconds rather than a visible pause.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { TIMINGS } from './config.js';
 
 export type CameraStatus = 'starting' | 'ready' | 'denied' | 'missing' | 'error';
@@ -25,6 +25,21 @@ const MEASURE_W = 256;
 const MEASURE_H = 144;
 
 const JPEG_QUALITY = 0.85;
+
+const DETECT_W = 96;
+const DETECT_H = 72;
+const DETECT_INTERVAL_MS = 120;
+const BASELINE_FRAMES = 8;
+const FOREGROUND_PIXEL_DELTA = 28;
+const FOREGROUND_FRACTION = 0.14;
+const MIN_FOREGROUND_WIDTH = 0.28;
+const MAX_FOREGROUND_WIDTH = 0.82;
+const MIN_FOREGROUND_HEIGHT = 0.45;
+const MAX_FOREGROUND_HEIGHT = 0.96;
+const STABLE_FRAME_DELTA = 4.5;
+const STABLE_FRAMES_REQUIRED = 7;
+
+export type AutoCaptureState = 'calibrating' | 'place' | 'moving' | 'ready';
 
 export interface CapturedFrame {
   /** Bare base64 JPEG — the data-url prefix is stripped here, not at the call site. */
@@ -91,8 +106,9 @@ export function useCamera(active: boolean) {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: 'environment' },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: 1296 },
+            height: { ideal: 972 },
+            aspectRatio: { ideal: 4 / 3 },
           },
           audio: false,
         });
@@ -189,4 +205,114 @@ export function useCamera(active: boolean) {
   }, [captureFrame]);
 
   return { videoRef, status, retry, captureBest };
+}
+
+/**
+ * Learns the empty background, detects a large foreground object, and reports
+ * ready after it remains still for roughly 840ms. This is a framing assistant,
+ * not hand-landmark detection; the anatomical guide owns placement.
+ */
+export function useAutoCapture(
+  videoRef: RefObject<HTMLVideoElement>,
+  active: boolean,
+): AutoCaptureState {
+  const [state, setState] = useState<AutoCaptureState>('calibrating');
+
+  useEffect(() => {
+    if (!active) {
+      setState('calibrating');
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = DETECT_W;
+    canvas.height = DETECT_H;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    let baseline: Float32Array | null = null;
+    let previous: Float32Array | null = null;
+    let baselineCount = 0;
+    let stableCount = 0;
+
+    const sample = () => {
+      const video = videoRef.current;
+      if (!video || video.readyState < 2 || !video.videoWidth) return;
+
+      ctx.drawImage(video, 0, 0, DETECT_W, DETECT_H);
+      const rgba = ctx.getImageData(0, 0, DETECT_W, DETECT_H).data;
+      const grey = new Float32Array(DETECT_W * DETECT_H);
+      let mean = 0;
+      for (let i = 0, p = 0; i < rgba.length; i += 4, p += 1) {
+        const value = 0.299 * rgba[i]! + 0.587 * rgba[i + 1]! + 0.114 * rgba[i + 2]!;
+        grey[p] = value;
+        mean += value;
+      }
+      mean /= grey.length;
+
+      if (!baseline || baselineCount < BASELINE_FRAMES) {
+        if (!baseline) baseline = new Float32Array(grey);
+        else {
+          for (let i = 0; i < grey.length; i += 1) {
+            baseline[i] = (baseline[i]! * baselineCount + grey[i]!) / (baselineCount + 1);
+          }
+        }
+        baselineCount += 1;
+        previous = grey;
+        setState(baselineCount < BASELINE_FRAMES ? 'calibrating' : 'place');
+        return;
+      }
+
+      let foregroundPixels = 0;
+      let motion = 0;
+      let minX = DETECT_W;
+      let maxX = 0;
+      let minY = DETECT_H;
+      let maxY = 0;
+      for (let i = 0; i < grey.length; i += 1) {
+        if (Math.abs(grey[i]! - baseline[i]!) > FOREGROUND_PIXEL_DELTA) {
+          foregroundPixels += 1;
+          const x = i % DETECT_W;
+          const y = Math.floor(i / DETECT_W);
+          minX = Math.min(minX, x);
+          maxX = Math.max(maxX, x);
+          minY = Math.min(minY, y);
+          maxY = Math.max(maxY, y);
+        }
+        if (previous) motion += Math.abs(grey[i]! - previous[i]!);
+      }
+      previous = grey;
+
+      const foreground = foregroundPixels / grey.length;
+      const frameDelta = motion / grey.length;
+      const exposed = mean > 22 && mean < 238;
+      const foregroundWidth = foregroundPixels ? (maxX - minX + 1) / DETECT_W : 0;
+      const foregroundHeight = foregroundPixels ? (maxY - minY + 1) / DETECT_H : 0;
+      const centreX = foregroundPixels ? (minX + maxX) / 2 / DETECT_W : 0;
+      const centreY = foregroundPixels ? (minY + maxY) / 2 / DETECT_H : 0;
+      const framed =
+        foregroundWidth >= MIN_FOREGROUND_WIDTH &&
+        foregroundWidth <= MAX_FOREGROUND_WIDTH &&
+        foregroundHeight >= MIN_FOREGROUND_HEIGHT &&
+        foregroundHeight <= MAX_FOREGROUND_HEIGHT &&
+        centreX >= 0.3 &&
+        centreX <= 0.7 &&
+        centreY >= 0.3 &&
+        centreY <= 0.7;
+
+      if (!exposed || foreground < FOREGROUND_FRACTION || !framed) {
+        stableCount = 0;
+        setState('place');
+        return;
+      }
+
+      stableCount = frameDelta <= STABLE_FRAME_DELTA ? stableCount + 1 : 0;
+      setState(stableCount >= STABLE_FRAMES_REQUIRED ? 'ready' : 'moving');
+    };
+
+    const timer = window.setInterval(sample, DETECT_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [active, videoRef]);
+
+  return state;
 }

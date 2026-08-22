@@ -11,11 +11,11 @@
  *                   nothing typed. The demo path.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatNaira } from '../../lib/money.js';
 import type { AuthenticateOutcome } from '../api.js';
 import { terminalApi, TerminalApiError } from '../api.js';
-import { useCamera } from '../useCamera.js';
+import { useAutoCapture, useCamera } from '../useCamera.js';
 import { CameraPane, DigitBoxes, Keypad, TButton } from '../ui.js';
 
 export function Capture({
@@ -34,6 +34,8 @@ export function Capture({
   const { videoRef, status, retry, captureBest } = useCamera(true);
   const [last4, setLast4] = useState('');
   const [busy, setBusy] = useState(false);
+  const autoCaptureState = useAutoCapture(videoRef, status === 'ready' && !busy);
+  const autoCaptureFired = useRef(false);
 
   async function scan(useLast4: boolean) {
     if (busy || status !== 'ready') return;
@@ -57,6 +59,24 @@ export function Capture({
     }
   }
 
+  useEffect(() => {
+    if (autoCaptureState === 'calibrating' || autoCaptureState === 'place') {
+      autoCaptureFired.current = false;
+    }
+    if (autoCaptureState !== 'ready' || autoCaptureFired.current || busy) return;
+    autoCaptureFired.current = true;
+    void scan(last4.length === 4);
+  }, [autoCaptureState, busy, last4]);
+
+  const captureCaption =
+    autoCaptureState === 'calibrating'
+      ? 'Keep the frame empty for a moment'
+      : autoCaptureState === 'place'
+        ? 'Place your whole hand inside the outline'
+        : autoCaptureState === 'moving'
+          ? 'Hold still — capturing automatically'
+          : 'Perfect — capturing now';
+
   return (
     <div className="flex h-full w-full flex-col p-5">
       <header className="flex h-[52px] shrink-0 items-center justify-between">
@@ -74,7 +94,8 @@ export function Capture({
             status={status}
             onRetry={retry}
             busy={busy}
-            caption="Hold your palm still inside the outline"
+            autoCaptureState={autoCaptureState}
+            caption={captureCaption}
           />
         </div>
 
@@ -101,7 +122,7 @@ export function Capture({
               disabled={busy || status !== 'ready'}
               onClick={() => void scan(false)}
             >
-              Scan only
+              Capture now
             </TButton>
             <TButton
               size="sm"

@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { TIMINGS } from './config.js';
+import type { AutoCaptureState } from './useCamera.js';
 
 const DESIGN_W = 800;
 const DESIGN_H = 480;
@@ -185,12 +186,14 @@ export function CameraPane({
   onRetry,
   caption,
   busy = false,
+  autoCaptureState,
 }: {
   videoRef: React.RefObject<HTMLVideoElement>;
   status: 'starting' | 'ready' | 'denied' | 'missing' | 'error';
   onRetry: () => void;
   caption?: string;
   busy?: boolean;
+  autoCaptureState?: AutoCaptureState;
 }) {
   const failed = status === 'denied' || status === 'missing' || status === 'error';
 
@@ -213,6 +216,10 @@ export function CameraPane({
       />
 
       {status === 'ready' && <HandGuide />}
+
+      {status === 'ready' && autoCaptureState === 'ready' && !busy && (
+        <div className="pointer-events-none absolute inset-3 rounded-[18px] border-4 border-success" />
+      )}
 
       {status === 'starting' && (
         <div className="absolute inset-0 grid place-items-center bg-ink">
@@ -247,22 +254,23 @@ export function CameraPane({
   );
 }
 
-/** Fixed palm outline the customer aligns to. Identical at enrol and at pay. */
+/** Full-hand guide, sized for an open adult hand rather than a palm symbol. */
 function HandGuide() {
   return (
     <svg
-      viewBox="0 0 200 200"
-      className="pointer-events-none absolute left-1/2 top-1/2 h-[78%] w-[78%] -translate-x-1/2 -translate-y-1/2"
+      viewBox="0 0 240 300"
+      className="pointer-events-none absolute left-1/2 top-[46%] h-[82%] w-[72%] -translate-x-1/2 -translate-y-1/2"
       aria-hidden="true"
     >
       <path
-        d="M100 190c-32 0-50-21-50-50V96c0-6 4-10 10-10s10 4 10 10V70c0-6 4-10 10-10s10 4 10 10V52c0-6 4-10 10-10s10 4 10 10v18c0-6 4-10 10-10s10 4 10 10v70c0 34-14 50-30 50Z"
+        d="M104 288c-30-3-51-20-60-48l-17-48c-4-12 2-25 14-30 11-4 22 1 29 12l14 23V112c0-13 9-23 21-23 11 0 20 8 21 19V73c0-13 9-23 21-23s21 10 21 23v28-44c0-13 9-23 21-23s21 10 21 23v49-26c0-13 9-23 21-23s21 10 21 23v112c0 57-31 96-82 96h-46Z"
         fill="none"
         stroke="white"
         strokeOpacity="0.85"
-        strokeWidth="3"
+        strokeWidth="4"
+        strokeLinecap="round"
         strokeLinejoin="round"
-        strokeDasharray="10 8"
+        strokeDasharray="12 9"
       />
     </svg>
   );
