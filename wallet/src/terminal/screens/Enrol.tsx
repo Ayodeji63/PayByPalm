@@ -231,7 +231,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
               disabled={busy || status !== 'ready'}
               onClick={() => void capture()}
             >
-              {busy ? 'Reading…' : 'Capture now'}
+              {busy ? 'Reading…' : 'Capture'}
             </TButton>
           </div>
         </div>

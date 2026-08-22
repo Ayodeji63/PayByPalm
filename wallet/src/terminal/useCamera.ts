@@ -99,24 +99,33 @@ export function useCamera(active: boolean) {
     if (!active) return;
 
     let cancelled = false;
+    let timedOut = false;
     setStatus('starting');
+
+    // PipeWire can leave getUserMedia pending forever when stream negotiation
+    // fails. Surface a retryable error instead of trapping the kiosk on its
+    // starting screen.
+    const startupTimer = window.setTimeout(() => {
+      if (cancelled) return;
+      timedOut = true;
+      setStatus('error');
+    }, 12_000);
 
     (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: 'environment' },
-            // Chromium on Raspberry Pi routes CSI cameras through PipeWire.
-            // The OV5647's 1296x972 libcamera mode can fail WebRTC buffer
-            // allocation there, while its native 640x480 mode is reliable.
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            aspectRatio: { ideal: 4 / 3 },
+            // This is the configuration already proven to negotiate correctly
+            // through Chromium + PipeWire on the PayByPalm Raspberry Pi.
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
           },
           audio: false,
         });
 
-        if (cancelled) {
+        window.clearTimeout(startupTimer);
+        if (cancelled || timedOut) {
           stream.getTracks().forEach((track) => track.stop());
           return;
         }
@@ -128,6 +137,7 @@ export function useCamera(active: boolean) {
         }
         setStatus('ready');
       } catch (err) {
+        window.clearTimeout(startupTimer);
         if (cancelled) return;
         const name = err instanceof DOMException ? err.name : '';
         if (name === 'NotAllowedError' || name === 'SecurityError') setStatus('denied');
@@ -138,6 +148,7 @@ export function useCamera(active: boolean) {
 
     return () => {
       cancelled = true;
+      window.clearTimeout(startupTimer);
       // Release the camera. Without this the Pi's indicator stays lit and the
       // next screen cannot open the device.
       streamRef.current?.getTracks().forEach((track) => track.stop());

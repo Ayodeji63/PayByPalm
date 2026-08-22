@@ -122,7 +122,7 @@ export function Capture({
               disabled={busy || status !== 'ready'}
               onClick={() => void scan(false)}
             >
-              Capture now
+              Capture
             </TButton>
             <TButton
               size="sm"
