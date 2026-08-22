@@ -89,6 +89,11 @@ export function createMockProvider(): PalmProvider {
         meta: { requestId: `mock-${Date.now().toString(36)}`, providerIsMatch: true },
       };
     },
+
+    async delete(userId: string) {
+      gallery.delete(userId);
+      return { meta: { requestId: `mock-${Date.now().toString(36)}` } };
+    },
   };
 }
 

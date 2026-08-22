@@ -49,6 +49,10 @@ export interface SearchResult {
   meta?: ProviderMeta;
 }
 
+export interface DeleteResult {
+  meta?: ProviderMeta;
+}
+
 export interface PalmProvider {
   /** Identifies the implementation in logs and audit rows: 'tencent' | 'mock'. */
   readonly name: string;
@@ -64,7 +68,10 @@ export interface PalmProvider {
 
   /** 1:N across the whole gallery. Resolves to null when nothing matches. */
   search(imageB64: string): Promise<SearchResult | null>;
+
+  /** Remove every enrolled palm direction for this user from the provider. */
+  delete(userId: string): Promise<DeleteResult>;
 }
 
-/** The three operations, as recorded in palm_audit.endpoint. */
-export type PalmOperation = 'register' | 'compare' | 'search';
+/** Provider operations, as recorded in palm_audit.endpoint. */
+export type PalmOperation = 'register' | 'compare' | 'search' | 'delete';

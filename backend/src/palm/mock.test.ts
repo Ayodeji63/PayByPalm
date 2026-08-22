@@ -78,6 +78,15 @@ describe('mock palm provider', () => {
     });
   });
 
+  describe('delete', () => {
+    it('removes the user from the provider gallery', async () => {
+      await palm.register(ADA, imageFor(ADA));
+      await palm.delete(ADA);
+
+      expect(await palm.search(imageFor(ADA))).toBeNull();
+    });
+  });
+
   describe('X-Mock-User header context', () => {
     it('takes precedence over the image payload', async () => {
       await palm.register(BOLA, imageFor(BOLA));

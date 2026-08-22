@@ -253,15 +253,16 @@ export async function registerPalmForSession(
 // ---------------------------------------------------------------------------
 
 /**
- * Soft-revoke the active binding so the user can enrol again at a terminal.
+ * Delete the provider template, then soft-revoke the active local binding so
+ * the user can enrol again at a terminal.
  *
  * The binding row is kept, with revoked_at set — the audit history of who was
  * enrolled and when must survive. The partial unique index in the schema is what
  * makes a subsequent re-enrolment possible.
  *
- * Note: the provider has no delete endpoint, so the template remains in its
- * gallery. Since matching is always resolved back through palm_bindings, a
- * revoked binding cannot authorise a payment.
+ * Provider deletion happens first. We must not tell the customer unlinking
+ * succeeded while Tencent still retains a biometric template that blocks the
+ * next enrolment.
  */
 export async function revokePalm(userId: string): Promise<{ revoked: boolean }> {
   const profile = await getProfile(userId);
@@ -269,6 +270,8 @@ export async function revokePalm(userId: string): Promise<{ revoked: boolean }> 
   if (!profile.palm_enrolled) {
     return { revoked: false };
   }
+
+  await palm.delete(userId);
 
   const { error: bindingError } = await db
     .from('palm_bindings')

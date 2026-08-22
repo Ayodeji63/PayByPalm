@@ -49,7 +49,7 @@ comment on index public.palm_bindings_one_active is
 create table public.palm_audit (
   id                 uuid primary key default gen_random_uuid(),
 
-  -- Which provider operation ran: 'register' | 'compare' | 'search'.
+  -- Which provider operation ran: 'register' | 'compare' | 'search' | 'delete'.
   endpoint           text not null,
 
   -- Tencent's requestId, echoed back for support escalation. Null for the mock

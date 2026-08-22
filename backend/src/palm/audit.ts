@@ -18,6 +18,7 @@ import { logger } from '../logger.js';
 import { PalmProviderError } from '../errors.js';
 import type {
   CompareResult,
+  DeleteResult,
   PalmOperation,
   PalmProvider,
   RegisterResult,
@@ -134,6 +135,14 @@ export function withAudit(inner: PalmProvider): PalmProvider {
             ? // A clean "nobody matched" is a real, loggable outcome, not an error.
               { score: null, isMatch: false, userId: null }
             : { score: r.score, isMatch: r.meta?.providerIsMatch ?? true, userId: r.userId },
+      ),
+
+    delete: (userId) =>
+      audited<DeleteResult>(
+        'delete',
+        userId,
+        () => inner.delete(userId),
+        () => ({ score: null, isMatch: null }),
       ),
   };
 }

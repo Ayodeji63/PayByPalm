@@ -21,7 +21,13 @@ import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { PalmProviderError } from '../errors.js';
 import { createTokenBucket } from '../lib/rateLimiter.js';
-import type { CompareResult, PalmProvider, RegisterResult, SearchResult } from './provider.js';
+import type {
+  CompareResult,
+  DeleteResult,
+  PalmProvider,
+  RegisterResult,
+  SearchResult,
+} from './provider.js';
 
 /** Documented limit is 20 req/s; leave headroom so a burst does not trip it. */
 const limiter = createTokenBucket(18);
@@ -182,6 +188,17 @@ export function createTencentProvider(): PalmProvider {
         score: data.Score,
         meta: { requestId, providerIsMatch: true },
       };
+    },
+
+    async delete(userId: string): Promise<DeleteResult> {
+      const { requestId } = await call<Record<string, never>>('/palm/openai/delete_palm', {
+        UserId: userId,
+        // Tencent: 1 = left, 2 = right. Delete both so the account can enrol
+        // either hand again without retaining an orphaned biometric template.
+        PalmDirectionList: [1, 2],
+      });
+
+      return { meta: { requestId } };
     },
   };
 }
