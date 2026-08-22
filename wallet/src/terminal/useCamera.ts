@@ -16,11 +16,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import {
-  FilesetResolver,
-  HandLandmarker,
-  type NormalizedLandmark,
-} from '@mediapipe/tasks-vision';
+import type { HandLandmarker, NormalizedLandmark } from '@mediapipe/tasks-vision';
 import { TIMINGS } from './config.js';
 
 export type CameraStatus = 'starting' | 'ready' | 'denied' | 'missing' | 'error';
@@ -31,9 +27,11 @@ const MEASURE_H = 144;
 
 const JPEG_QUALITY = 0.85;
 
-const LANDMARK_INTERVAL_MS = 180;
+// Inference is synchronous. Two frames per second keeps Chromium responsive on
+// the Pi while still giving useful placement feedback.
+const LANDMARK_INTERVAL_MS = 450;
 const STABLE_LANDMARK_DELTA = 0.009;
-const STABLE_LANDMARK_FRAMES = 6;
+const STABLE_LANDMARK_FRAMES = 4;
 const MEDIAPIPE_WASM =
   'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm';
 const HAND_MODEL =
@@ -257,7 +255,15 @@ export function useAutoCapture(
       const video = videoRef.current;
       if (!video || !landmarker || video.readyState < 2 || !video.videoWidth) return;
 
-      const hands = landmarker.detectForVideo(video, performance.now()).landmarks;
+      let hands: HandLandmark[][];
+      try {
+        hands = landmarker.detectForVideo(video, performance.now()).landmarks;
+      } catch {
+        // ML is an enhancement, never a reason to take down the camera. Leave
+        // manual capture available if a frame cannot be processed.
+        setState('error');
+        return;
+      }
       const hand = hands[0];
       if (hands.length !== 1 || !hand || hand.length !== 21) {
         stableCount = 0;
@@ -316,9 +322,15 @@ export function useAutoCapture(
 
     void (async () => {
       try {
+        // Paint and stabilize the camera before loading the comparatively heavy
+        // Wasm runtime. The dynamic import also keeps it out of QR-scan routes.
+        await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+        if (stopped) return;
+        const { FilesetResolver, HandLandmarker: HandLandmarkerRuntime } =
+          await import('@mediapipe/tasks-vision');
         const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM);
         if (stopped) return;
-        landmarker = await HandLandmarker.createFromOptions(vision, {
+        landmarker = await HandLandmarkerRuntime.createFromOptions(vision, {
           baseOptions: { modelAssetPath: HAND_MODEL, delegate: 'CPU' },
           runningMode: 'VIDEO',
           numHands: 1,
