@@ -106,8 +106,11 @@ export function useCamera(active: boolean) {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: 'environment' },
-            width: { ideal: 1296 },
-            height: { ideal: 972 },
+            // Chromium on Raspberry Pi routes CSI cameras through PipeWire.
+            // The OV5647's 1296x972 libcamera mode can fail WebRTC buffer
+            // allocation there, while its native 640x480 mode is reliable.
+            width: { ideal: 640 },
+            height: { ideal: 480 },
             aspectRatio: { ideal: 4 / 3 },
           },
           audio: false,
