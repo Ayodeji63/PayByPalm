@@ -10,7 +10,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { TIMINGS } from './config.js';
-import type { AutoCaptureState } from './useCamera.js';
+import type { AutoCaptureState, HandLandmark } from './useCamera.js';
 
 const DESIGN_W = 800;
 const DESIGN_H = 480;
@@ -173,12 +173,7 @@ export function Keypad({
 // ---------------------------------------------------------------------------
 
 /**
- * Live preview with a fixed hand-outline guide.
- *
- * The guide is the same size and position at enrolment and at payment. That
- * consistency is not decoration: matching a palm captured at one distance
- * against a template captured at another is what makes scores drift, so the
- * outline is what holds capture geometry steady across both flows.
+ * Live preview with MediaPipe's detected hand skeleton overlaid in real time.
  */
 export function CameraPane({
   videoRef,
@@ -187,6 +182,7 @@ export function CameraPane({
   caption,
   busy = false,
   autoCaptureState,
+  landmarks = [],
 }: {
   videoRef: React.RefObject<HTMLVideoElement>;
   status: 'starting' | 'ready' | 'denied' | 'missing' | 'error';
@@ -194,6 +190,7 @@ export function CameraPane({
   caption?: string;
   busy?: boolean;
   autoCaptureState?: AutoCaptureState;
+  landmarks?: HandLandmark[];
 }) {
   const failed = status === 'denied' || status === 'missing' || status === 'error';
 
@@ -208,14 +205,16 @@ export function CameraPane({
     <div className="relative h-full w-full overflow-hidden rounded-3xl bg-ink">
       <video
         ref={videoRef}
-        className="h-full w-full object-cover"
+        className="h-full w-full object-contain"
         playsInline
         muted
         autoPlay
         aria-label="Palm camera"
       />
 
-      {status === 'ready' && <HandGuide />}
+      {status === 'ready' && landmarks.length === 21 && (
+        <HandLandmarksOverlay landmarks={landmarks} ready={autoCaptureState === 'ready'} />
+      )}
 
       {status === 'ready' && autoCaptureState === 'ready' && !busy && (
         <div className="pointer-events-none absolute inset-3 rounded-[18px] border-4 border-success" />
@@ -254,25 +253,50 @@ export function CameraPane({
   );
 }
 
-/** Full-hand guide, sized for an open adult hand rather than a palm symbol. */
-function HandGuide() {
+const HAND_CONNECTIONS = [
+  [0, 1], [1, 2], [2, 3], [3, 4],
+  [0, 5], [5, 6], [6, 7], [7, 8],
+  [5, 9], [9, 10], [10, 11], [11, 12],
+  [9, 13], [13, 14], [14, 15], [15, 16],
+  [13, 17], [17, 18], [18, 19], [19, 20], [0, 17],
+] as const;
+
+function HandLandmarksOverlay({
+  landmarks,
+  ready,
+}: {
+  landmarks: HandLandmark[];
+  ready: boolean;
+}) {
+  const colour = ready ? '#34d17b' : '#ffffff';
   return (
-    <svg
-      viewBox="0 0 240 300"
-      className="pointer-events-none absolute left-1/2 top-[46%] h-[82%] w-[72%] -translate-x-1/2 -translate-y-1/2"
-      aria-hidden="true"
-    >
-      <path
-        d="M104 288c-30-3-51-20-60-48l-17-48c-4-12 2-25 14-30 11-4 22 1 29 12l14 23V112c0-13 9-23 21-23 11 0 20 8 21 19V73c0-13 9-23 21-23s21 10 21 23v28-44c0-13 9-23 21-23s21 10 21 23v49-26c0-13 9-23 21-23s21 10 21 23v112c0 57-31 96-82 96h-46Z"
-        fill="none"
-        stroke="white"
-        strokeOpacity="0.85"
-        strokeWidth="4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeDasharray="12 9"
-      />
-    </svg>
+    <div className="pointer-events-none absolute inset-0 flex items-center" aria-hidden="true">
+      <svg viewBox="0 0 100 56.25" className="w-full" preserveAspectRatio="xMidYMid meet">
+        {HAND_CONNECTIONS.map(([from, to]) => (
+          <line
+            key={`${from}-${to}`}
+            x1={landmarks[from]!.x * 100}
+            y1={landmarks[from]!.y * 56.25}
+            x2={landmarks[to]!.x * 100}
+            y2={landmarks[to]!.y * 56.25}
+            stroke={colour}
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+        ))}
+        {landmarks.map((point, index) => (
+          <circle
+            key={index}
+            cx={point.x * 100}
+            cy={point.y * 56.25}
+            r={index === 0 ? 1.25 : 0.85}
+            fill={colour}
+            stroke="#0f1729"
+            strokeWidth="0.3"
+          />
+        ))}
+      </svg>
+    </div>
   );
 }
 

@@ -35,7 +35,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
   // device open through the whole QR wait would light the indicator at an idle
   // kiosk for no reason.
   const { videoRef, status, retry, captureBest } = useCamera(phase === 'capturing');
-  const autoCaptureState = useAutoCapture(
+  const { state: autoCaptureState, landmarks } = useAutoCapture(
     videoRef,
     phase === 'capturing' && status === 'ready' && !busy,
   );
@@ -132,7 +132,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
   }
 
   useEffect(() => {
-    if (autoCaptureState === 'calibrating' || autoCaptureState === 'place') {
+    if (autoCaptureState === 'loading' || autoCaptureState === 'place') {
       autoCaptureFired.current = false;
     }
     if (autoCaptureState !== 'ready' || autoCaptureFired.current || busy) return;
@@ -141,13 +141,19 @@ export function Enrol({ onExit }: { onExit: () => void }) {
   }, [autoCaptureState, busy]);
 
   const captureCaption =
-    autoCaptureState === 'calibrating'
-      ? 'Keep the frame empty for a moment'
+    autoCaptureState === 'loading'
+      ? 'Loading palm recognition…'
       : autoCaptureState === 'place'
-        ? 'Place your whole hand inside the outline'
+        ? 'Show one open palm to the camera'
+        : autoCaptureState === 'position'
+          ? 'Move until your whole hand is visible and centred'
+          : autoCaptureState === 'open'
+            ? 'Open and separate all five fingers'
         : autoCaptureState === 'moving'
           ? 'Hold still — capturing automatically'
-          : 'Perfect — capturing now';
+          : autoCaptureState === 'ready'
+            ? 'Palm recognised — capturing now'
+            : 'Palm recognition could not load';
 
   // --- done ---------------------------------------------------------------
   if (phase === 'done') {
@@ -212,6 +218,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
               onRetry={retry}
               busy={busy}
               autoCaptureState={autoCaptureState}
+              landmarks={landmarks}
               caption={captureCaption}
             />
           </div>
@@ -221,8 +228,8 @@ export function Enrol({ onExit }: { onExit: () => void }) {
               Place your palm{displayName ? `, ${displayName}` : ''}
             </p>
             <p className="t-sm mt-3 text-ink-muted">
-              Keep the frame empty briefly, then place your whole hand flat inside the guide. The
-              terminal captures automatically when you are steady.
+              Show one open palm to the camera. The live points confirm detection, then the
+              terminal captures automatically when your hand is centred and steady.
             </p>
             {error && <p className="t-sm mt-4 text-danger">{error}</p>}
 

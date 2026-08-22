@@ -16,6 +16,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import {
+  FilesetResolver,
+  HandLandmarker,
+  type NormalizedLandmark,
+} from '@mediapipe/tasks-vision';
 import { TIMINGS } from './config.js';
 
 export type CameraStatus = 'starting' | 'ready' | 'denied' | 'missing' | 'error';
@@ -26,20 +31,23 @@ const MEASURE_H = 144;
 
 const JPEG_QUALITY = 0.85;
 
-const DETECT_W = 96;
-const DETECT_H = 72;
-const DETECT_INTERVAL_MS = 120;
-const BASELINE_FRAMES = 8;
-const FOREGROUND_PIXEL_DELTA = 28;
-const FOREGROUND_FRACTION = 0.14;
-const MIN_FOREGROUND_WIDTH = 0.28;
-const MAX_FOREGROUND_WIDTH = 0.82;
-const MIN_FOREGROUND_HEIGHT = 0.45;
-const MAX_FOREGROUND_HEIGHT = 0.96;
-const STABLE_FRAME_DELTA = 4.5;
-const STABLE_FRAMES_REQUIRED = 7;
+const LANDMARK_INTERVAL_MS = 180;
+const STABLE_LANDMARK_DELTA = 0.009;
+const STABLE_LANDMARK_FRAMES = 6;
+const MEDIAPIPE_WASM =
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm';
+const HAND_MODEL =
+  'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 
-export type AutoCaptureState = 'calibrating' | 'place' | 'moving' | 'ready';
+export type AutoCaptureState =
+  | 'loading'
+  | 'place'
+  | 'position'
+  | 'open'
+  | 'moving'
+  | 'ready'
+  | 'error';
+export type HandLandmark = NormalizedLandmark;
 
 export interface CapturedFrame {
   /** Bare base64 JPEG — the data-url prefix is stripped here, not at the call site. */
@@ -221,112 +229,120 @@ export function useCamera(active: boolean) {
   return { videoRef, status, retry, captureBest };
 }
 
-/**
- * Learns the empty background, detects a large foreground object, and reports
- * ready after it remains still for roughly 840ms. This is a framing assistant,
- * not hand-landmark detection; the anatomical guide owns placement.
- */
+/** Detects and validates one open palm using MediaPipe's 21 hand landmarks. */
 export function useAutoCapture(
   videoRef: RefObject<HTMLVideoElement>,
   active: boolean,
-): AutoCaptureState {
-  const [state, setState] = useState<AutoCaptureState>('calibrating');
+): { state: AutoCaptureState; landmarks: HandLandmark[] } {
+  const [state, setState] = useState<AutoCaptureState>('loading');
+  const [landmarks, setLandmarks] = useState<HandLandmark[]>([]);
 
   useEffect(() => {
     if (!active) {
-      setState('calibrating');
+      setState('loading');
+      setLandmarks([]);
       return;
     }
 
-    const canvas = document.createElement('canvas');
-    canvas.width = DETECT_W;
-    canvas.height = DETECT_H;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return;
-
-    let baseline: Float32Array | null = null;
-    let previous: Float32Array | null = null;
-    let baselineCount = 0;
+    let stopped = false;
+    let landmarker: HandLandmarker | null = null;
+    let timer: number | undefined;
+    let previous: HandLandmark[] | null = null;
     let stableCount = 0;
+
+    const distance = (a: HandLandmark, b: HandLandmark) =>
+      Math.hypot(a.x - b.x, a.y - b.y);
 
     const sample = () => {
       const video = videoRef.current;
-      if (!video || video.readyState < 2 || !video.videoWidth) return;
+      if (!video || !landmarker || video.readyState < 2 || !video.videoWidth) return;
 
-      ctx.drawImage(video, 0, 0, DETECT_W, DETECT_H);
-      const rgba = ctx.getImageData(0, 0, DETECT_W, DETECT_H).data;
-      const grey = new Float32Array(DETECT_W * DETECT_H);
-      let mean = 0;
-      for (let i = 0, p = 0; i < rgba.length; i += 4, p += 1) {
-        const value = 0.299 * rgba[i]! + 0.587 * rgba[i + 1]! + 0.114 * rgba[i + 2]!;
-        grey[p] = value;
-        mean += value;
-      }
-      mean /= grey.length;
-
-      if (!baseline || baselineCount < BASELINE_FRAMES) {
-        if (!baseline) baseline = new Float32Array(grey);
-        else {
-          for (let i = 0; i < grey.length; i += 1) {
-            baseline[i] = (baseline[i]! * baselineCount + grey[i]!) / (baselineCount + 1);
-          }
-        }
-        baselineCount += 1;
-        previous = grey;
-        setState(baselineCount < BASELINE_FRAMES ? 'calibrating' : 'place');
-        return;
-      }
-
-      let foregroundPixels = 0;
-      let motion = 0;
-      let minX = DETECT_W;
-      let maxX = 0;
-      let minY = DETECT_H;
-      let maxY = 0;
-      for (let i = 0; i < grey.length; i += 1) {
-        if (Math.abs(grey[i]! - baseline[i]!) > FOREGROUND_PIXEL_DELTA) {
-          foregroundPixels += 1;
-          const x = i % DETECT_W;
-          const y = Math.floor(i / DETECT_W);
-          minX = Math.min(minX, x);
-          maxX = Math.max(maxX, x);
-          minY = Math.min(minY, y);
-          maxY = Math.max(maxY, y);
-        }
-        if (previous) motion += Math.abs(grey[i]! - previous[i]!);
-      }
-      previous = grey;
-
-      const foreground = foregroundPixels / grey.length;
-      const frameDelta = motion / grey.length;
-      const exposed = mean > 22 && mean < 238;
-      const foregroundWidth = foregroundPixels ? (maxX - minX + 1) / DETECT_W : 0;
-      const foregroundHeight = foregroundPixels ? (maxY - minY + 1) / DETECT_H : 0;
-      const centreX = foregroundPixels ? (minX + maxX) / 2 / DETECT_W : 0;
-      const centreY = foregroundPixels ? (minY + maxY) / 2 / DETECT_H : 0;
-      const framed =
-        foregroundWidth >= MIN_FOREGROUND_WIDTH &&
-        foregroundWidth <= MAX_FOREGROUND_WIDTH &&
-        foregroundHeight >= MIN_FOREGROUND_HEIGHT &&
-        foregroundHeight <= MAX_FOREGROUND_HEIGHT &&
-        centreX >= 0.3 &&
-        centreX <= 0.7 &&
-        centreY >= 0.3 &&
-        centreY <= 0.7;
-
-      if (!exposed || foreground < FOREGROUND_FRACTION || !framed) {
+      const hands = landmarker.detectForVideo(video, performance.now()).landmarks;
+      const hand = hands[0];
+      if (hands.length !== 1 || !hand || hand.length !== 21) {
         stableCount = 0;
+        previous = null;
+        setLandmarks([]);
         setState('place');
         return;
       }
 
-      stableCount = frameDelta <= STABLE_FRAME_DELTA ? stableCount + 1 : 0;
-      setState(stableCount >= STABLE_FRAMES_REQUIRED ? 'ready' : 'moving');
+      setLandmarks(hand);
+      const xs = hand.map((point) => point.x);
+      const ys = hand.map((point) => point.y);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      const width = maxX - minX;
+      const height = maxY - minY;
+      const centred = (minX + maxX) / 2 > 0.28 && (minX + maxX) / 2 < 0.72;
+      const fullyVisible = minX > 0.025 && maxX < 0.975 && minY > 0.025 && maxY < 0.975;
+      const sized = width > 0.22 && width < 0.88 && height > 0.38 && height < 0.95;
+      if (!centred || !fullyVisible || !sized) {
+        stableCount = 0;
+        previous = hand;
+        setState('position');
+        return;
+      }
+
+      const wrist = hand[0]!;
+      const extended = [
+        [4, 2, 1.15],
+        [8, 6, 1.12],
+        [12, 10, 1.12],
+        [16, 14, 1.1],
+        [20, 18, 1.08],
+      ] as const;
+      const palmOpen = extended.every(
+        ([tip, joint, ratio]) =>
+          distance(wrist, hand[tip]!) > distance(wrist, hand[joint]!) * ratio,
+      );
+      if (!palmOpen) {
+        stableCount = 0;
+        previous = hand;
+        setState('open');
+        return;
+      }
+
+      const motion = previous
+        ? hand.reduce((sum, point, index) => sum + distance(point, previous![index]!), 0) /
+          hand.length
+        : Number.POSITIVE_INFINITY;
+      previous = hand;
+      stableCount = motion < STABLE_LANDMARK_DELTA ? stableCount + 1 : 0;
+      setState(stableCount >= STABLE_LANDMARK_FRAMES ? 'ready' : 'moving');
     };
 
-    const timer = window.setInterval(sample, DETECT_INTERVAL_MS);
-    return () => window.clearInterval(timer);
+    void (async () => {
+      try {
+        const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM);
+        if (stopped) return;
+        landmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: HAND_MODEL, delegate: 'CPU' },
+          runningMode: 'VIDEO',
+          numHands: 1,
+          minHandDetectionConfidence: 0.65,
+          minHandPresenceConfidence: 0.65,
+          minTrackingConfidence: 0.6,
+        });
+        if (stopped) {
+          landmarker.close();
+          return;
+        }
+        setState('place');
+        timer = window.setInterval(sample, LANDMARK_INTERVAL_MS);
+      } catch {
+        if (!stopped) setState('error');
+      }
+    })();
+
+    return () => {
+      stopped = true;
+      if (timer) window.clearInterval(timer);
+      landmarker?.close();
+    };
   }, [active, videoRef]);
 
-  return state;
+  return { state, landmarks };
 }

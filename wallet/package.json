@@ -12,6 +12,7 @@
     "guard:secrets": "node scripts/guard-secrets.mjs"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^1.0.1",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
     "qrcode.react": "^4.2.0",

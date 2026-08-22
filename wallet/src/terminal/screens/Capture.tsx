@@ -34,7 +34,10 @@ export function Capture({
   const { videoRef, status, retry, captureBest } = useCamera(true);
   const [last4, setLast4] = useState('');
   const [busy, setBusy] = useState(false);
-  const autoCaptureState = useAutoCapture(videoRef, status === 'ready' && !busy);
+  const { state: autoCaptureState, landmarks } = useAutoCapture(
+    videoRef,
+    status === 'ready' && !busy,
+  );
   const autoCaptureFired = useRef(false);
 
   async function scan(useLast4: boolean) {
@@ -60,7 +63,7 @@ export function Capture({
   }
 
   useEffect(() => {
-    if (autoCaptureState === 'calibrating' || autoCaptureState === 'place') {
+    if (autoCaptureState === 'loading' || autoCaptureState === 'place') {
       autoCaptureFired.current = false;
     }
     if (autoCaptureState !== 'ready' || autoCaptureFired.current || busy) return;
@@ -69,13 +72,19 @@ export function Capture({
   }, [autoCaptureState, busy, last4]);
 
   const captureCaption =
-    autoCaptureState === 'calibrating'
-      ? 'Keep the frame empty for a moment'
+    autoCaptureState === 'loading'
+      ? 'Loading palm recognition…'
       : autoCaptureState === 'place'
-        ? 'Place your whole hand inside the outline'
+        ? 'Show one open palm to the camera'
+        : autoCaptureState === 'position'
+          ? 'Move until your whole hand is visible and centred'
+          : autoCaptureState === 'open'
+            ? 'Open and separate all five fingers'
         : autoCaptureState === 'moving'
           ? 'Hold still — capturing automatically'
-          : 'Perfect — capturing now';
+          : autoCaptureState === 'ready'
+            ? 'Palm recognised — capturing now'
+            : 'Palm recognition could not load';
 
   return (
     <div className="flex h-full w-full flex-col p-5">
@@ -95,6 +104,7 @@ export function Capture({
             onRetry={retry}
             busy={busy}
             autoCaptureState={autoCaptureState}
+            landmarks={landmarks}
             caption={captureCaption}
           />
         </div>
