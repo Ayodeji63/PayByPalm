@@ -10,7 +10,7 @@
  *
  * API SHAPE
  *   Base    https://open.intl.palm.tencent.com
- *   Auth    Authorization: ak_xxxxx   <- raw key, NO "Bearer " prefix
+ *   Auth    Authorization: Bearer ak_xxxxx
  *   Type    application/json; charset=utf-8
  *   Envelope { code, message, requestId, data }, where code !== 0 means failure.
  *
@@ -73,12 +73,15 @@ async function call<T>(path: string, body: unknown): Promise<{ data: T; requestI
 
   let response: Response;
   try {
+    // Store only the credential in Render. Tolerate an accidentally pasted
+    // prefix so the outbound header always contains exactly one `Bearer `.
+    const credential = (config.TENCENT_PALM_API_KEY as string)
+      .replace(/^Bearer\s+/i, '')
+      .trim();
     response = await fetch(url, {
       method: 'POST',
       headers: {
-        // Raw key. Prefixing this with "Bearer " is the single most common way to
-        // get a 401 from this API.
-        Authorization: config.TENCENT_PALM_API_KEY as string,
+        Authorization: `Bearer ${credential}`,
         'Content-Type': 'application/json; charset=utf-8',
       },
       body: JSON.stringify(body),

@@ -42,8 +42,9 @@ services:
         value: mock
       - key: TENCENT_BASE_URL
         value: https://open.intl.palm.tencent.com
-      # Secret Tencent Authorization header value. Render prompts for it during
-      # Blueprint creation; it is required only when PALM_PROVIDER=tencent.
+      # Secret Tencent credential. The backend adds the required Bearer prefix.
+      # Render prompts for it during Blueprint creation; it is required only
+      # when PALM_PROVIDER=tencent.
       - key: TENCENT_PALM_API_KEY
         sync: false
       - key: MOCK_PALM_SCORE
