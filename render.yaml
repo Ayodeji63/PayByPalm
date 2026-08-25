@@ -57,7 +57,7 @@ services:
         value: "4"
 
       - key: ENROL_SESSION_TTL_SECONDS
-        value: "90"
+        value: "300"
       - key: AUTH_VALIDITY_SECONDS
         value: "60"
       - key: MAX_IMAGE_BYTES

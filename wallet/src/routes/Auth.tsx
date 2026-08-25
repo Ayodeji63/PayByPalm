@@ -6,7 +6,7 @@
  */
 
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth.js';
 import { ApiError } from '../lib/api.js';
 import { Button, Field, Wordmark } from '../components/ui.js';
@@ -16,6 +16,15 @@ type Mode = 'login' | 'signup';
 export default function Auth() {
   const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Only accept an internal path produced by our route guard. This preserves a
+  // scanned enrolment session through sign-in without creating an open redirect.
+  const requestedReturn = (location.state as { returnTo?: unknown } | null)?.returnTo;
+  const returnTo =
+    typeof requestedReturn === 'string' && requestedReturn.startsWith('/')
+      ? requestedReturn
+      : '/dashboard';
 
   const [mode, setMode] = useState<Mode>('login');
   const [form, setForm] = useState({ fullName: '', phone: '', password: '', pin: '' });
@@ -42,7 +51,7 @@ export default function Auth() {
     try {
       if (mode === 'login') await signIn(form.phone, form.password);
       else await signUp(form);
-      navigate('/dashboard', { replace: true });
+      navigate(returnTo, { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.details) setFieldErrors(err.details);
       else setError(err instanceof ApiError ? err.message : 'Something went wrong. Try again.');

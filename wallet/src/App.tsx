@@ -16,7 +16,7 @@
  */
 
 import { Suspense, lazy } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './lib/auth.js';
 import { Screen, Skeleton } from './components/ui.js';
 import Landing from './routes/Landing.js';
@@ -45,8 +45,17 @@ function Loading() {
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
+  const location = useLocation();
   if (status === 'loading') return <Loading />;
-  if (status === 'anonymous') return <Navigate to="/login" replace />;
+  if (status === 'anonymous') {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ returnTo: `${location.pathname}${location.search}${location.hash}` }}
+      />
+    );
+  }
   return <>{children}</>;
 }
 
