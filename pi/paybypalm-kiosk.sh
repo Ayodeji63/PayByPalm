@@ -15,12 +15,15 @@ source "$ENV_FILE"
 : "${KIOSK_URL:?KIOSK_URL is not set}"
 : "${TERMINAL_KEY:?TERMINAL_KEY is not set}"
 
+CACHE_DIR=/home/ayo/.cache/paybypalm-chromium
+mkdir -p "$CACHE_DIR"
+
 exec /usr/bin/chromium \
   --kiosk \
   --no-first-run \
   --password-store=basic \
   --user-data-dir=/home/ayo/.config/paybypalm-kiosk \
-  --disk-cache-dir=/tmp/paybypalm-cache \
+  --disk-cache-dir="$CACHE_DIR" \
   --use-fake-ui-for-media-stream \
   --test-type \
   --autoplay-policy=no-user-gesture-required \
