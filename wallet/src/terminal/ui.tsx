@@ -15,33 +15,50 @@ import type { AutoCaptureState, HandLandmark } from './useCamera.js';
 const DESIGN_W = 800;
 const DESIGN_H = 480;
 
+function viewportFrame() {
+  const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+  const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+  const viewportRatio = viewportWidth / viewportHeight;
+  const designRatio = DESIGN_W / DESIGN_H;
+
+  if (viewportRatio >= designRatio) {
+    const scale = viewportHeight / DESIGN_H;
+    return { width: viewportWidth / scale, height: DESIGN_H, scale };
+  }
+
+  const scale = viewportWidth / DESIGN_W;
+  return { width: DESIGN_W, height: viewportHeight / scale, scale };
+}
+
 /**
- * Locks the UI to exactly 800x480 and scales that frame to fit whatever it is
- * actually displayed on.
+ * Keeps at least an 800x480 working area, then expands the logical canvas along
+ * whichever axis is needed to match the real viewport.
  *
- * On the Pi the scale is 1 and this does nothing. On a development laptop it
- * means what you see is geometrically identical to the panel, rather than a
- * roomier layout that will surprise you on the hardware.
+ * This preserves the kiosk geometry without the black bars produced by
+ * contain-scaling a fixed 5:3 frame into a 16:9 display. Nothing is stretched
+ * or cropped, and an exact 800x480 panel remains pixel-for-pixel unchanged.
  */
 export function KioskFrame({ children }: { children: ReactNode }) {
-  const [scale, setScale] = useState(1);
+  const [frame, setFrame] = useState(viewportFrame);
 
   useEffect(() => {
-    const fit = () =>
-      setScale(Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H));
-    fit();
+    const fit = () => setFrame(viewportFrame());
     window.addEventListener('resize', fit);
-    return () => window.removeEventListener('resize', fit);
+    window.visualViewport?.addEventListener('resize', fit);
+    return () => {
+      window.removeEventListener('resize', fit);
+      window.visualViewport?.removeEventListener('resize', fit);
+    };
   }, []);
 
   return (
-    <div className="kiosk fixed inset-0 grid place-items-center overflow-hidden bg-ink">
+    <div className="kiosk fixed inset-0 overflow-hidden bg-canvas">
       <div
         style={{
-          width: DESIGN_W,
-          height: DESIGN_H,
-          transform: `scale(${scale})`,
-          transformOrigin: 'center',
+          width: frame.width,
+          height: frame.height,
+          transform: `scale(${frame.scale})`,
+          transformOrigin: 'top left',
         }}
         className="relative overflow-hidden bg-canvas text-ink"
       >
