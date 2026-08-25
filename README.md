@@ -7,7 +7,7 @@ or QR code at checkout.
 ## Team Members
 
 - Olusanya Ayodeji
-- Ojo Mubarak
+- Raji Mubarak
 
 ## 🚀 Live Demo
 
