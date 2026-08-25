@@ -14,7 +14,7 @@ or QR code at checkout.
 - **Live application:** [pay-by-palm.vercel.app](https://pay-by-palm.vercel.app/)
 - **Backend API:** [paybypalm-backend.onrender.com](https://paybypalm-backend.onrender.com/health)
 - **Merchant terminal:** [pay-by-palm.vercel.app/terminal](https://pay-by-palm.vercel.app/terminal)
-- **Recorded demo:** Loom link coming soon.
+- **Recorded demo:** [Demo Video](https://drive.google.com/file/d/1MOuOVUfxC5ENNYc7mOXj4nDjERYhAECG/view?usp=sharing)
 
 > The merchant terminal requires a registered terminal key. Opening the terminal
 > URL without one intentionally shows a configuration error.
