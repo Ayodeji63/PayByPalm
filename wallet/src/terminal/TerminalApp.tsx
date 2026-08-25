@@ -26,6 +26,7 @@ import { Confirm } from './screens/Confirm.js';
 import { StepUp } from './screens/StepUp.js';
 import { Result } from './screens/Result.js';
 import { Enrol } from './screens/Enrol.js';
+import { preloadPalmRecognition } from './useCamera.js';
 
 type Screen =
   | { name: 'idle' }
@@ -69,6 +70,13 @@ export default function TerminalApp() {
   useEffect(() => {
     void loadIdentity();
   }, [loadIdentity]);
+
+  // MediaPipe's runtime and hand model are the largest first-use assets in the
+  // kiosk. Warm them while the home screen is idle instead of after a customer
+  // has already entered a sale.
+  useEffect(() => {
+    preloadPalmRecognition();
+  }, []);
 
   // --- reachability ------------------------------------------------------
   // A terminal that has quietly lost the backend looks identical to one that is

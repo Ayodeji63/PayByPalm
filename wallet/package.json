@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.22.0",
   "description": "PayByPalm wallet — the customer app. Check your balance, link your palm once.",
   "scripts": {
     "dev": "vite",

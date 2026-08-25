@@ -37,6 +37,40 @@ const MEDIAPIPE_WASM =
 const HAND_MODEL =
   'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 
+let palmLandmarkerPromise: Promise<HandLandmarker> | null = null;
+
+/**
+ * Start the expensive MediaPipe download/initialisation once and retain it for
+ * the lifetime of the kiosk. The terminal can warm this while it is idle, so a
+ * customer never has to wait for the model after presenting their palm.
+ */
+function loadPalmLandmarker(): Promise<HandLandmarker> {
+  if (!palmLandmarkerPromise) {
+    palmLandmarkerPromise = (async () => {
+      const { FilesetResolver, HandLandmarker: HandLandmarkerRuntime } =
+        await import('@mediapipe/tasks-vision');
+      const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM);
+      return HandLandmarkerRuntime.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: HAND_MODEL, delegate: 'CPU' },
+        runningMode: 'VIDEO',
+        numHands: 1,
+        minHandDetectionConfidence: 0.65,
+        minHandPresenceConfidence: 0.65,
+        minTrackingConfidence: 0.6,
+      });
+    })().catch((error: unknown) => {
+      // Permit a later retry after a transient network failure.
+      palmLandmarkerPromise = null;
+      throw error;
+    });
+  }
+  return palmLandmarkerPromise;
+}
+
+export function preloadPalmRecognition(): void {
+  void loadPalmLandmarker().catch(() => undefined);
+}
+
 export type AutoCaptureState =
   | 'loading'
   | 'place'
@@ -322,26 +356,8 @@ export function useAutoCapture(
 
     void (async () => {
       try {
-        // Paint and stabilize the camera before loading the comparatively heavy
-        // Wasm runtime. The dynamic import also keeps it out of QR-scan routes.
-        await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+        landmarker = await loadPalmLandmarker();
         if (stopped) return;
-        const { FilesetResolver, HandLandmarker: HandLandmarkerRuntime } =
-          await import('@mediapipe/tasks-vision');
-        const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM);
-        if (stopped) return;
-        landmarker = await HandLandmarkerRuntime.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: HAND_MODEL, delegate: 'CPU' },
-          runningMode: 'VIDEO',
-          numHands: 1,
-          minHandDetectionConfidence: 0.65,
-          minHandPresenceConfidence: 0.65,
-          minTrackingConfidence: 0.6,
-        });
-        if (stopped) {
-          landmarker.close();
-          return;
-        }
         setState('place');
         timer = window.setInterval(sample, LANDMARK_INTERVAL_MS);
       } catch {
@@ -352,7 +368,6 @@ export function useAutoCapture(
     return () => {
       stopped = true;
       if (timer) window.clearInterval(timer);
-      landmarker?.close();
     };
   }, [active, videoRef]);
 
