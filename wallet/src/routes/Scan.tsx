@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { BrowserQRCodeReader, type IScannerControls } from '@zxing/browser';
+import type { IScannerControls } from '@zxing/browser';
 import { api, ApiError, type EnrolSessionView } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
 import { Button, ErrorState, PalmIcon } from '../components/ui.js';
@@ -194,13 +194,20 @@ function Scanner({
   useEffect(() => {
     let controls: IScannerControls | null = null;
     let cancelled = false;
-    const reader = new BrowserQRCodeReader();
 
-    reader
-      .decodeFromVideoDevice(undefined, videoRef.current ?? undefined, (result) => {
-        if (result && !cancelled) onScanned(result.getText());
+    // A phone opening the terminal's QR already has the session id in its URL
+    // and never needs ZXing. Load the scanner only after someone explicitly
+    // chooses the in-app "Scan terminal code" action.
+    void import('@zxing/browser')
+      .then(({ BrowserQRCodeReader }) => {
+        if (cancelled) return null;
+        const reader = new BrowserQRCodeReader();
+        return reader.decodeFromVideoDevice(undefined, videoRef.current ?? undefined, (result) => {
+          if (result && !cancelled) onScanned(result.getText());
+        });
       })
       .then((scannerControls) => {
+        if (!scannerControls) return;
         if (cancelled) {
           scannerControls.stop();
           return;
