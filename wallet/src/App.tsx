@@ -104,21 +104,17 @@ export default function App() {
       <Route
         path="/merchant"
         element={
-          <RequireAuth>
-            <Suspense fallback={<Loading />}>
-              <MerchantDashboard />
-            </Suspense>
-          </RequireAuth>
+          <Suspense fallback={<Loading />}>
+            <MerchantDashboard />
+          </Suspense>
         }
       />
       <Route
         path="/merchant/*"
         element={
-          <RequireAuth>
-            <Suspense fallback={<Loading />}>
-              <MerchantDashboard />
-            </Suspense>
-          </RequireAuth>
+          <Suspense fallback={<Loading />}>
+            <MerchantDashboard />
+          </Suspense>
         }
       />
 
