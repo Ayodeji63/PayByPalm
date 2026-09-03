@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e40af" />
+      <stop offset="50%" stop-color="#2563eb" />
+      <stop offset="100%" stop-color="#3b82f6" />
+    </linearGradient>
+    <linearGradient id="palmGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#93c5fd" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <!-- Rounded Squircle Background -->
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)" />
+  
+  <!-- Subtle Inner Radar/Scanner Rings -->
+  <circle cx="256" cy="256" r="200" stroke="#60a5fa" stroke-width="2" stroke-opacity="0.3" stroke-dasharray="8 8" />
+  <circle cx="256" cy="256" r="150" stroke="#93c5fd" stroke-width="2" stroke-opacity="0.4" />
+  
+  <!-- Geometric Palm Icon with Biometric Wave / Laser -->
+  <g transform="translate(116, 100)" stroke="url(#palmGlow)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#glow)">
+    <!-- Palm outline & fingers -->
+    <path d="M140 280 c-45 0 -70 -30 -70 -70 v-40" />
+    <path d="M70 170 V120 a15 15 0 1 1 30 0 v30" />
+    <path d="M100 150 V80 a15 15 0 1 1 30 0 v70" />
+    <path d="M130 150 V70 a15 15 0 1 1 30 0 v80" />
+    <path d="M160 150 V95 a15 15 0 1 1 30 0 v90 c0 60 -20 85 -50 85" />
+    
+    <!-- Palm Lines (biometric detail) -->
+    <path d="M85 195 Q 125 210 155 185" stroke-width="12" stroke-opacity="0.8" />
+    <path d="M95 225 Q 125 240 145 220" stroke-width="10" stroke-opacity="0.8" />
+  </g>
+  
+  <!-- Futuristic Scanner Beam Line -->
+  <line x1="80" y1="256" x2="432" y2="256" stroke="#67e8f9" stroke-width="6" stroke-linecap="round" opacity="0.85" />
+  <circle cx="256" cy="256" r="6" fill="#ffffff" />
+</svg>

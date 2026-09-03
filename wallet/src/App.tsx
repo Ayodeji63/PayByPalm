@@ -24,12 +24,11 @@ import Auth from './routes/Auth.js';
 import Dashboard from './routes/Dashboard.js';
 
 /**
- * Loaded on demand. Scan pulls in the ZXing QR decoder, by far the heaviest
- * dependency here — and exactly one screen, visited once per user, needs it.
- * Keeping it out of the initial bundle roughly halves what a phone on campus
- * wifi downloads to see its balance.
+ * Loaded on demand.
  */
 const Scan = lazy(() => import('./routes/Scan.js'));
+const Profile = lazy(() => import('./routes/Profile.js'));
+const MerchantDashboard = lazy(() => import('./routes/MerchantDashboard.js'));
 
 function Loading() {
   return (
@@ -87,6 +86,38 @@ export default function App() {
         element={
           <RequireAuth>
             <Dashboard />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/profile"
+        element={
+          <RequireAuth>
+            <Suspense fallback={<Loading />}>
+              <Profile />
+            </Suspense>
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/merchant"
+        element={
+          <RequireAuth>
+            <Suspense fallback={<Loading />}>
+              <MerchantDashboard />
+            </Suspense>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/merchant/*"
+        element={
+          <RequireAuth>
+            <Suspense fallback={<Loading />}>
+              <MerchantDashboard />
+            </Suspense>
           </RequireAuth>
         }
       />

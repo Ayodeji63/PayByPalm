@@ -2,18 +2,38 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- viewport-fit=cover so the layout reaches under a phone's rounded corners
-         and home indicator; safe-area insets are handled in index.css. -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
     />
-    <meta name="theme-color" content="#0B3D2E" />
-    <meta name="description" content="PayByPalm — pay with your palm on campus." />
-    <title>PayByPalm</title>
+    <meta name="theme-color" content="#3b68e8" />
+    <meta name="description" content="PayByPalm — Seamless, contactless biometric palm payments." />
+    
+    <!-- PWA Web App Meta Tags -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="PayByPalm" />
+    <meta name="application-name" content="PayByPalm" />
+
+    <!-- Icons & Manifest -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <title>PayByPalm — Biometric Wallet</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch((err) => {
+            console.warn('PWA service worker registration failed:', err);
+          });
+        });
+      }
+    </script>
   </body>
 </html>

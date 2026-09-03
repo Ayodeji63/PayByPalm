@@ -1,0 +1,26 @@
+{
+  "name": "PayByPalm",
+  "short_name": "PayByPalm",
+  "description": "Biometric Palm Payment Wallet — pay anywhere with your palm.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef1fb",
+  "theme_color": "#3b68e8",
+  "categories": ["finance", "payments", "utilities"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "48x48 96x96",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
