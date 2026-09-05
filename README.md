@@ -8,7 +8,7 @@ or QR code at checkout.
 
 - Olusanya Ayodeji
 - Raji Mubarak
-
+ 
 ## 🚀 Live Demo
 
 - **Live application:** [pay-by-palm.vercel.app](https://pay-by-palm.vercel.app/)
@@ -22,7 +22,7 @@ or QR code at checkout.
 ## 🎯 The Problem
 
 **How might we make everyday payments faster and more accessible when customers
-cannot—or do not want to—depend on a phone, bank card, cash, or remembered PIN?**
+cannot—or do not want to—depend on a phone, bank card, cash, or remembered PIN?**                                                                           
 
 Conventional digital payments still require customers to carry an object, keep
 it charged, unlock an application, or remember credentials. Those requirements
