@@ -1,181 +1,179 @@
+/**
+ * Profile & Security — full-page profile screen.
+ *
+ * Matches the design: user identity card with avatar and verified badge,
+ * biometric status, payment methods from cardStore, security settings,
+ * and sign-out button.
+ */
+
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth.js';
-import { PwaShell } from '../components/PwaShell.js';
-import { Button, Card, PalmIcon, Banner } from '../components/ui.js';
-import { api } from '../lib/api.js';
+import { getCards } from '../lib/cardStore.js';
+import { Button, PageHeader, StatusChip, PalmIcon } from '../components/ui.js';
+import { PageTransition } from '../components/transitions.js';
+import { useToast } from '../components/Toast.js';
 
 export default function Profile() {
-  const { me, signOut, refresh } = useAuth();
+  const { me, signOut } = useAuth();
   const navigate = useNavigate();
-  const [unlinking, setUnlinking] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const toast = useToast();
+  const cards = getCards();
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
 
-  const handleUnlinkPalm = async () => {
-    if (!window.confirm('Are you sure you want to unlink your palm? You will need to re-enrol to pay by palm.')) {
-      return;
-    }
-    setUnlinking(true);
-    setMessage(null);
-    try {
-      await api.post('/palm/revoke');
-      await refresh();
-      setMessage('Palm biometric data successfully unlinked.');
-    } catch {
-      setMessage('Failed to unlink palm. Please try again.');
-    } finally {
-      setUnlinking(false);
-    }
-  };
+  if (!me) return null;
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/login', { replace: true });
-  };
+  const initials = me.fullName
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 
   return (
-    <PwaShell title="Profile">
-      <div className="mx-auto max-w-md space-y-5 px-5 pb-8">
-        {message && (
-          <Banner tone={message.includes('success') ? 'info' : 'warning'}>
-            {message}
-          </Banner>
-        )}
+    <PageTransition>
+      <div className="px-5 py-2">
+        <PageHeader title="Profile & Security" />
 
-        {/* User Identity Card */}
-        <Card className="flex items-center gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent text-xl font-bold text-white shadow-md shadow-accent/20">
-            {me?.fullName ? me.fullName.charAt(0).toUpperCase() : 'U'}
-          </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-bold text-ink">{me?.fullName || 'User Profile'}</h1>
-            <p className="truncate text-xs font-mono text-ink-muted">{me?.phone || 'Authenticated User'}</p>
-            <div className="mt-1.5 flex items-center gap-2">
-              <span className="inline-flex items-center rounded-full bg-accent-tint px-2 py-0.5 text-[10px] font-semibold text-accent">
-                Customer Account
-              </span>
+        <div className="space-y-4 stagger">
+          {/* User identity card */}
+          <div className="rounded-3xl bg-surface p-5">
+            <div className="flex justify-end">
+              <StatusChip tone="success">Account Verified ✓</StatusChip>
             </div>
-          </div>
-        </Card>
-
-        {/* Biometric Palm Status Card */}
-        <Card className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-tint text-accent">
-                <PalmIcon className="h-5 w-5" />
+            <div className="mt-2 flex items-center gap-4">
+              {/* Avatar */}
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-accent-tint text-accent text-xl font-bold">
+                {initials}
               </div>
               <div>
-                <h2 className="text-sm font-bold text-ink">Palm Biometrics</h2>
-                <p className="text-xs text-ink-muted">Tencent PalmAI Vector Link</p>
+                <p className="text-lg font-bold">{me.fullName}</p>
+                <p className="text-sm text-ink-muted">{me.phone}</p>
               </div>
             </div>
-            {me?.palmEnrolled ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                Linked
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                Unlinked
-              </span>
-            )}
           </div>
 
-          <div className="rounded-2xl border border-hairline bg-canvas p-3.5 text-xs text-ink-muted">
-            {me?.palmEnrolled ? (
-              <p>Your palm is securely enrolled for one-touch checkout at any PayByPalm kiosk.</p>
-            ) : (
-              <p>You have not registered your palm print yet. Visit a kiosk or scan a terminal QR code to begin.</p>
-            )}
-          </div>
-
-          <div className="flex gap-2">
-            {me?.palmEnrolled ? (
-              <Button
-                variant="danger"
-                full
-                loading={unlinking}
-                onClick={handleUnlinkPalm}
-                className="h-10 text-xs font-semibold"
-              >
-                Unlink Palm Print
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                full
-                onClick={() => navigate('/scan')}
-                className="h-10 text-xs font-semibold"
-              >
-                Enrol Palm Now
-              </Button>
-            )}
-          </div>
-        </Card>
-
-        {/* Saved Cards & Payment Authorization Card */}
-        <Card className="space-y-3.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-tint text-accent">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
-                  <line x1="1" y1="10" x2="23" y2="10" />
-                </svg>
+          {/* Biometric status */}
+          <div className="rounded-3xl bg-surface p-5">
+            <h3 className="text-base font-bold">Biometric Status</h3>
+            <div className="mt-3 flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-tint">
+                <PalmIcon className="h-6 w-6 text-accent" />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-ink">Linked Card (Paystack)</h2>
-                <p className="text-xs text-ink-muted">Direct settlement authorization</p>
+                <p className="text-sm font-medium">
+                  {me.palmEnrolled ? 'Palm Vector Linked' : 'Not Linked'}
+                </p>
+                {me.palmEnrolled && (
+                  <p className="text-xs text-ink-muted">(Tencent PalmAI)</p>
+                )}
               </div>
             </div>
+            {me.palmEnrolled && (
+              <button
+                type="button"
+                className="mt-3 text-sm font-semibold text-danger"
+                onClick={() => toast.show('Contact support to unlink palm', 'info')}
+              >
+                Unlink Palm
+              </button>
+            )}
           </div>
 
-          <div className="rounded-2xl border border-hairline bg-canvas p-4">
+          {/* Payment methods */}
+          <div className="rounded-3xl bg-surface p-5">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-12 items-center justify-center rounded-lg bg-surface border border-hairline text-[10px] font-bold text-accent">
-                  VISA
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-ink">•••• 4242</p>
-                  <p className="text-[11px] text-ink-faint">Expires 12/28</p>
+              <h3 className="text-base font-bold">Payment Methods</h3>
+              <button
+                type="button"
+                onClick={() => navigate('/cards')}
+                className="text-sm font-semibold text-accent"
+              >
+                Manage
+              </button>
+            </div>
+            {cards.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {cards.map((card) => (
+                  <div key={card.id} className="flex items-center gap-3">
+                    <CardBrandBadge brand={card.cardType} />
+                    <span className="numeric text-sm text-ink-muted">•••• {card.last4}</span>
+                    {card.isDefault && (
+                      <span className="text-[10px] rounded-full bg-accent-tint text-accent px-2 py-0.5 font-medium">Default</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-ink-muted">No cards linked</p>
+            )}
+          </div>
+
+          {/* Security */}
+          <div className="rounded-3xl bg-surface p-5">
+            <h3 className="text-base font-bold">Security</h3>
+            <div className="mt-3 divide-y divide-hairline">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between py-3 text-sm"
+                onClick={() => toast.show('PIN change coming soon', 'info')}
+              >
+                <span>Change 4-Digit PIN</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ink-faint">
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </button>
+
+              <div className="flex items-center justify-between py-3">
+                <span className="text-sm">Biometric App Unlock</span>
+                <div className="relative h-7 w-12 rounded-full bg-accent">
+                  <span className="absolute top-0.5 right-0.5 h-6 w-6 rounded-full bg-white shadow" />
                 </div>
               </div>
-              <span className="rounded-full bg-emerald-100/80 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
-                Active
-              </span>
-            </div>
-          </div>
-        </Card>
 
-        {/* Privacy & Account Settings */}
-        <Card className="space-y-3">
-          <h2 className="text-sm font-bold text-ink">Account & Security</h2>
-          <div className="space-y-1">
-            <div className="flex items-center justify-between py-2 text-xs">
-              <span className="text-ink-muted">Data Protection & DPIA</span>
-              <span className="font-medium text-accent">Compliant</span>
-            </div>
-            <div className="flex items-center justify-between border-t border-hairline py-2 text-xs">
-              <span className="text-ink-muted">App Version</span>
-              <span className="font-mono text-ink">v1.2.0-finals</span>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between py-3 text-sm"
+                onClick={() => navigate('/activity')}
+              >
+                <span>Activity Logs</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ink-faint">
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </button>
             </div>
           </div>
 
-          <div className="pt-2">
+          {/* Sign out */}
+          {confirmSignOut ? (
+            <div className="flex gap-3">
+              <Button variant="secondary" full onClick={() => setConfirmSignOut(false)}>
+                Cancel
+              </Button>
+              <Button variant="danger" full onClick={signOut}>
+                Yes, Sign Out
+              </Button>
+            </div>
+          ) : (
             <Button
-              variant="secondary"
+              variant="danger"
               full
-              onClick={handleSignOut}
-              className="h-11 text-sm font-semibold text-danger border-danger/30 hover:bg-danger-tint"
+              onClick={() => setConfirmSignOut(true)}
             >
               Sign Out
             </Button>
-          </div>
-        </Card>
+          )}
+        </div>
       </div>
-    </PwaShell>
+    </PageTransition>
+  );
+}
+
+function CardBrandBadge({ brand }: { brand: string }) {
+  const b = brand.toLowerCase();
+  return (
+    <div className="flex h-8 w-12 items-center justify-center rounded-md border border-hairline bg-canvas text-[10px] font-bold uppercase text-ink-muted">
+      {b.includes('visa') ? 'VISA' : b.includes('master') ? 'MC' : brand.slice(0, 4)}
+    </div>
   );
 }

@@ -30,7 +30,14 @@ function extractSessionId(scanned: string): string | null {
 export default function Scan() {
   const { sessionId: sessionIdFromUrl } = useParams<{ sessionId?: string }>();
   const navigate = useNavigate();
-  const { refresh } = useAuth();
+  const { refresh, consentGiven } = useAuth();
+
+  // Redirect to consent screen if not yet agreed
+  useEffect(() => {
+    if (!consentGiven && !sessionIdFromUrl) {
+      navigate('/consent', { replace: true });
+    }
+  }, [consentGiven, sessionIdFromUrl, navigate]);
 
   const [step, setStep] = useState<Step>(sessionIdFromUrl ? 'waiting' : 'intro');
   const [sessionId, setSessionId] = useState<string | null>(sessionIdFromUrl ?? null);

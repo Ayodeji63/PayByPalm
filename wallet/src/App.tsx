@@ -1,33 +1,35 @@
 /**
- * Routes and guards. Four pages, deliberately:
+ * Routes and guards — redesigned with AppShell.
  *
- *   /            Landing      the pitch, and the way in
- *   /login       Auth         sign in / sign up, one page two modes
- *   /dashboard   Dashboard    balance, actions, statistics, history
- *   /scan        Scan         one-time palm enrolment
+ * Authenticated pages are wrapped in <AppShell> for the unified bottom nav.
+ * New routes: /verify, /consent, /topup, /cards, /link-card, /activity, /receipt
  *
- * Top-up, profile/settings, and transaction detail are bottom sheets on the
- * dashboard rather than routes of their own.
- *
- * Two guards, and the second matters as much as the first:
+ * Guards:
  *   - RequireAuth        keeps signed-out users out of the wallet
- *   - RequireNotEnrolled keeps ENROLLED users out of /scan, because enrolment
- *     is one-time and they should never see the flow that asks for it again
+ *   - RequireNotEnrolled keeps ENROLLED users out of /scan
  */
 
 import { Suspense, lazy } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './lib/auth.js';
 import { Screen, Skeleton } from './components/ui.js';
+import { AppShell } from './components/AppShell.js';
 import Landing from './routes/Landing.js';
 import Auth from './routes/Auth.js';
 import Dashboard from './routes/Dashboard.js';
 
 /**
- * Loaded on demand.
+ * Lazy-loaded routes — only fetched when needed.
  */
+const Verify = lazy(() => import('./routes/Verify.js'));
 const Scan = lazy(() => import('./routes/Scan.js'));
 const Profile = lazy(() => import('./routes/Profile.js'));
+const TopUp = lazy(() => import('./routes/TopUp.js'));
+const Cards = lazy(() => import('./routes/Cards.js'));
+const LinkCard = lazy(() => import('./routes/LinkCard.js'));
+const Consent = lazy(() => import('./routes/Consent.js'));
+const Activity = lazy(() => import('./routes/Activity.js'));
+const Receipt = lazy(() => import('./routes/Receipt.js'));
 const MerchantDashboard = lazy(() => import('./routes/MerchantDashboard.js'));
 
 function Loading() {
@@ -60,8 +62,6 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 function RequireNotEnrolled({ children }: { children: React.ReactNode }) {
   const { me } = useAuth();
-  // Wait for the profile before deciding — redirecting on a null `me` would
-  // bounce every user away from enrolment on a cold load.
   if (!me) return <Loading />;
   if (me.palmEnrolled) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
@@ -75,32 +75,79 @@ function LandingOrDashboard() {
   return <Landing />;
 }
 
+/** Wraps a route element with RequireAuth + AppShell + Suspense. */
+function AuthedShell({ children }: { children: React.ReactNode }) {
+  return (
+    <RequireAuth>
+      <AppShell>
+        <Suspense fallback={<Loading />}>
+          {children}
+        </Suspense>
+      </AppShell>
+    </RequireAuth>
+  );
+}
+
+/** Wraps a route element with RequireAuth + Suspense (NO AppShell — full-page). */
+function AuthedFull({ children }: { children: React.ReactNode }) {
+  return (
+    <RequireAuth>
+      <Suspense fallback={<Loading />}>
+        {children}
+      </Suspense>
+    </RequireAuth>
+  );
+}
+
 export default function App() {
   return (
     <Routes>
+      {/* Public routes */}
       <Route path="/" element={<LandingOrDashboard />} />
       <Route path="/login" element={<Auth />} />
 
+      {/* OTP verification — after signup, before dashboard */}
       <Route
-        path="/dashboard"
+        path="/verify"
         element={
-          <RequireAuth>
-            <Dashboard />
-          </RequireAuth>
+          <Suspense fallback={<Loading />}>
+            <Verify />
+          </Suspense>
         }
       />
 
-      <Route
-        path="/profile"
-        element={
-          <RequireAuth>
-            <Suspense fallback={<Loading />}>
-              <Profile />
-            </Suspense>
-          </RequireAuth>
-        }
-      />
+      {/* ── Authenticated routes WITH AppShell (bottom nav) ── */}
 
+      <Route path="/dashboard" element={<AuthedShell><Dashboard /></AuthedShell>} />
+      <Route path="/cards" element={<AuthedShell><Cards /></AuthedShell>} />
+      <Route path="/activity" element={<AuthedShell><Activity /></AuthedShell>} />
+      <Route path="/profile" element={<AuthedShell><Profile /></AuthedShell>} />
+
+      {/* ── Authenticated routes WITHOUT AppShell (full-page flows) ── */}
+
+      <Route path="/topup" element={<AuthedFull><TopUp /></AuthedFull>} />
+      <Route path="/link-card" element={<AuthedFull><LinkCard /></AuthedFull>} />
+      <Route path="/consent" element={<AuthedFull><Consent /></AuthedFull>} />
+      <Route path="/receipt" element={<AuthedFull><Receipt /></AuthedFull>} />
+
+      {/* Palm enrolment — guarded by RequireNotEnrolled */}
+      {['/scan', '/scan/:sessionId'].map((path) => (
+        <Route
+          key={path}
+          path={path}
+          element={
+            <RequireAuth>
+              <RequireNotEnrolled>
+                <Suspense fallback={<Loading />}>
+                  <Scan />
+                </Suspense>
+              </RequireNotEnrolled>
+            </RequireAuth>
+          }
+        />
+      ))}
+
+      {/* Merchant/terminal — no wallet auth needed */}
       <Route
         path="/merchant"
         element={
@@ -117,24 +164,6 @@ export default function App() {
           </Suspense>
         }
       />
-
-      {/* Both entry points into enrolment. The second is what the terminal's
-          QR code resolves to. */}
-      {['/scan', '/scan/:sessionId'].map((path) => (
-        <Route
-          key={path}
-          path={path}
-          element={
-            <RequireAuth>
-              <RequireNotEnrolled>
-                <Suspense fallback={<Loading />}>
-                  <Scan />
-                </Suspense>
-              </RequireNotEnrolled>
-            </RequireAuth>
-          }
-        />
-      ))}
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

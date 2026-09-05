@@ -1,12 +1,20 @@
 /**
- * Shared UI primitives.
+ * Shared UI primitives — Premium fintech design.
  *
- * Depth comes from hairline borders and the canvas/surface contrast, never
- * shadows or gradients. Every interactive element clears a 48px touch target.
+ * Every component is built for a mobile-first, Google Wallet-feeling interface.
+ * Touch targets are 48px minimum, animations are spring-based, and the colour
+ * palette is royal-blue on periwinkle.
  */
 
-import { useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+} from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 // ---------------------------------------------------------------------------
 // Layout
@@ -17,7 +25,6 @@ export function Screen({ children, className = '' }: { children: ReactNode; clas
 }
 
 export function Wordmark({ className = '' }: { className?: string }) {
-  // Neutral placeholder. This app must never render a bank's logo or trademark.
   return (
     <span className={`font-bold tracking-tight ${className}`}>
       Pay<span className="opacity-70">By</span>Palm
@@ -28,6 +35,251 @@ export function Wordmark({ className = '' }: { className?: string }) {
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
     <div className={`rounded-3xl border border-hairline bg-surface p-5 ${className}`}>{children}</div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page Header — consistent header with back, title, optional right action
+// ---------------------------------------------------------------------------
+
+export function PageHeader({
+  title,
+  onBack,
+  right,
+}: {
+  title: string;
+  onBack?: () => void;
+  right?: ReactNode;
+}) {
+  const navigate = useNavigate();
+  const goBack = onBack ?? (() => navigate(-1));
+
+  return (
+    <div className="flex items-center justify-between py-4">
+      <button
+        type="button"
+        onClick={goBack}
+        className="flex h-10 w-10 items-center justify-center rounded-full text-ink hover:bg-canvas"
+        aria-label="Go back"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      <h1 className="text-base font-semibold">{title}</h1>
+      <div className="w-10">{right}</div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Wallet Card — the premium balance card
+// ---------------------------------------------------------------------------
+
+export function WalletCard({
+  balance,
+  name,
+  phone,
+  palmLinked,
+  className = '',
+}: {
+  balance: string;
+  name: string;
+  phone: string;
+  palmLinked: boolean;
+  className?: string;
+}) {
+  const last4 = phone.replace(/\D/g, '').slice(-4);
+
+  return (
+    <div className={`wallet-card-gradient card-tilt relative overflow-hidden rounded-3xl p-6 text-white ${className}`}>
+      {/* Palm tree icon */}
+      <div className="flex items-start justify-between">
+        <PalmTreeIcon className="h-8 w-8 opacity-90" />
+        <span className="numeric text-sm font-medium opacity-80">•••• {last4}</span>
+      </div>
+
+      {/* Balance */}
+      <p className="numeric mt-6 text-3xl font-extrabold tracking-tight">{balance}</p>
+
+      {/* Name and palm status */}
+      <div className="mt-4 flex items-center justify-between">
+        <p className="text-sm font-medium opacity-90">{name}</p>
+        {palmLinked && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-xs font-semibold backdrop-blur-sm">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+            Palm Linked
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PalmTreeIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M16 28V16M16 16c-4-6-10-5-12-2s2 8 6 7c2-.5 4-2 6-5zM16 16c4-6 10-5 12-2s-2 8-6 7c-2-.5-4-2-6-5zM16 16c-1-7 2-12 5-13s5 4 3 7c-1 2-4 4-8 6zM16 16c1-7-2-12-5-13s-5 4-3 7c1 2 4 4 8 6z" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Status Chip
+// ---------------------------------------------------------------------------
+
+export function StatusChip({
+  tone = 'success',
+  children,
+}: {
+  tone?: 'success' | 'warning' | 'danger' | 'info';
+  children: ReactNode;
+}) {
+  const styles = {
+    success: 'bg-success-tint text-success border-success/20',
+    warning: 'bg-warning-tint text-warning border-warning/20',
+    danger: 'bg-danger-tint text-danger border-danger/20',
+    info: 'bg-accent-tint text-accent border-accent/20',
+  };
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${styles[tone]}`}>
+      {tone === 'success' && <span className="h-1.5 w-1.5 rounded-full bg-success" />}
+      {children}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Amount Display — large animated number
+// ---------------------------------------------------------------------------
+
+export function AmountDisplay({
+  amount,
+  className = '',
+}: {
+  amount: string;
+  className?: string;
+}) {
+  return (
+    <p className={`numeric text-4xl font-extrabold tracking-tight ${className}`}>
+      {amount}
+    </p>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// OTP Input — 6 auto-advancing digit boxes
+// ---------------------------------------------------------------------------
+
+export function OtpInput({
+  length = 6,
+  value,
+  onChange,
+}: {
+  length?: number;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const handleChange = useCallback(
+    (index: number, digit: string) => {
+      const clean = digit.replace(/\D/g, '').slice(0, 1);
+      const arr = value.split('');
+      arr[index] = clean;
+      const next = arr.join('').slice(0, length);
+      onChange(next);
+      if (clean && index < length - 1) {
+        refs.current[index + 1]?.focus();
+      }
+    },
+    [value, length, onChange],
+  );
+
+  const handleKeyDown = useCallback(
+    (index: number, e: React.KeyboardEvent) => {
+      if (e.key === 'Backspace' && !value[index] && index > 0) {
+        refs.current[index - 1]?.focus();
+      }
+    },
+    [value],
+  );
+
+  return (
+    <div className="flex justify-center gap-3">
+      {Array.from({ length }, (_, i) => (
+        <input
+          key={i}
+          ref={(el) => { refs.current[i] = el; }}
+          type="text"
+          inputMode="numeric"
+          maxLength={1}
+          value={value[i] ?? ''}
+          onChange={(e) => handleChange(i, e.target.value)}
+          onKeyDown={(e) => handleKeyDown(i, e)}
+          className={`otp-box ${value[i] ? 'filled' : ''}`}
+          autoFocus={i === 0}
+          autoComplete="one-time-code"
+        />
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PIN Input — 4 digit boxes for signup
+// ---------------------------------------------------------------------------
+
+export function PinInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const handleChange = useCallback(
+    (index: number, digit: string) => {
+      const clean = digit.replace(/\D/g, '').slice(0, 1);
+      const arr = value.split('');
+      arr[index] = clean;
+      const next = arr.join('').slice(0, 4);
+      onChange(next);
+      if (clean && index < 3) {
+        refs.current[index + 1]?.focus();
+      }
+    },
+    [value, onChange],
+  );
+
+  const handleKeyDown = useCallback(
+    (index: number, e: React.KeyboardEvent) => {
+      if (e.key === 'Backspace' && !value[index] && index > 0) {
+        refs.current[index - 1]?.focus();
+      }
+    },
+    [value],
+  );
+
+  return (
+    <div className="flex justify-center gap-4">
+      {Array.from({ length: 4 }, (_, i) => (
+        <input
+          key={i}
+          ref={(el) => { refs.current[i] = el; }}
+          type="password"
+          inputMode="numeric"
+          maxLength={1}
+          value={value[i] ?? ''}
+          onChange={(e) => handleChange(i, e.target.value)}
+          onKeyDown={(e) => handleKeyDown(i, e)}
+          className="pin-box"
+          autoComplete="off"
+        />
+      ))}
+    </div>
   );
 }
 
@@ -45,7 +297,7 @@ const VARIANTS: Record<NonNullable<ButtonProps['variant']>, string> = {
   primary: 'bg-accent text-white hover:bg-accent-strong disabled:bg-ink-faint',
   secondary: 'border border-hairline bg-surface text-ink hover:bg-canvas',
   ghost: 'text-accent hover:bg-accent-tint',
-  danger: 'border border-danger text-danger hover:bg-danger-tint',
+  danger: 'bg-danger text-white hover:bg-red-700',
 };
 
 export function Button({
@@ -61,7 +313,7 @@ export function Button({
     <button
       {...rest}
       disabled={disabled || loading}
-      className={`tap inline-flex items-center justify-center gap-2 rounded-2xl px-5 text-base font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${VARIANTS[variant]} ${full ? 'w-full' : ''} ${className}`}
+      className={`btn-bounce tap inline-flex items-center justify-center gap-2 rounded-2xl px-5 text-base font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${VARIANTS[variant]} ${full ? 'w-full' : ''} ${className}`}
     >
       {loading && <Spinner />}
       {children}
@@ -82,9 +334,11 @@ type FieldProps = InputHTMLAttributes<HTMLInputElement> & {
   label: string;
   hint?: string;
   error?: string;
+  icon?: ReactNode;
+  rightIcon?: ReactNode;
 };
 
-export function Field({ label, hint, error, id, className = '', ...rest }: FieldProps) {
+export function Field({ label, hint, error, id, icon, rightIcon, className = '', ...rest }: FieldProps) {
   const inputId = id ?? `field-${label.toLowerCase().replace(/\s+/g, '-')}`;
   const describedBy = error ? `${inputId}-error` : hint ? `${inputId}-hint` : undefined;
 
@@ -93,15 +347,27 @@ export function Field({ label, hint, error, id, className = '', ...rest }: Field
       <label htmlFor={inputId} className="block text-sm font-medium text-ink-muted">
         {label}
       </label>
-      <input
-        {...rest}
-        id={inputId}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={describedBy}
-        className={`tap w-full rounded-2xl border bg-canvas px-4 text-base outline-none transition-colors ${
-          error ? 'border-danger' : 'border-transparent focus:border-accent'
-        } ${className}`}
-      />
+      <div className="relative">
+        {icon && (
+          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-faint">
+            {icon}
+          </div>
+        )}
+        <input
+          {...rest}
+          id={inputId}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy}
+          className={`tap w-full rounded-2xl border bg-surface px-4 text-base outline-none transition-colors ${icon ? 'pl-11' : ''} ${rightIcon ? 'pr-11' : ''} ${
+            error ? 'border-danger' : 'border-hairline focus:border-accent'
+          } ${className}`}
+        />
+        {rightIcon && (
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-faint">
+            {rightIcon}
+          </div>
+        )}
+      </div>
       {error ? (
         <p id={`${inputId}-error`} className="text-sm text-danger">
           {error}
@@ -125,7 +391,7 @@ export function Pill({
       {...rest}
       aria-pressed={active}
       className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
-        active ? 'bg-accent-tint text-accent' : 'text-ink-muted hover:bg-canvas'
+        active ? 'bg-accent text-white' : 'bg-surface text-ink-muted border border-hairline hover:bg-canvas'
       }`}
     >
       {children}
@@ -170,7 +436,6 @@ export function ErrorState({
           </Button>
         </div>
       )}
-      {/* Small on purpose: the handle support needs, not something to read aloud. */}
       {requestId && <p className="mt-3 text-xs text-ink-faint">Reference {requestId.slice(0, 8)}</p>}
     </div>
   );
@@ -188,11 +453,6 @@ export function Banner({ tone = 'info', children }: { tone?: 'info' | 'warning';
 // Bottom sheet
 // ---------------------------------------------------------------------------
 
-/**
- * Top-up, profile, and transaction detail live in these rather than on their own
- * routes. The app is deliberately four pages; a sheet keeps the dashboard in
- * place behind it, which is also how these interactions feel on a phone.
- */
 export function Sheet({
   title,
   onClose,
@@ -202,7 +462,6 @@ export function Sheet({
   onClose: () => void;
   children: ReactNode;
 }) {
-  // Escape closes, and the page behind must not scroll while a sheet is open.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -222,7 +481,7 @@ export function Sheet({
         type="button"
         aria-label="Close"
         onClick={onClose}
-        className="absolute inset-0 bg-ink/40"
+        className="animate-overlay absolute inset-0 bg-ink/40 backdrop-blur-sm"
       />
       <div className="animate-sheet relative w-full max-w-md rounded-t-3xl bg-surface px-5 pt-3 pb-8">
         <div className="mx-auto h-1 w-10 rounded-full bg-hairline" aria-hidden="true" />
@@ -246,56 +505,64 @@ export function Sheet({
 }
 
 // ---------------------------------------------------------------------------
-// Bottom navigation
+// Bottom navigation — 5 items with raised centre
 // ---------------------------------------------------------------------------
 
-/**
- * Four destinations around a raised centre action, matching the reference.
- *
- * Home, Activity, and Stats are all sections of the dashboard, so they scroll
- * rather than navigate — the app has four pages and inventing routes to fill a
- * nav bar would be the tail wagging the dog. Only Scan is a real second route.
- */
-export function BottomNav({ onProfile }: { onProfile: () => void }) {
+export function BottomNav() {
   const { pathname } = useLocation();
-  const onDashboard = pathname === '/dashboard';
-
-  const jump = (id: string) => () => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md px-5 pb-[env(safe-area-inset-bottom)]">
-      <div className="relative mb-4 flex items-center justify-between rounded-3xl border border-hairline bg-surface px-6 py-3">
-        <NavItem label="Home" active={onDashboard} onClick={jump('top')}>
+    <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md px-4 pb-[env(safe-area-inset-bottom)]">
+      <div className="nav-float relative mb-3 flex items-center justify-around rounded-3xl bg-surface px-2 py-2.5">
+        <NavItem
+          to="/dashboard"
+          label="Home"
+          active={pathname === '/dashboard'}
+        >
           <path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />
         </NavItem>
-        <NavItem label="Activity" onClick={jump('history')}>
-          <path d="M4 6h16M4 12h16M4 18h10" />
+
+        <NavItem
+          to="/cards"
+          label="Cards"
+          active={pathname === '/cards' || pathname === '/link-card'}
+        >
+          <rect x="2" y="5" width="20" height="14" rx="2" />
+          <path d="M2 10h20" />
         </NavItem>
 
-        {/* Centre action — the only nav item that changes page. */}
+        {/* Centre action — palm scan */}
         <Link
           to="/scan"
-          aria-label="Scan to link your palm"
-          className="absolute left-1/2 -top-5 flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-accent text-white"
+          aria-label="Scan palm"
+          className="nav-centre-btn absolute left-1/2 -top-5 flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-accent text-white"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path
-              d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16"
+              d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"
               stroke="currentColor"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
+            <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />
           </svg>
         </Link>
         <span className="w-14" aria-hidden="true" />
 
-        <NavItem label="Stats" onClick={jump('stats')}>
-          <path d="M5 20V10M12 20V4M19 20v-6" />
+        <NavItem
+          to="/activity"
+          label="History"
+          active={pathname === '/activity'}
+        >
+          <path d="M12 8v4l3 3M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0z" />
         </NavItem>
-        <NavItem label="Profile" onClick={onProfile}>
+
+        <NavItem
+          to="/profile"
+          label="Profile"
+          active={pathname === '/profile'}
+        >
           <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 20a7 7 0 0 1 14 0" />
         </NavItem>
       </div>
@@ -304,21 +571,20 @@ export function BottomNav({ onProfile }: { onProfile: () => void }) {
 }
 
 function NavItem({
+  to,
   label,
   active = false,
-  onClick,
   children,
 }: {
+  to: string;
   label: string;
   active?: boolean;
-  onClick: () => void;
   children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex w-14 flex-col items-center gap-1 text-[11px] font-medium ${
+    <Link
+      to={to}
+      className={`flex w-14 flex-col items-center gap-1 text-[11px] font-medium transition-colors ${
         active ? 'text-accent' : 'text-ink-faint'
       }`}
     >
@@ -336,10 +602,15 @@ function NavItem({
         {children}
       </svg>
       {label}
-    </button>
+      {active && (
+        <span className="absolute -bottom-0.5 h-1 w-1 rounded-full bg-accent" />
+      )}
+    </Link>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Icons
 // ---------------------------------------------------------------------------
 
 export function PalmIcon({ className = '' }: { className?: string }) {
@@ -353,5 +624,43 @@ export function PalmIcon({ className = '' }: { className?: string }) {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+export function PayByPalmLogo({ className = '' }: { className?: string }) {
+  return (
+    <div className={`flex items-center gap-2 ${className}`}>
+      <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent text-white">
+        <PalmIcon className="h-5 w-5" />
+      </div>
+      <Wordmark className="text-lg" />
+    </div>
+  );
+}
+
+/** Quick action circle button used in the dashboard */
+export function QuickAction({
+  icon,
+  label,
+  onClick,
+  disabled = false,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`btn-bounce flex flex-col items-center gap-2 ${disabled ? 'opacity-40' : ''}`}
+    >
+      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface border border-hairline text-ink">
+        {icon}
+      </div>
+      <span className="text-xs font-medium text-ink-muted">{label}</span>
+    </button>
   );
 }

@@ -1,378 +1,363 @@
 /**
- * Dashboard — page 3 of 4.
+ * Dashboard — Premium Google Wallet-inspired home screen.
  *
- * Balance card, quick actions, statistics, and history on one scrolling page.
- * Top-up, profile, and transaction detail open as sheets rather than routes,
- * which is what keeps the app to four pages without losing anything.
+ * Design inspired by modern fintech apps: blue gradient card, circular quick
+ * actions, recent transactions list with merchant avatars.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { api, ApiError, type TransactionPage, type TransactionSummary } from '../lib/api.js';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { api, type TransactionPage, type TransactionSummary } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
 import { formatNaira, formatWhen } from '../lib/money.js';
-import { Chart, type ChartPoint } from '../components/Chart.js';
-import { ProfileSheet, TopUpSheet, TransactionSheet } from '../components/sheets.js';
-import {
-  BottomNav,
-  Button,
-  EmptyState,
-  ErrorState,
-  PalmIcon,
-  Pill,
-  Screen,
-  Skeleton,
-} from '../components/ui.js';
-
-type Sheet = 'none' | 'topup' | 'profile';
-type Flow = 'expenses' | 'income';
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+import { PalmIcon, Skeleton } from '../components/ui.js';
+import { TransactionSheet } from '../components/sheets.js';
+import { PageTransition } from '../components/transitions.js';
+import { useToast } from '../components/Toast.js';
 
 export default function Dashboard() {
-  const { me } = useAuth();
+  const { me, refresh, consentGiven } = useAuth();
+  const navigate = useNavigate();
+  const toast = useToast();
+  const [transactions, setTransactions] = useState<TransactionSummary[]>([]);
+  const [selectedTx, setSelectedTx] = useState<TransactionSummary | null>(null);
+  const [loadingTx, setLoadingTx] = useState(true);
+  const [balanceVisible, setBalanceVisible] = useState(true);
 
-  const [page, setPage] = useState<TransactionPage | null>(null);
-  const [error, setError] = useState<ApiError | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const [sheet, setSheet] = useState<Sheet>('none');
-  const [selected, setSelected] = useState<TransactionSummary | null>(null);
-  const [flow, setFlow] = useState<Flow>('expenses');
-  const [showAll, setShowAll] = useState(false);
-
-  const load = useCallback(async () => {
-    setError(null);
-    try {
-      setPage(await api.get<TransactionPage>('/transactions?limit=60&offset=0'));
-    } catch (err) {
-      if (err instanceof ApiError) setError(err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Fetch recent transactions
   useEffect(() => {
-    void load();
-  }, [load]);
-
-  // The balance is polled by AuthProvider; when it moves, a payment landed at a
-  // terminal and the list below is stale too.
-  useEffect(() => {
-    if (me) void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await api.get<TransactionPage>('/transactions?limit=5&offset=0');
+        if (!cancelled) setTransactions(data.transactions);
+      } catch {
+        // Swallow — the dashboard still works without history
+      } finally {
+        if (!cancelled) setLoadingTx(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [me?.balanceMinor]);
 
-  const settled = useMemo(
-    () => (page?.transactions ?? []).filter((t) => t.status === 'settled'),
-    [page],
-  );
+  if (!me) {
+    return (
+      <div className="px-5 py-8 space-y-4 animate-fade-in">
+        <Skeleton className="h-6 w-40" />
+        <Skeleton className="h-10 w-56" />
+        <Skeleton className="h-48 w-full rounded-3xl" />
+        <div className="flex gap-4 mt-6">
+          {[1,2,3,4].map(i => <Skeleton key={i} className="h-20 w-20 rounded-full" />)}
+        </div>
+      </div>
+    );
+  }
 
-  /** Last six months of totals for the selected flow. */
-  const points: ChartPoint[] = useMemo(() => {
-    const now = new Date();
-    const buckets: ChartPoint[] = [];
-    const index = new Map<string, number>();
-
-    for (let back = 5; back >= 0; back -= 1) {
-      const date = new Date(now.getFullYear(), now.getMonth() - back, 1);
-      const key = `${date.getFullYear()}-${date.getMonth()}`;
-      index.set(key, buckets.length);
-      buckets.push({ label: MONTHS[date.getMonth()]!, valueMinor: 0 });
-    }
-
-    for (const txn of settled) {
-      if ((flow === 'expenses') !== (txn.direction === 'debit')) continue;
-      const date = new Date(txn.createdAt);
-      const slot = index.get(`${date.getFullYear()}-${date.getMonth()}`);
-      if (slot !== undefined) buckets[slot]!.valueMinor += txn.amountMinor;
-    }
-
-    return buckets;
-  }, [settled, flow]);
-
-  const [highlight, setHighlight] = useState(5);
-  const hasChartData = points.some((p) => p.valueMinor > 0);
-
-  const visible = showAll ? (page?.transactions ?? []) : (page?.transactions ?? []).slice(0, 5);
+  const firstName = me.fullName.split(' ')[0];
 
   return (
-    <>
-      <Screen className="pb-nav">
-        <span id="top" />
-
-        {/* --- Header --------------------------------------------------- */}
-        <header className="flex items-center justify-between pt-6 pb-5">
-          <div className="min-w-0">
-            <p className="text-sm text-ink-muted">Welcome back</p>
-            <p className="truncate text-lg font-bold tracking-tight">{me?.fullName ?? '—'}</p>
+    <PageTransition>
+      <div className="pb-6">
+        {/* ─── Blue header background ─── */}
+        <div
+          className="relative px-5 pb-28 pt-6"
+          style={{ background: 'linear-gradient(135deg, #2851c5 0%, #1a3a9e 100%)' }}
+        >
+          {/* Greeting row */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {/* Avatar */}
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-white font-bold text-lg">
+                {firstName?.charAt(0) ?? 'U'}
+              </div>
+              <div>
+                <p className="text-xs text-white/60 font-medium">Welcome Back</p>
+                <h1 className="text-base font-bold text-white tracking-tight">{me.fullName}</h1>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white"
+              aria-label="Notifications"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />
+              </svg>
+              <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                1
+              </span>
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setSheet('profile')}
-            aria-label="Profile and settings"
-            className="relative flex h-11 w-11 items-center justify-center rounded-full border border-hairline bg-surface"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 20a7 7 0 0 1 14 0"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-        </header>
-
-        {/* --- Balance card --------------------------------------------- */}
-        <section aria-label="Balance" className="rounded-3xl bg-accent p-6 text-white">
-          <div className="flex items-start justify-between">
-            <PalmIcon className="h-7 w-7 text-white/90" />
-            <span className="numeric text-sm text-white/70">
-              •••• {(me?.phone ?? '••••').slice(-4)}
-            </span>
-          </div>
-
-          {me ? (
-            <p className="numeric mt-7 text-[38px] leading-none font-bold tracking-tight">
-              {formatNaira(me.balanceMinor)}
-            </p>
-          ) : (
-            <div className="mt-7 h-9 w-44 animate-pulse rounded bg-white/25" />
-          )}
-
-          <div className="mt-6 flex items-end justify-between">
-            <p className="truncate text-sm font-medium text-white/90">{me?.fullName ?? ''}</p>
-            <p className="text-xs text-white/70">
-              {me?.palmEnrolled ? 'Palm linked' : 'Palm not linked'}
-            </p>
-          </div>
-        </section>
-
-        {/* --- Quick actions -------------------------------------------- */}
-        <div className="mt-6 grid grid-cols-4 gap-2">
-          <Action label="Send" disabled title="Coming soon">
-            <path d="M12 19V5M5 12l7-7 7 7" />
-          </Action>
-          <Action label="Top-Up" onClick={() => setSheet('topup')}>
-            <path d="M12 5v14M5 12h14" />
-          </Action>
-          <Action label="Scan" to="/scan">
-            <path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16" />
-          </Action>
-          <Action label="More" onClick={() => setSheet('profile')}>
-            <path d="M5 12h.01M12 12h.01M19 12h.01" />
-          </Action>
         </div>
 
-        {/* --- Palm prompt ---------------------------------------------- */}
-        {/* Shown only while unenrolled. Once linked it disappears entirely —
-            an enrolled user is never nagged to enrol again. */}
-        {me && !me.palmEnrolled && (
-          <Link
-            to="/scan"
-            className="mt-6 flex items-center gap-4 rounded-3xl bg-accent-tint p-5"
+        {/* ─── Wallet Card — floating over the blue/white boundary ─── */}
+        <div className="relative -mt-[88px] px-5">
+          <div
+            className="relative overflow-hidden rounded-3xl p-6 text-white shadow-xl"
+            style={{
+              background: 'linear-gradient(145deg, #1e3faa 0%, #0f2266 50%, #0a1a4d 100%)',
+            }}
           >
-            <PalmIcon className="h-8 w-8 shrink-0 text-accent" />
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-accent-strong">Link your palm</p>
-              <p className="mt-0.5 text-sm text-ink-muted">
-                One visit to a terminal and you can pay with your hand alone.
-              </p>
+            {/* Decorative circles */}
+            <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/[0.04]" />
+            <div className="pointer-events-none absolute -right-4 top-12 h-20 w-20 rounded-full bg-white/[0.03]" />
+
+            {/* Top row: logo + card last 4 */}
+            <div className="flex items-start justify-between">
+              <img
+                src="/images/logo-white.jpg"
+                alt="PayByPalm"
+                className="h-9 w-9 rounded-lg"
+              />
+              <div className="flex items-center gap-2">
+                {me.palmEnrolled && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-green-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+                    Palm Linked
+                  </span>
+                )}
+                <span className="text-sm font-medium text-white/50">•••• {me.phone.replace(/\D/g, '').slice(-4)}</span>
+              </div>
             </div>
-            <span aria-hidden="true" className="text-accent">
-              ›
-            </span>
-          </Link>
+
+            {/* Balance */}
+            <div className="mt-5">
+              <p className="text-xs font-medium text-white/50 uppercase tracking-wider">Total Balance</p>
+              <div className="mt-1 flex items-center gap-3">
+                <p className="text-3xl font-extrabold tracking-tight">
+                  {balanceVisible ? formatNaira(me.balanceMinor) : '₦ •••••••'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setBalanceVisible(!balanceVisible)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white/60 hover:bg-white/20 transition-colors"
+                  aria-label={balanceVisible ? 'Hide balance' : 'Show balance'}
+                >
+                  {balanceVisible ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Bottom: Name */}
+            <p className="mt-3 text-sm font-medium text-white/60">{me.fullName}</p>
+          </div>
+        </div>
+
+        {/* ─── Quick Actions ─── */}
+        <div className="mt-6 px-5">
+          <div className="flex justify-around">
+            <QuickActionBtn
+              label="Top-Up"
+              color="#2851c5"
+              onClick={() => navigate('/topup')}
+              icon={
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              }
+            />
+            <QuickActionBtn
+              label="Link Palm"
+              color="#16a34a"
+              onClick={() => navigate(consentGiven ? '/scan' : '/consent')}
+              icon={<PalmIcon className="h-[22px] w-[22px]" />}
+            />
+            <QuickActionBtn
+              label="Transfer"
+              color="#9333ea"
+              disabled
+              onClick={() => toast.show('Transfers coming soon!', 'info')}
+              icon={
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M7 17l-4-4 4-4M17 7l4 4-4 4M3 13h18M21 11H3" />
+                </svg>
+              }
+            />
+            <QuickActionBtn
+              label="Kiosks"
+              color="#ea580c"
+              onClick={() => navigate('/merchant')}
+              icon={
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="7" width="20" height="15" rx="2" />
+                  <path d="M17 2l-5 5-5-5" />
+                </svg>
+              }
+            />
+          </div>
+        </div>
+
+        {/* ─── Palm status banner — only when not enrolled ─── */}
+        {!me.palmEnrolled && (
+          <div className="mt-5 px-5">
+            <button
+              type="button"
+              onClick={() => navigate(consentGiven ? '/scan' : '/consent')}
+              className="flex w-full items-center gap-3.5 rounded-2xl border border-[#2851c5]/10 bg-[#2851c5]/[0.04] p-4 text-left transition-all hover:bg-[#2851c5]/[0.08] active:scale-[0.99]"
+            >
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#2851c5] text-white shadow-md">
+                <PalmIcon className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-gray-900">Link your palm</p>
+                <p className="text-xs text-gray-500 mt-0.5">Set up contactless payments at any terminal</p>
+              </div>
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2851c5]/10">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2851c5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </div>
+            </button>
+          </div>
         )}
 
-        {/* --- Statistics ----------------------------------------------- */}
-        <section id="stats" className="mt-8 rounded-3xl border border-hairline bg-surface p-5">
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="font-bold tracking-tight">Statistics</h2>
-              <p className="text-xs text-ink-muted">All your transaction history</p>
-            </div>
-          </div>
-
-          <div className="mt-4 flex gap-1 rounded-full bg-canvas p-1">
-            <Pill active={flow === 'expenses'} onClick={() => setFlow('expenses')}>
-              Expenses
-            </Pill>
-            <Pill active={flow === 'income'} onClick={() => setFlow('income')}>
-              Income
-            </Pill>
-          </div>
-
-          {loading ? (
-            <Skeleton className="mt-6 h-32 w-full rounded-2xl" />
-          ) : hasChartData ? (
-            <Chart points={points} highlightIndex={highlight} onSelect={setHighlight} />
-          ) : (
-            <p className="py-10 text-center text-sm text-ink-muted">
-              No {flow} yet. Once you start paying, six months of history appears here.
-            </p>
-          )}
-        </section>
-
-        {/* --- History -------------------------------------------------- */}
-        <section id="history" className="mt-8">
+        {/* ─── Recent Transactions ─── */}
+        <div className="mt-7 px-5">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold tracking-tight">
-              {flow === 'income' ? 'Income' : 'Expenses'} history
-            </h2>
-            {(page?.transactions.length ?? 0) > 5 && (
+            <h2 className="text-lg font-bold tracking-tight text-gray-900">Recent Payments</h2>
+            {transactions.length > 0 && (
               <button
                 type="button"
-                onClick={() => setShowAll((current) => !current)}
-                className="text-sm font-semibold text-accent"
+                onClick={() => navigate('/activity')}
+                className="text-sm font-semibold text-[#2851c5]"
               >
-                {showAll ? 'Show less' : 'See all'}
+                See all
               </button>
             )}
           </div>
 
-          <div className="mt-3">
-            {loading ? (
-              <div className="space-y-3">
-                <Skeleton className="h-16 w-full rounded-2xl" />
-                <Skeleton className="h-16 w-full rounded-2xl" />
-                <Skeleton className="h-16 w-full rounded-2xl" />
+          {loadingTx ? (
+            <div className="mt-4 space-y-3">
+              {[1,2,3].map(i => (
+                <Skeleton key={i} className="h-16 w-full rounded-2xl" />
+              ))}
+            </div>
+          ) : transactions.length === 0 ? (
+            <div className="mt-6 flex flex-col items-center py-8">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="1" y="4" width="22" height="16" rx="2" />
+                  <path d="M1 10h22" />
+                </svg>
               </div>
-            ) : error ? (
-              <ErrorState
-                message={error.message}
-                onRetry={load}
-                requestId={error.requestId}
-              />
-            ) : visible.length === 0 ? (
-              <EmptyState
-                title="Nothing here yet"
-                body="Payments you make at a terminal show up here within seconds."
-                action={<Button onClick={() => setSheet('topup')}>Add some funds</Button>}
-              />
-            ) : (
-              <ul className="space-y-3">
-                {visible.map((txn) => (
-                  <TransactionRow key={txn.id} txn={txn} onOpen={() => setSelected(txn)} />
-                ))}
-              </ul>
-            )}
-          </div>
-        </section>
-      </Screen>
+              <p className="mt-3 text-sm font-medium text-gray-500">No payments yet</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Your palm payment history will appear here
+              </p>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-2 stagger">
+              {transactions.map((tx) => (
+                <TransactionRow
+                  key={tx.id}
+                  transaction={tx}
+                  onClick={() => setSelectedTx(tx)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
-      <BottomNav onProfile={() => setSheet('profile')} />
-
-      {sheet === 'topup' && <TopUpSheet onClose={() => setSheet('none')} />}
-      {sheet === 'profile' && <ProfileSheet onClose={() => setSheet('none')} />}
-      {selected && (
+      {/* Transaction detail sheet */}
+      {selectedTx && (
         <TransactionSheet
-          transaction={selected}
-          onClose={() => setSelected(null)}
-          onChanged={load}
+          transaction={selectedTx}
+          onClose={() => setSelectedTx(null)}
+          onChanged={() => { void refresh(); setSelectedTx(null); }}
         />
       )}
-    </>
+    </PageTransition>
   );
 }
 
 // ---------------------------------------------------------------------------
+// Quick Action Button — circular icon with label
+// ---------------------------------------------------------------------------
 
-function Action({
+function QuickActionBtn({
   label,
-  children,
-  to,
-  onClick,
+  icon,
+  color,
   disabled,
-  title,
+  onClick,
 }: {
   label: string;
-  children: React.ReactNode;
-  to?: string;
-  onClick?: () => void;
+  icon: React.ReactNode;
+  color: string;
   disabled?: boolean;
-  title?: string;
+  onClick: () => void;
 }) {
-  const inner = (
-    <>
-      <span
-        className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
-          disabled ? 'bg-canvas text-ink-faint' : 'bg-accent-tint text-accent'
-        }`}
-      >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          {children}
-        </svg>
-      </span>
-      <span className={`text-xs font-medium ${disabled ? 'text-ink-faint' : 'text-ink-muted'}`}>
-        {label}
-      </span>
-    </>
-  );
-
-  const shell = 'flex flex-col items-center gap-2';
-
-  if (to) {
-    return (
-      <Link to={to} className={shell}>
-        {inner}
-      </Link>
-    );
-  }
-
   return (
-    <button type="button" onClick={onClick} disabled={disabled} title={title} className={shell}>
-      {inner}
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex flex-col items-center gap-2 transition-transform active:scale-95 disabled:opacity-40"
+    >
+      <div
+        className="flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-md"
+        style={{ background: disabled ? '#cbd5e1' : color }}
+      >
+        {icon}
+      </div>
+      <span className="text-xs font-semibold text-gray-600">{label}</span>
     </button>
   );
 }
 
-function TransactionRow({ txn, onOpen }: { txn: TransactionSummary; onOpen: () => void }) {
-  const isCredit = txn.direction === 'credit';
-  const dead = txn.status === 'failed' || txn.status === 'cancelled';
-  const name = txn.merchantName ?? (isCredit ? 'Top up' : 'Payment');
+// ---------------------------------------------------------------------------
+// Transaction row
+// ---------------------------------------------------------------------------
+
+function TransactionRow({
+  transaction,
+  onClick,
+}: {
+  transaction: TransactionSummary;
+  onClick: () => void;
+}) {
+  const isCredit = transaction.direction === 'credit';
+  const merchantName = transaction.merchantName ?? 'Wallet top-up';
+  const initial = merchantName.charAt(0).toUpperCase();
 
   return (
-    <li>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex w-full items-center gap-3 rounded-2xl border border-hairline bg-surface p-3.5 text-left"
-      >
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-canvas text-sm font-bold text-ink-muted">
-          {name.charAt(0).toUpperCase()}
-        </span>
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-2xl bg-gray-50 p-4 text-left transition-all hover:bg-gray-100 active:scale-[0.99]"
+    >
+      {/* Merchant initial avatar */}
+      <div className={`flex h-11 w-11 items-center justify-center rounded-xl text-sm font-bold ${
+        isCredit ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-600'
+      }`}>
+        {isCredit ? '↓' : initial}
+      </div>
 
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-semibold">{name}</span>
-          <span className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-muted">
-            {txn.authorisedByPalm && <PalmIcon className="h-3.5 w-3.5 shrink-0 text-accent" />}
-            <span>{formatWhen(txn.createdAt)}</span>
-            {dead && <span className="text-danger">· {txn.status}</span>}
-            {txn.disputedAt && <span className="text-warning">· disputed</span>}
-          </span>
-        </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-gray-900">{merchantName}</p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          {formatWhen(transaction.settledAt ?? transaction.createdAt)}
+        </p>
+      </div>
 
-        <span
-          className={`numeric shrink-0 text-sm font-bold ${
-            dead ? 'text-ink-faint line-through' : isCredit ? 'text-success' : 'text-ink'
-          }`}
-        >
-          {isCredit ? '+' : '−'}
-          {formatNaira(txn.amountMinor)}
+      <div className="flex items-center gap-1.5">
+        <span className={`text-sm font-bold ${isCredit ? 'text-green-600' : 'text-gray-900'}`}>
+          {isCredit ? '+' : '−'}{formatNaira(transaction.amountMinor)}
         </span>
-      </button>
-    </li>
+        {transaction.authorisedByPalm && (
+          <PalmIcon className="h-4 w-4 text-[#2851c5]" />
+        )}
+      </div>
+    </button>
   );
 }

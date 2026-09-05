@@ -1,28 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import 'tailwindcss';
 
 /**
- * PayByPalm design tokens.
+ * PayByPalm design tokens — Premium fintech palette.
  *
- * Royal-blue fintech palette on a soft periwinkle canvas. Surfaces are white and
- * generously rounded; depth comes from the canvas/surface contrast and hairline
- * borders rather than shadows, so the UI stays crisp on a cheap phone screen.
- *
- * The wordmark is a neutral placeholder. This app must never use Wema Bank's
- * name, logo, or trademarks.
+ * Deep royal-blue accent with soft periwinkle canvas. Surfaces are white and
+ * generously rounded. The design is inspired by Google Wallet and modern
+ * Nigerian fintech apps (OPay, Kuda, PalmPay).
  */
 @theme {
-  /* The single accent. */
+  /* Primary accent */
   --color-accent: #3b68e8;
   --color-accent-strong: #2c51c9;
   --color-accent-soft: #6b8ef0;
   --color-accent-tint: #eaf0fe;
+  --color-accent-deep: #1e3a8a;
 
   --color-ink: #0f1729;
   --color-ink-muted: #6b7690;
   --color-ink-faint: #9aa3b8;
 
   --color-surface: #ffffff;
-  /* Periwinkle page ground, as in the reference. */
   --color-canvas: #eef1fb;
   --color-hairline: #e6eaf5;
 
@@ -31,12 +29,12 @@
   --color-warning: #b25e02;
   --color-warning-tint: #fef4e6;
   --color-success: #0f9d58;
+  --color-success-tint: #e6f9f0;
 
   --radius-card: 24px;
 
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
-    Arial, sans-serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 @layer base {
@@ -48,6 +46,8 @@
     @apply bg-canvas text-ink antialiased;
     font-family: var(--font-sans);
     padding-top: env(safe-area-inset-top);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   /* Never let a focus ring disappear — this app handles money. */
@@ -56,8 +56,12 @@
   }
 
   button {
-    /* Stops iOS Safari zooming in on tap for anything below 16px. */
     font-size: inherit;
+  }
+
+  /* Smooth scrolling for the entire app */
+  * {
+    scroll-behavior: smooth;
   }
 }
 
@@ -88,7 +92,97 @@
   .no-scrollbar {
     scrollbar-width: none;
   }
+
+  /* Frosted glass effect */
+  .glass {
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    background: rgba(255, 255, 255, 0.72);
+  }
+
+  .glass-dark {
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    background: rgba(15, 23, 41, 0.72);
+  }
 }
+
+/* ===========================================================================
+ * Page transitions
+ * =========================================================================== */
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-out-left {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in-right 0.35s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.animate-fade-up {
+  animation: fade-up 0.4s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease both;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.35s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/* ===========================================================================
+ * Bottom sheet
+ * =========================================================================== */
 
 @keyframes sheet-up {
   from {
@@ -99,8 +193,208 @@
   }
 }
 .animate-sheet {
-  animation: sheet-up 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+  animation: sheet-up 0.32s cubic-bezier(0.32, 0.72, 0, 1);
 }
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-overlay {
+  animation: overlay-in 0.2s ease;
+}
+
+/* ===========================================================================
+ * Button micro-animation
+ * =========================================================================== */
+
+@keyframes btn-press {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.96);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.btn-bounce:active {
+  animation: btn-press 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* ===========================================================================
+ * Card gradient & 3D tilt
+ * =========================================================================== */
+
+.wallet-card-gradient {
+  background: linear-gradient(135deg, #4a7cf7 0%, #2c51c9 40%, #1e3a8a 100%);
+}
+
+.card-tilt {
+  transition: transform 0.3s ease;
+  transform-style: preserve-3d;
+  perspective: 800px;
+}
+
+.card-tilt:active {
+  transform: scale(0.98) rotateX(2deg);
+}
+
+/* ===========================================================================
+ * Success pulse
+ * =========================================================================== */
+
+@keyframes success-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(15, 157, 88, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 20px rgba(15, 157, 88, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(15, 157, 88, 0);
+  }
+}
+
+.success-pulse {
+  animation: success-pulse 2s cubic-bezier(0.32, 0.72, 0, 1) infinite;
+}
+
+@keyframes check-draw {
+  from {
+    stroke-dashoffset: 50;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.check-animate {
+  stroke-dasharray: 50;
+  animation: check-draw 0.6s cubic-bezier(0.32, 0.72, 0, 1) 0.3s both;
+}
+
+/* ===========================================================================
+ * Radial pattern (used on landing page)
+ * =========================================================================== */
+
+.radial-lines {
+  background-image: radial-gradient(circle at center, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Concentric rings effect */
+.concentric-rings {
+  background-image:
+    radial-gradient(circle at 70% 80%, rgba(255, 255, 255, 0.04) 0%, transparent 50%),
+    radial-gradient(circle at 30% 70%, rgba(255, 255, 255, 0.03) 0%, transparent 40%);
+}
+
+/* ===========================================================================
+ * OTP / PIN digit boxes
+ * =========================================================================== */
+
+.otp-box {
+  width: 52px;
+  height: 60px;
+  border-radius: 16px;
+  border: 2px solid #e6eaf5;
+  background: #ffffff;
+  text-align: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: #0f1729;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  caret-color: #3b68e8;
+}
+
+.otp-box:focus {
+  border-color: #3b68e8;
+  box-shadow: 0 0 0 3px rgba(59, 104, 232, 0.15);
+  outline: none;
+}
+
+.otp-box.filled {
+  border-color: #3b68e8;
+  background: #f8faff;
+}
+
+.pin-box {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  border: 2px solid #e6eaf5;
+  background: #ffffff;
+  text-align: center;
+  font-size: 28px;
+  font-weight: 700;
+  color: #0f1729;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  caret-color: #3b68e8;
+}
+
+.pin-box:focus {
+  border-color: #3b68e8;
+  box-shadow: 0 0 0 3px rgba(59, 104, 232, 0.15);
+  outline: none;
+}
+
+/* ===========================================================================
+ * Floating bottom nav
+ * =========================================================================== */
+
+.nav-float {
+  box-shadow: 0 -4px 30px rgba(15, 23, 41, 0.08),
+              0 -1px 6px rgba(15, 23, 41, 0.04);
+}
+
+.nav-centre-btn {
+  box-shadow: 0 4px 16px rgba(59, 104, 232, 0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.nav-centre-btn:active {
+  transform: translateY(-2px) scale(0.95);
+  box-shadow: 0 2px 8px rgba(59, 104, 232, 0.25);
+}
+
+/* ===========================================================================
+ * Stagger animations for lists
+ * =========================================================================== */
+
+.stagger > * {
+  animation: fade-up 0.4s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 60ms; }
+.stagger > *:nth-child(3) { animation-delay: 120ms; }
+.stagger > *:nth-child(4) { animation-delay: 180ms; }
+.stagger > *:nth-child(5) { animation-delay: 240ms; }
+.stagger > *:nth-child(6) { animation-delay: 300ms; }
+.stagger > *:nth-child(7) { animation-delay: 360ms; }
+.stagger > *:nth-child(8) { animation-delay: 420ms; }
+
+/* ===========================================================================
+ * Count-up animation for balance
+ * =========================================================================== */
+
+@keyframes count-up-flash {
+  0% { color: #0f9d58; }
+  100% { color: inherit; }
+}
+.balance-flash {
+  animation: count-up-flash 1.2s ease;
+}
+
+/* ===========================================================================
+ * Reduced motion
+ * =========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -113,18 +407,8 @@
 }
 
 /* ===========================================================================
- * Terminal (kiosk) type scale
- * ===========================================================================
- * TWO SIZES ONLY, and this is the whole set. The operator reads standing over
- * the screen; the customer reads the same 7" panel from about 60cm away. A
- * third size would inevitably be a compromise between those two distances and
- * would be legible at neither.
- *
- * .t-lg — everything the customer must read: amounts, names, prompts, keypad
- *         digits, outcomes.
- * .t-sm — everything only the operator needs up close: labels, captions,
- *         countdowns, status.
- */
+ * Terminal (kiosk) type scale — PRESERVED
+ * =========================================================================== */
 .t-lg {
   font-size: 40px;
   line-height: 1.1;
@@ -138,8 +422,6 @@
   font-weight: 500;
 }
 
-/* No cursor on a touch panel, so no hover affordances and no text selection
-   artefacts from a stray drag. */
 .kiosk {
   cursor: none;
   user-select: none;
