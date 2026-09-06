@@ -63,10 +63,10 @@ export default function Landing() {
 
   // Touch swipe handling
   const onTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
+    touchStartX.current = e.touches[0]?.clientX ?? 0;
   };
   const onTouchMove = (e: React.TouchEvent) => {
-    touchEndX.current = e.touches[0].clientX;
+    touchEndX.current = e.touches[0]?.clientX ?? 0;
   };
   const onTouchEnd = () => {
     const diff = touchStartX.current - touchEndX.current;

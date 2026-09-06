@@ -24,3 +24,6 @@ coverage/
 
 # Schema test staging directory (created by supabase/tests/run.sh)
 .pbp-schema-test/
+
+# Temporary user screenshot
+image.png

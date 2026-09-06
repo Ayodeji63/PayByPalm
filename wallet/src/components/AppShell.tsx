@@ -13,7 +13,7 @@ import { BottomNav } from './ui.js';
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-md">
+    <div className="mx-auto min-h-dvh w-full max-w-md bg-[#f8fafc]">
       <div className="pb-nav">{children}</div>
       <BottomNav />
     </div>

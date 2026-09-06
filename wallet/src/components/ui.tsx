@@ -512,14 +512,27 @@ export function BottomNav() {
   const { pathname } = useLocation();
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md px-4 pb-[env(safe-area-inset-bottom)]">
-      <div className="nav-float relative mb-3 flex items-center justify-around rounded-3xl bg-surface px-2 py-2.5">
+    <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md pb-[env(safe-area-inset-bottom)]">
+      <div className="relative flex items-center justify-around bg-white px-3 pt-2.5 pb-2.5 shadow-[0_-4px_16px_rgba(0,0,0,0.05)] border-t border-slate-100 rounded-t-[26px]">
         <NavItem
           to="/dashboard"
           label="Home"
           active={pathname === '/dashboard'}
         >
-          <path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />
+          {pathname === '/dashboard' ? (
+            <path
+              d="M3 10.5 12 3.5l9 7V20a1.5 1.5 0 0 1-1.5 1.5h-4.5v-6h-6v6H4.5A1.5 1.5 0 0 1 3 20z"
+              fill="currentColor"
+            />
+          ) : (
+            <path
+              d="M3 10.5 12 3.5l9 7V20a1.5 1.5 0 0 1-1.5 1.5h-4.5v-6h-6v6H4.5A1.5 1.5 0 0 1 3 20z"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )}
         </NavItem>
 
         <NavItem
@@ -527,35 +540,48 @@ export function BottomNav() {
           label="Cards"
           active={pathname === '/cards' || pathname === '/link-card'}
         >
-          <rect x="2" y="5" width="20" height="14" rx="2" />
-          <path d="M2 10h20" />
+          <rect x="2.5" y="5.5" width="19" height="13" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M6 10h4M6 14h7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
         </NavItem>
 
-        {/* Centre action — palm scan */}
+        {/* Centre action — palm scan button */}
         <Link
           to="/scan"
           aria-label="Scan palm"
-          className="nav-centre-btn absolute left-1/2 -top-5 flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-accent text-white"
+          className="relative -top-5 flex h-13 w-13 items-center justify-center rounded-full bg-[#2851c5] text-white shadow-md shadow-slate-900/20 ring-4 ring-white active:scale-95 transition-all"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path
               d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"
               stroke="currentColor"
-              strokeWidth="2"
+              strokeWidth="2.2"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
-            <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />
+            {/* Palm / biometric scanner lines in centre */}
+            <path
+              d="M9 12h6M9 9.5h6M10 14.5h4"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
           </svg>
         </Link>
-        <span className="w-14" aria-hidden="true" />
 
         <NavItem
           to="/activity"
           label="History"
           active={pathname === '/activity'}
         >
-          <path d="M12 8v4l3 3M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0z" />
+          <rect x="3" y="4" width="18" height="16" rx="3.5" stroke="currentColor" strokeWidth="1.8" />
+          <path
+            d="m7 14 3.2-3.2 2.6 2.6L17 9"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path d="M14 9h3v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </NavItem>
 
         <NavItem
@@ -563,7 +589,13 @@ export function BottomNav() {
           label="Profile"
           active={pathname === '/profile'}
         >
-          <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 20a7 7 0 0 1 14 0" />
+          <circle cx="12" cy="8" r="3.8" stroke="currentColor" strokeWidth="1.8" />
+          <path
+            d="M5.5 19.5a6.5 6.5 0 0 1 13 0"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
         </NavItem>
       </div>
     </nav>
@@ -584,27 +616,22 @@ function NavItem({
   return (
     <Link
       to={to}
-      className={`flex w-14 flex-col items-center gap-1 text-[11px] font-medium transition-colors ${
-        active ? 'text-accent' : 'text-ink-faint'
+      className={`flex w-14 flex-col items-center gap-1 text-[11px] font-semibold transition-colors ${
+        active ? 'text-[#2851c5]' : 'text-slate-400 hover:text-slate-600'
       }`}
     >
-      <svg
-        width="22"
-        height="22"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        {children}
-      </svg>
-      {label}
-      {active && (
-        <span className="absolute -bottom-0.5 h-1 w-1 rounded-full bg-accent" />
-      )}
+      <div className="flex h-6 w-6 items-center justify-center">
+        <svg
+          width="22"
+          height="22"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+        >
+          {children}
+        </svg>
+      </div>
+      <span>{label}</span>
     </Link>
   );
 }
