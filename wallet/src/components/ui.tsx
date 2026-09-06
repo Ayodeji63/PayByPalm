@@ -484,7 +484,7 @@ export function Sheet({
         onClick={onClose}
         className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm cursor-default"
       />
-      <div className="relative z-10 w-full max-w-md rounded-t-[32px] sm:rounded-3xl bg-white px-5 pt-3 pb-8 sm:pb-6 shadow-2xl border border-slate-100 overflow-hidden max-h-[90vh] flex flex-col animate-slide-up">
+      <div className="relative z-10 w-full max-w-md rounded-t-[32px] sm:rounded-3xl bg-white px-5 pt-3 pb-[max(2.5rem,env(safe-area-inset-bottom,2.5rem))] sm:pb-8 shadow-2xl border border-slate-100 overflow-hidden max-h-[92vh] flex flex-col animate-slide-up">
         <div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200 shrink-0" aria-hidden="true" />
         <div className="mt-3 mb-4 flex items-center justify-between shrink-0">
           <h2 className="text-lg font-bold tracking-tight text-slate-900">{title}</h2>
@@ -499,7 +499,7 @@ export function Sheet({
             </svg>
           </button>
         </div>
-        <div className="overflow-y-auto pb-4">
+        <div className="overflow-y-auto pb-6">
           {children}
         </div>
       </div>

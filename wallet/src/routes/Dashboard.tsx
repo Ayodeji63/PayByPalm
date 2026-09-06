@@ -902,8 +902,7 @@ export default function Dashboard() {
                         : 'bg-rose-100 text-rose-700'
                     }`}
                   >
-                    {isCredit ? '+' : '-'}
-                    {formatNaira(tx.amountMinor)}
+                    {isCredit ? '+' : '−'}&nbsp;{formatNaira(Math.abs(tx.amountMinor))}
                   </div>
                 </div>
               );

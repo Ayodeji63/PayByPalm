@@ -146,7 +146,7 @@ function TxRow({ tx, onClick }: { tx: TransactionSummary; onClick: () => void })
       </div>
       <div className="flex items-center gap-1.5">
         <span className={`numeric text-sm font-bold ${isCredit ? 'text-success' : 'text-ink'}`}>
-          {isCredit ? '+' : '−'}{formatNaira(tx.amountMinor)}
+          {isCredit ? '+' : '−'}&nbsp;{formatNaira(Math.abs(tx.amountMinor))}
         </span>
         {tx.authorisedByPalm && <PalmIcon className="h-4 w-4 text-accent" />}
       </div>
