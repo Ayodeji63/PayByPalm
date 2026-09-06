@@ -14,6 +14,7 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 // ---------------------------------------------------------------------------
@@ -475,32 +476,35 @@ export function Sheet({
     };
   }, [onClose]);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-end justify-center animate-fade-in" role="dialog" aria-modal="true">
       <button
         type="button"
         aria-label="Close"
         onClick={onClose}
-        className="animate-overlay absolute inset-0 bg-ink/40 backdrop-blur-sm"
+        className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm cursor-default"
       />
-      <div className="animate-sheet relative w-full max-w-md rounded-t-3xl bg-surface px-5 pt-3 pb-8">
-        <div className="mx-auto h-1 w-10 rounded-full bg-hairline" aria-hidden="true" />
-        <div className="mt-4 mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+      <div className="relative z-10 w-full max-w-md rounded-t-[32px] sm:rounded-3xl bg-white px-5 pt-3 pb-8 sm:pb-6 shadow-2xl border border-slate-100 overflow-hidden max-h-[90vh] flex flex-col animate-slide-up">
+        <div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200 shrink-0" aria-hidden="true" />
+        <div className="mt-3 mb-4 flex items-center justify-between shrink-0">
+          <h2 className="text-lg font-bold tracking-tight text-slate-900">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-canvas text-ink-muted"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 active:scale-95 transition-all"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
             </svg>
           </button>
         </div>
-        {children}
+        <div className="overflow-y-auto pb-4">
+          {children}
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
