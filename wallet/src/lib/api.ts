@@ -192,6 +192,10 @@ export const api = {
   get: <T>(path: string, signal?: AbortSignal) => send<T>(path, signal ? { signal } : {}),
   post: <T>(path: string, body?: unknown, signal?: AbortSignal) =>
     send<T>(path, { method: 'POST', ...(body !== undefined ? { body } : {}), ...(signal ? { signal } : {}) }),
+  patch: <T>(path: string, body: unknown) =>
+    send<T>(path, { method: 'PATCH', body }),
+  del: <T>(path: string) =>
+    send<T>(path, { method: 'DELETE' }),
   anonPost: <T>(path: string, body: unknown) =>
     send<T>(path, { method: 'POST', body, anonymous: true }),
 };

@@ -1,301 +1,15 @@
 /**
- * Bottom sheets.
+ * Bottom sheets — kept lean after the redesign.
  *
- * These carry what used to be three separate routes — top-up, settings, and
- * transaction detail. The app is deliberately four pages, so this is where that
- * functionality lives. Nothing was dropped in the consolidation: unlinking a
- * palm, changing a PIN, and disputing a payment all still work.
+ * TopUpSheet and ProfileSheet are removed — replaced by full-page routes
+ * (/topup and /profile). Only TransactionSheet remains.
  */
 
-import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import { api, ApiError, type TransactionSummary } from '../lib/api.js';
-import { useAuth } from '../lib/auth.js';
-import { formatNaira, formatWhenLong, parseNairaToMinor } from '../lib/money.js';
+import { formatNaira, formatWhenLong } from '../lib/money.js';
 import { useToast } from './Toast.js';
-import { Banner, Button, Field, PalmIcon, Sheet } from './ui.js';
-
-// ---------------------------------------------------------------------------
-// Top up
-// ---------------------------------------------------------------------------
-
-const PRESETS_MINOR = [1_000_00, 2_000_00, 5_000_00, 10_000_00];
-
-export function TopUpSheet({ onClose }: { onClose: () => void }) {
-  const { refresh } = useAuth();
-  const toast = useToast();
-  const [amount, setAmount] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const amountMinor = parseNairaToMinor(amount);
-
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (amountMinor === null || amountMinor <= 0) {
-      setError('Enter an amount, for example 2000.');
-      return;
-    }
-    setError(null);
-    setBusy(true);
-    try {
-      await api.post('/topup', { amountMinor });
-      await refresh();
-      toast.show(`${formatNaira(amountMinor)} added`, 'success');
-      onClose();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not add funds. Try again.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Sheet title="Top up" onClose={onClose}>
-      <Banner tone="warning">
-        <strong className="font-semibold">Sandbox funds.</strong> This is a demo wallet — no real
-        money moves.
-      </Banner>
-
-      <form onSubmit={onSubmit} className="mt-5 space-y-5" noValidate>
-        <Field
-          label="Amount"
-          type="text"
-          inputMode="decimal"
-          placeholder="2000"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          error={error ?? undefined}
-          autoFocus
-        />
-
-        <div className="grid grid-cols-4 gap-2">
-          {PRESETS_MINOR.map((preset) => (
-            <button
-              key={preset}
-              type="button"
-              onClick={() => {
-                setAmount(String(preset / 100));
-                setError(null);
-              }}
-              className="rounded-xl bg-canvas py-2.5 text-sm font-semibold text-ink-muted hover:bg-accent-tint hover:text-accent"
-            >
-              {(preset / 100).toLocaleString('en-NG')}
-            </button>
-          ))}
-        </div>
-
-        <Button type="submit" full loading={busy} disabled={amountMinor === null}>
-          {amountMinor !== null ? `Add ${formatNaira(amountMinor)}` : 'Add funds'}
-        </Button>
-      </form>
-    </Sheet>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Profile / settings
-// ---------------------------------------------------------------------------
-
-export function ProfileSheet({ onClose }: { onClose: () => void }) {
-  const { me, signOut, refresh } = useAuth();
-  const navigate = useNavigate();
-  const toast = useToast();
-  const [view, setView] = useState<'menu' | 'pin' | 'unlink'>('menu');
-
-  return (
-    <Sheet title="Profile" onClose={onClose}>
-      <div className="flex items-center gap-3 rounded-2xl bg-canvas p-4">
-        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent text-base font-semibold text-white">
-          {(me?.fullName ?? '?').charAt(0).toUpperCase()}
-        </div>
-        <div className="min-w-0">
-          <p className="truncate font-semibold">{me?.fullName ?? '—'}</p>
-          <p className="numeric text-sm text-ink-muted">{me?.phone ?? ''}</p>
-        </div>
-      </div>
-
-      {view === 'menu' && (
-        <div className="mt-5 space-y-3">
-          <div className="flex items-center gap-3 rounded-2xl border border-hairline p-4">
-            <PalmIcon className={`h-6 w-6 ${me?.palmEnrolled ? 'text-accent' : 'text-ink-faint'}`} />
-            <div className="flex-1">
-              <p className="text-sm font-medium">
-                {me?.palmEnrolled ? 'Palm linked' : 'No palm linked'}
-              </p>
-              <p className="text-xs text-ink-muted">
-                {me?.palmEnrolled
-                  ? 'Pay at any terminal without your phone.'
-                  : 'Scan a terminal code to set it up.'}
-              </p>
-            </div>
-          </div>
-
-          {me?.palmEnrolled ? (
-            <Button variant="danger" full onClick={() => setView('unlink')}>
-              Unlink palm
-            </Button>
-          ) : (
-            <Button
-              full
-              onClick={() => {
-                onClose();
-                navigate('/scan');
-              }}
-            >
-              Link your palm
-            </Button>
-          )}
-
-          <Button variant="secondary" full onClick={() => setView('pin')}>
-            {me?.hasPin ? 'Change wallet PIN' : 'Set a wallet PIN'}
-          </Button>
-
-          <Button
-            variant="ghost"
-            full
-            onClick={() => {
-              signOut();
-              navigate('/login', { replace: true });
-            }}
-          >
-            Sign out
-          </Button>
-        </div>
-      )}
-
-      {view === 'pin' && (
-        <ChangePin
-          hasExistingPin={me?.hasPin ?? false}
-          onCancel={() => setView('menu')}
-          onDone={async () => {
-            setView('menu');
-            await refresh();
-            toast.show('PIN updated.', 'success');
-          }}
-        />
-      )}
-
-      {view === 'unlink' && (
-        <UnlinkPalm
-          onCancel={() => setView('menu')}
-          onDone={async () => {
-            setView('menu');
-            await refresh();
-            toast.show('Palm unlinked.', 'info');
-          }}
-        />
-      )}
-    </Sheet>
-  );
-}
-
-function ChangePin({
-  hasExistingPin,
-  onDone,
-  onCancel,
-}: {
-  hasExistingPin: boolean;
-  onDone: () => Promise<void>;
-  onCancel: () => void;
-}) {
-  const [currentPin, setCurrentPin] = useState('');
-  const [newPin, setNewPin] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const digits = (value: string) => value.replace(/\D/g, '').slice(0, 4);
-
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    setError(null);
-    setBusy(true);
-    try {
-      await api.post('/me/pin', { ...(hasExistingPin ? { currentPin } : {}), newPin });
-      await onDone();
-    } catch (err) {
-      setError(
-        err instanceof ApiError ? err.details?.newPin ?? err.message : 'Could not update your PIN.',
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <form onSubmit={onSubmit} className="mt-5 space-y-4" noValidate>
-      {hasExistingPin && (
-        <Field
-          label="Current PIN"
-          type="password"
-          inputMode="numeric"
-          maxLength={4}
-          value={currentPin}
-          onChange={(e) => setCurrentPin(digits(e.target.value))}
-          required
-        />
-      )}
-      <Field
-        label="New PIN"
-        type="password"
-        inputMode="numeric"
-        maxLength={4}
-        hint="Four digits. Avoid 1234 or four of the same digit."
-        value={newPin}
-        onChange={(e) => setNewPin(digits(e.target.value))}
-        error={error ?? undefined}
-        required
-      />
-      <div className="flex gap-3 pt-1">
-        <Button type="button" variant="secondary" full onClick={onCancel}>
-          Back
-        </Button>
-        <Button type="submit" full loading={busy} disabled={newPin.length !== 4}>
-          Save
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-function UnlinkPalm({ onDone, onCancel }: { onDone: () => Promise<void>; onCancel: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function confirm() {
-    setBusy(true);
-    setError(null);
-    try {
-      await api.post('/palm/revoke');
-      await onDone();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not unlink your palm.');
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="mt-5">
-      <p className="text-sm text-ink-muted">
-        You will not be able to pay with your palm until you set it up again — and that has to be
-        done in person at a terminal, not from this app.
-      </p>
-      {error && (
-        <p role="alert" className="mt-3 text-sm text-danger">
-          {error}
-        </p>
-      )}
-      <div className="mt-5 flex gap-3">
-        <Button variant="secondary" full onClick={onCancel} disabled={busy}>
-          Keep it
-        </Button>
-        <Button variant="danger" full loading={busy} onClick={confirm}>
-          Unlink
-        </Button>
-      </div>
-    </div>
-  );
-}
+import { Banner, Button, PalmIcon, Sheet } from './ui.js';
 
 // ---------------------------------------------------------------------------
 // Transaction detail
@@ -316,6 +30,7 @@ export function TransactionSheet({
   const [reason, setReason] = useState('');
 
   const isCredit = transaction.direction === 'credit';
+  const absAmount = formatNaira(Math.abs(transaction.amountMinor)).replace('₦', '').trim();
 
   async function submitDispute() {
     setDisputing(true);
@@ -335,17 +50,31 @@ export function TransactionSheet({
   }
 
   return (
-    <Sheet title={isCredit ? 'Top up' : 'Payment'} onClose={onClose}>
-      <div className="text-center">
-        <p className="numeric text-4xl font-bold tracking-tight">
-          {isCredit ? '+' : '−'}
-          {formatNaira(transaction.amountMinor)}
+    <Sheet title={isCredit ? 'Top Up Details' : 'Payment Details'} onClose={onClose}>
+      <div className="text-center py-3">
+        <div className="flex items-center justify-center gap-1.5 font-black">
+          <span className={`text-4xl sm:text-5xl ${isCredit ? 'text-emerald-600' : 'text-slate-900'}`}>
+            {isCredit ? '+' : '−'}
+          </span>
+          <span className={`text-4xl sm:text-5xl tracking-normal ${isCredit ? 'text-emerald-600' : 'text-slate-900'}`}>
+            ₦{absAmount}
+          </span>
+        </div>
+        <p className="mt-2 text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-500">
+          {transaction.merchantName ?? (isCredit ? 'Wallet Top-up' : 'Campus Payment')}
         </p>
-        <p className="mt-1 text-ink-muted">{transaction.merchantName ?? 'Wallet top-up'}</p>
       </div>
 
-      <dl className="mt-6 divide-y divide-hairline rounded-2xl bg-canvas px-4 text-sm">
-        <Row label="Status" value={transaction.status} />
+      <dl className="mt-4 divide-y divide-slate-200/80 rounded-2xl bg-slate-50/90 p-4 text-xs sm:text-sm border border-slate-200/70">
+        <Row
+          label="Status"
+          value={
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100/90 text-emerald-800 font-bold text-xs">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-600"></span>
+              {transaction.status ? transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1) : 'Settled'}
+            </span>
+          }
+        />
         <Row label="When" value={formatWhenLong(transaction.settledAt ?? transaction.createdAt)} />
         {transaction.terminalLabel && <Row label="Terminal" value={transaction.terminalLabel} />}
         {transaction.description && <Row label="Note" value={transaction.description} />}
@@ -353,11 +82,11 @@ export function TransactionSheet({
           <Row
             label="Authorised by"
             value={
-              <span className="inline-flex items-center gap-1.5">
-                <PalmIcon className="h-4 w-4 text-accent" />
-                Palm
+              <span className="inline-flex items-center gap-1.5 font-bold text-[#1d4ed8] bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200/80 text-xs">
+                <PalmIcon className="h-3.5 w-3.5 text-[#1d4ed8]" />
+                Palm Biometric
                 {transaction.matchScore !== null && (
-                  <span className="text-ink-faint">· score {transaction.matchScore}</span>
+                  <span className="text-blue-500 font-medium text-[11px]">· score {transaction.matchScore}</span>
                 )}
               </span>
             }
@@ -380,7 +109,7 @@ export function TransactionSheet({
           </Banner>
         ) : showForm ? (
           <div>
-            <label htmlFor="dispute-reason" className="block text-sm font-medium">
+            <label htmlFor="dispute-reason" className="block text-xs font-bold text-slate-700">
               What went wrong?
             </label>
             <textarea
@@ -390,9 +119,9 @@ export function TransactionSheet({
               rows={3}
               maxLength={500}
               placeholder="I was not at this terminal…"
-              className="mt-2 w-full rounded-2xl border border-transparent bg-canvas p-3 text-base outline-none focus:border-accent"
+              className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs outline-none focus:border-[#1d4ed8] focus:bg-white focus:ring-2 focus:ring-blue-500/20"
             />
-            <div className="mt-3 flex gap-3">
+            <div className="mt-3 flex gap-2.5">
               <Button variant="secondary" full onClick={() => setShowForm(false)}>
                 Cancel
               </Button>
@@ -402,9 +131,13 @@ export function TransactionSheet({
             </div>
           </div>
         ) : (
-          <Button variant="ghost" full onClick={() => setShowForm(true)}>
+          <button
+            type="button"
+            onClick={() => setShowForm(true)}
+            className="w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 active:scale-[0.99] transition-all text-center border border-rose-100"
+          >
             Dispute this payment
-          </Button>
+          </button>
         )}
       </div>
     </Sheet>
@@ -414,8 +147,8 @@ export function TransactionSheet({
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-4 py-3">
-      <dt className="text-ink-muted">{label}</dt>
-      <dd className="text-right font-medium capitalize">{value}</dd>
+      <dt className="text-slate-500 font-semibold">{label}</dt>
+      <dd className="text-right font-bold text-slate-900">{value}</dd>
     </div>
   );
 }
