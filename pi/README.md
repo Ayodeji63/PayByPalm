@@ -1,168 +1,223 @@
-# PayByPalm — Raspberry Pi terminal
+# Raspberry Pi terminal: automatic startup
 
-Chromium kiosk on a 7" 800x480 touchscreen with a Pi camera. The terminal is a route in
-the wallet app (`/terminal`), not a separate deployment — one build serves both.
+The Pi runs Chromium at the deployed wallet's `/terminal` route. The backend runs
+on Render (or another reachable server), not on the Pi. The Pi holds its own device
+key only: never a Supabase service-role key, Tencent key, or customer login.
 
-## What the terminal holds, and what it does not
+## Before installing
 
-It holds **one** credential: `X-Terminal-Key`, which identifies the device and its merchant.
+- Use Raspberry Pi OS **with Desktop**, a working network, touchscreen and a camera
+  Chromium can access. Run setup as the account that logs into the Pi desktop.
+- Deploy the updated wallet/backend and apply the pending Supabase migrations
+  through `0013`. Configure the backend's real Tencent provider for live matching.
+- The frontend's build must use the reachable HTTPS API URL in `VITE_API_BASE_URL`.
+  `localhost:8080` would point at the Pi itself. Backend `WALLET_BASE_URL` must be
+  the public wallet URL so phones can open enrolment QR links.
+- Use a dedicated kiosk account/browser profile. Do not sign customer wallets into it.
 
-It holds **no Tencent key** and **no Supabase service key**. The Pi posts a palm image to our
-backend and the backend calls the palm provider. There is no code path from this device to
-Tencent, and a stolen terminal cannot read anyone's data — only create charges against its own
-merchant, which is revocable in one SQL statement.
+## 1. Install on the Pi
 
-### Why the key is not a build variable
-
-The obvious approach is a `VITE_TERMINAL_KEY` baked in at build time. That would be a real
-leak: the wallet and the terminal are **one bundle on one public origin**, so anything inlined
-at build time is readable by any customer who opens devtools on the wallet. A terminal key can
-create charges.
-
-So the key lives in `/etc/paybypalm/terminal.env` on the Pi. The launcher appends it to the
-URL once at boot; the page moves it into `localStorage` and calls `history.replaceState` to
-strip it from the address bar.
-
-The honest tradeoff: it transits as a query parameter once per boot and can appear in edge
-access logs. Rotate by editing the env file and updating `terminals.api_key_hash`. That beats
-publishing it to every wallet user.
-
-`pnpm guard:secrets` in the wallet fails the build if a `pbp_*` key ever appears in `dist`.
-
-## Install
+Copy this updated `pi/` folder onto the Pi (or pull the repository once these
+changes have been committed and pushed). In a terminal on the Pi desktop:
 
 ```bash
-# 1. Dependencies
 sudo apt update
-sudo apt install -y chromium-browser unclutter x11-xserver-utils
+sudo apt install -y chromium python3 util-linux curl
+cd ~/PayByPalm/pi
 
-# 2. Device key
-sudo install -d -m 0755 /etc/paybypalm
-sudo cp terminal.env.example /etc/paybypalm/terminal.env
-sudo chmod 0600 /etc/paybypalm/terminal.env
-sudo nano /etc/paybypalm/terminal.env     # set KIOSK_URL and TERMINAL_KEY
+# Retire the former system-wide unit if you installed it previously.
+sudo systemctl disable --now paybypalm-kiosk.service 2>/dev/null || true
 
-# 3. Launcher
-sudo install -m 0755 paybypalm-kiosk.sh /usr/local/bin/paybypalm-kiosk.sh
-
-# 4. Autostart
-sudo cp paybypalm-kiosk.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now paybypalm-kiosk
+# Run as the desktop user, WITHOUT sudo.
+bash install.sh
 ```
 
-```bash
-journalctl -u paybypalm-kiosk -f     # logs
-sudo systemctl restart paybypalm-kiosk
-```
+The installer copies the launcher/helpers into `~/.local/share/paybypalm/pi/`,
+creates a **user** systemd service, and adds an XDG desktop autostart entry. It
+uses the actual Wayland or X11 session environment. No hardcoded `pi`/`ayo` user,
+DISPLAY or XAUTHORITY path is required. Running the installer again updates files
+without replacing the device key or clearing payment recovery/browser data.
 
-## Chromium flags that actually matter
+## 2. Generate and register one device key
 
-| Flag | Why |
-|---|---|
-| `--kiosk` | Full screen, no browser chrome, no way out |
-| `--app=<url>` | No tab strip, no omnibox |
-| `--use-fake-ui-for-media-stream` | **Auto-grants the camera.** The permission prompt is unclickable in kiosk mode, so without this `getUserMedia` never resolves and the terminal is dead |
-| `--autoplay-policy=no-user-gesture-required` | Lets the preview `<video>` start without a tap |
-| `--disable-session-crashed-bubble`, `--noerrdialogs`, `--disable-infobars` | After a power cut the Pi comes back to the terminal, not to a "restore pages?" bar over the UI |
-| `--check-for-update-interval=31536000` | Stops an update check stealing the foreground mid-sale |
-| `--disk-cache-dir=/tmp/...` | Keeps cache writes off the SD card |
-| `--window-size=800,480` | Matches the panel exactly |
-
-Deliberately **not** used: `--disable-web-security` and `--unsafely-treat-insecure-origin-as-secure`.
-`getUserMedia` needs a secure context and the app is served over HTTPS, so the usual kiosk
-camera workarounds are unnecessary. If you must test against a plain-HTTP dev server, forward
-it to `localhost` over SSH (`ssh -L 8080:localhost:8080 pi@...`) — localhost counts as secure —
-rather than weakening the browser on a device that handles payments.
-
-## Stopping the screen from blanking
-
-Three separate mechanisms, and you need all three — they are three different things, and
-missing one means the screen goes dark partway through a demo. The launcher runs them, but set
-them persistently too:
-
-```bash
-# X session — add to ~/.config/lxsession/LXDE-pi/autostart
-@xset s off
-@xset s noblank
-@xset -dpms
-```
-
-```bash
-# Console blanking (fires before X on some images)
-sudo raspi-config          # Display Options → Screen Blanking → No
-```
-
-```bash
-# Belt and braces on Bookworm, if the above is not honoured:
-# /boot/firmware/cmdline.txt — append to the single existing line
-consoleblank=0
-```
-
-On Raspberry Pi OS Bookworm with Wayland/labwc, `xset` is a no-op. Either switch to X11 via
-`raspi-config` → Advanced Options → Wayland → X11 (simplest, and what these scripts assume),
-or use `wlopm --on '*'` and disable the compositor's idle timeout instead.
-
-## Camera
-
-The app requests `facingMode: environment` at `1280x720`. Check the camera is visible to the
-browser as a V4L2 device:
-
-```bash
-libcamera-hello --list-cameras     # is the module detected at all?
-ls /dev/video*                     # is there a V4L2 node?
-v4l2-ctl --list-devices
-```
-
-Modern Pi OS exposes the CSI camera through `libcamera`. Chromium wants V4L2, so if
-`/dev/video0` is absent, load the compatibility bridge:
-
-```bash
-sudo modprobe bcm2835-v4l2
-echo bcm2835-v4l2 | sudo tee -a /etc/modules   # persist across reboots
-```
-
-**Do this early in the build, not at hour 40.** "The camera is not visible to Chromium" is the
-single most likely thing to cost you a demo, and it is unrelated to any of the application code.
-
-### Mount the camera so the framing never changes
-
-The app draws a fixed hand outline and the customer aligns to it. The same outline is used at
-enrolment and at payment, on purpose: a template enrolled at one distance and matched at
-another is what makes scores drift. Fix the camera rigidly relative to the palm position and
-do not adjust it between enrolling your demo users and demoing payment.
-
-## Tuning the match thresholds
-
-`PALM_ACCEPT_SCORE=85` and `PALM_STEP_UP_SCORE=70` on the backend are **starting points, not
-measured values**. Every call is logged to `palm_audit` with its score. Enrol a few people on
-the real hardware under the real lighting, run a few dozen payments, then:
+In Supabase SQL Editor, find the merchant this terminal belongs to:
 
 ```sql
-select endpoint, is_match, count(*), round(avg(score)) as avg_score,
-       min(score), max(score)
-from palm_audit
-where created_at > now() - interval '1 day'
-group by 1, 2 order by 1;
+select id, name from public.merchants order by name;
 ```
 
-Set the accept threshold below the genuine-match cluster and above the impostor cluster. A
-threshold picked by intuition is the most likely cause of a failed live demo.
+On the Pi, substitute that merchant ID below:
 
-## Demo reset
+```bash
+python3 ~/.local/share/paybypalm/pi/provision-terminal.py \
+  --url https://pay-by-palm.vercel.app/terminal \
+  --merchant-id YOUR_MERCHANT_UUID \
+  --label 'Main counter'
+```
 
-**Long-press the merchant name on the idle screen for ~1 second.** This clears the current
-transaction and returns to idle. It is deliberately hidden rather than a visible button — a
-"reset" control on a till is something a customer will eventually press.
+Use your actual deployed wallet URL if different. The script saves a fresh random
+key in `~/.config/paybypalm/terminal.env`, owned by the desktop user with mode 0600.
+It prints an `INSERT` statement containing **only the SHA-256 hash**. Run that
+statement once in your intended Supabase project's SQL Editor. It registers the
+terminal and associates it with the merchant. Do not run the old demo seed to
+provision a device. The published development credential is no longer accepted.
 
-## Troubleshooting
+Provisioning refuses to overwrite an existing config: normal restarts must retain
+the registered key. To rotate deliberately, stop the service, move the config to
+a private backup, generate/register a new key, revoke the old terminal credential
+in Supabase, and restart. Preserve terminal records referenced by payment history;
+do not delete financial history. Reconcile pending sales before rotation.
 
-| Symptom | Cause |
+Never put the key in Git, chat, a Vite variable or a `?k=` URL. The device file,
+generated extension and browser profile are private credentials; protect the Pi's
+account and disk. A user who controls the kiosk account can retrieve its key.
+
+## 3. Start now, then enable automatic boot
+
+From the Pi's logged-in desktop:
+
+```bash
+~/.local/share/paybypalm/pi/start-kiosk-session.sh
+journalctl --user -u paybypalm-kiosk -f
+```
+
+The terminal should display its merchant name. Check camera capture and complete a
+test enrolment/payment in staging before live acceptance.
+
+Enable **Desktop Auto Login** using `sudo raspi-config` under the boot/auto-login
+settings. Disable screen blanking in the Pi's display settings. Then reboot:
+
+```bash
+sudo reboot
+```
+
+The startup sequence is:
+
+1. Pi boots and logs into its desktop account.
+2. Desktop autostart imports that session's display variables into the user service.
+3. The service creates a private temporary Chromium extension under `XDG_RUNTIME_DIR`.
+4. The launcher waits for the wallet site to be reachable, then Chromium opens the clean HTTPS `/terminal` URL using a dedicated browser profile.
+5. At document start, the extension sets `sessionStorage['paybypalm.terminalKey']`
+   for that terminal origin before the app's scripts run.
+6. The app authenticates with `X-Terminal-Key`; systemd restarts Chromium if it exits.
+
+The reusable key is absent from browser arguments and URLs. The generated extension
+has no web-accessible files, background worker or message endpoint; its content
+script only injects on the configured origin's `/terminal` path and subpaths.
+Use **Chromium**: branded Google Chrome removed support for this command-line
+extension-loading workflow. No debug port or disabled browser security is needed.
+
+The temporary extension is removed when the launcher exits. The dedicated profile
+is retained. Payment recovery in sessionStorage survives ordinary reloads in the
+same tab, but **must not be assumed to survive a power cut or browser restart**.
+After an interrupted payment, reconcile outstanding server transactions before
+starting new sales; automatic browser startup is not financial reconciliation.
+
+## Daily operation
+
+- **Enrol new user:** show QR, let the signed-in customer claim it on their phone,
+  then capture their palm on the terminal.
+- **New sale:** enter amount, capture palm (optionally narrow with phone last four
+  digits), confirm, and enter the customer's wallet PIN if the backend requires it.
+- A scan alone does not debit money. Successful backend confirmation settles it.
+- An unknown payment outcome displays recovery. Retry/check that same sale; do not
+  clear browser storage or reset the terminal to get around it.
+- Signup/PIN setup happens on customers' phones, not on the kiosk.
+- Real funding rails are still pending. Live sandbox top-ups are disabled.
+
+## Maintenance and troubleshooting
+
+```bash
+systemctl --user status paybypalm-kiosk
+systemctl --user restart paybypalm-kiosk
+systemctl --user stop paybypalm-kiosk
+journalctl --user -u paybypalm-kiosk -n 100 --no-pager
+curl https://YOUR-API.onrender.com/health
+```
+
+| Symptom | Check |
 |---|---|
-| "Terminal not configured" | No key in `localStorage`. Relaunch with `?k=...`, i.e. restart the service |
-| "Camera unavailable — no camera detected" | No `/dev/video*`; see the `bcm2835-v4l2` step above |
-| "Camera unavailable — access is blocked" | `--use-fake-ui-for-media-stream` missing from the launch flags |
-| Red "Offline" banner | The Pi cannot reach the API. Check DNS and `curl $API/health` |
-| Screen goes dark mid-demo | One of the three blanking mechanisms is still active |
-| Comes back to "restore pages?" after a power cut | `--disable-session-crashed-bubble` missing |
-| Every match scores low | Camera moved between enrolment and payment, or focus is off |
+| No kiosk after reboot | Desktop auto-login enabled for the user who ran install.sh; user autostart entry exists |
+| Service reports no graphical session | Start through `start-kiosk-session.sh` from the desktop, not from an unconfigured SSH session |
+| Config rejected | Desktop-user ownership and mode 0600; HTTPS URL ends exactly `/terminal`; unique random key |
+| Terminal not configured | Chromium extension loaded; use Chromium, correct URL, installed helpers and generated config |
+| Terminal not registered | Printed SQL applied to the backend's Supabase project; matching device hash/merchant |
+| API connection refused | Frontend API URL points at a reachable server, not localhost on the Pi |
+| API returns abuse_protection_unavailable | Apply migration 0012; verify database credentials and schema cache |
+| Camera unavailable | Camera visible to Chromium, secure HTTPS origin, supported hardware/driver |
+| Matches fail | Real Tencent configuration, enrolled palm, fixed camera position and lighting; thresholds need hardware calibration |
+
+For SSH management, run commands as the same desktop user. To stop automatic launch,
+remove `~/.config/autostart/paybypalm-kiosk.desktop` and stop the user service.
+
+## Verification
+
+```bash
+python3 -m unittest discover -s pi/tests -v
+bash -n pi/paybypalm-kiosk.sh pi/install.sh pi/start-kiosk-session.sh
+```
+
+Optional real Chromium bootstrap test (requires Playwright available to Node):
+
+```bash
+node pi/tests/browser-bootstrap.mjs
+```
+
+This checks that the key exists before the first application script, reload works,
+and fresh unrelated-route tabs do not receive it. Hardware camera, display,
+desktop auto-login and power-cycle behavior must still be verified on the Pi.
+
+References: [Chromium extension loading](https://groups.google.com/a/chromium.org/g/chromium-extensions/c/1-g8EFx2BBY/m/S0ET5wPjCAAJ),
+[content-script timing](https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts),
+[Raspberry Pi configuration](https://www.raspberrypi.com/documentation/computers/configuration.html).
+
+
+Implemented locally. The launcher now provisions the key without URL exposure, waits for connectivity, and restarts Chromium if it exits. Six tests and a real Chromium bootstrap check passed. **It hasn’t been installed on your Pi yet.**
+
+On the Pi:
+
+1. Copy the updated repository onto it, then run these commands **as the desktop user**:
+
+   ```bash
+   sudo apt update
+   sudo apt install -y chromium python3 util-linux curl
+
+   cd ~/PayByPalm/pi
+   sudo systemctl disable --now paybypalm-kiosk.service 2>/dev/null || true
+   bash install.sh
+   ```
+
+2. Find your merchant ID in Supabase SQL Editor:
+
+   ```sql
+   select id, name from public.merchants;
+   ```
+
+3. Generate the device credential, replacing the merchant UUID and wallet URL:
+
+   ```bash
+   python3 ~/.local/share/paybypalm/pi/provision-terminal.py \
+     --url https://pay-by-palm.vercel.app/terminal \
+     --merchant-id YOUR_MERCHANT_UUID \
+     --label 'Main counter'
+   ```
+
+   **Run the SQL statement it prints in Supabase.** The actual key stays privately on the Pi; the statement contains only its hash.
+
+4. Start the terminal from the Pi desktop:
+
+   ```bash
+   ~/.local/share/paybypalm/pi/start-kiosk-session.sh
+   ```
+
+5. Run `sudo raspi-config`, enable **Desktop Auto Login**, then reboot. The desktop will automatically start the kiosk service. [Raspberry Pi configuration](https://www.raspberrypi.com/documentation/computers/configuration.html).
+
+To inspect problems:
+
+```bash
+journalctl --user -u paybypalm-kiosk -f
+```
+
+The updated backend/wallet and Supabase migrations must also be deployed. The frontend’s API URL must point to your reachable backend—not `localhost` on the Pi.
+
+Full installation, camera checks, and interrupted-payment recovery guidance: [Pi setup guide](/home/dell/PayByPalm/pi/README.md).

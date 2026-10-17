@@ -85,11 +85,11 @@ export const terminalApi = {
 
   health: () => send<{ status: string }>('/health', 'GET'),
 
-  createTransaction: (amountMinor: number, description?: string) =>
-    send<{ transactionId: string; amountMinor: number; merchantName: string; terminalLabel: string }>(
+  createTransaction: (amountMinor: number, description: string | undefined, saleId: string) =>
+    send<{ transactionId: string; amountMinor: number; status: string; merchantName: string; terminalLabel: string }>(
       '/transactions',
       'POST',
-      { amountMinor, ...(description ? { description } : {}) },
+      { amountMinor, saleId, ...(description ? { description } : {}) },
     ),
 
   authenticate: (transactionId: string, imageB64: string, last4?: string) =>
@@ -97,6 +97,9 @@ export const terminalApi = {
       imageB64,
       ...(last4 ? { last4 } : {}),
     }),
+
+  status: (transactionId: string) =>
+    send<{ transactionId: string; status: string; amountMinor: number }>(`/terminal/transactions/${transactionId}`, 'GET'),
 
   confirm: (transactionId: string, pin?: string) =>
     send<Receipt>(`/transactions/${transactionId}/confirm`, 'POST', pin ? { pin } : {}),
@@ -146,7 +149,6 @@ export interface Receipt {
   terminalLabel: string;
   settledAt: string | null;
   maskedName: string;
-  balanceMinor: number;
 }
 
 export interface EnrolSessionView {

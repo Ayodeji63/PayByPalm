@@ -6,12 +6,13 @@
  */
 
 import { Router } from 'express';
+import { ipRateLimit } from '../middleware/abuseLimits.js';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
 
 export const healthRouter: Router = Router();
 
-healthRouter.get('/health', async (_req, res) => {
+healthRouter.get('/health', ipRateLimit('health', 60, 60), async (_req, res) => {
   // Cheap round-trip that proves the database is reachable and the service role
   // key is valid, without reading anything sensitive.
   const started = Date.now();

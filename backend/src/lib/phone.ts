@@ -1,7 +1,7 @@
 /**
  * Phone number handling.
  *
- * The phone number is the identity anchor: it is what the terminal bins on to
+ * The profile phone is a self-reported lookup hint: the terminal bins on it to
  * narrow a palm search. Two users who type the same number differently must end
  * up with the same stored value, or the bin lookup silently misses.
  */
@@ -33,15 +33,14 @@ export function normalisePhone(input: string): string {
   return local;
 }
 
-/**
- * Supabase Auth needs an email address, and the wallet signup form deliberately
- * does not ask for one — phone is the anchor.
- *
- * HACKATHON SHORTCUT: a synthetic address is derived from the phone number so
- * Supabase has something to key on. It is never sent to, and never receives,
- * anything; accounts are created with email_confirm already set. A production
- * build would use Supabase's phone auth with a real SMS provider instead.
+/** Legacy synthetic identity helper for old administrative tooling/tests only.
+ * New signup and login require a real, verified email address.
  */
 export function syntheticEmailFor(phone: string): string {
   return `${normalisePhone(phone)}@phone.paybypalm.local`;
+}
+
+/** SMS providers expect an international number; profiles retain local canonical form. */
+export function internationalPhoneFor(input: string): string {
+  return `+234${normalisePhone(input).slice(1)}`;
 }

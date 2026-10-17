@@ -13,10 +13,9 @@
  *   - Apple Wallet physical stacked deck: cards layered in 1 place.
  *   - touch-action: none enabled on card container so vertical swipe-up works
  *     flawlessly without browser page-scroll interception.
- *   - Each card has its OWN account balance that dynamically drives the top balance.
+ *   - Wallet balance comes from the server ledger.
  *   - Quick action buttons (Send, Receive, Add Card, Merchants) in circular white styling.
- *   - Connected with cardStore: cards added via Paystack tokenization instantly appear
- *     in the wallet deck.
+ *   - Transfers and card linking remain unavailable until server integration.
  *   - Transaction History with time, date, merchant, and soft coral/emerald badges.
  */
 
@@ -26,7 +25,7 @@ import { useNavigate } from 'react-router-dom';
 import { type TransactionSummary } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
 import { formatNaira } from '../lib/money.js';
-import { getCards, togglePauseCard, deductCardBalance, setDefaultCard, type LinkedCard } from '../lib/cardStore.js';
+import { getCards, togglePauseCard, setDefaultCard, type LinkedCard } from '../lib/cardStore.js';
 import { PalmIcon, Skeleton } from '../components/ui.js';
 import { BankCard } from '../components/BankCard.js';
 import { TransactionSheet } from '../components/sheets.js';
@@ -67,113 +66,8 @@ export interface VirtualCard {
   }>;
 }
 
-const SAMPLE_TXS: Record<string, VirtualCard['transactions']> = {
-  gtbank: [
-    {
-      id: 'tx-gt-1',
-      time: '11:30 PM',
-      date: 'Friday, November 17, 2026',
-      merchant: 'CAMPUS CAFETERIA #02, UNILAG',
-      amountMinor: 350000,
-      direction: 'debit',
-      type: 'payment',
-      authorisedByPalm: true,
-    },
-    {
-      id: 'tx-gt-2',
-      time: '04:15 PM',
-      date: 'Friday, November 17, 2026',
-      merchant: 'UNILAG BOOKSTORE #104, LAGOS',
-      amountMinor: 820000,
-      direction: 'debit',
-      type: 'payment',
-      authorisedByPalm: true,
-    },
-    {
-      id: 'tx-gt-3',
-      time: '01:20 PM',
-      date: 'Thursday, November 16, 2026',
-      merchant: 'ATM CASH OUT (PALM RECOGNITION)',
-      amountMinor: 1500000,
-      direction: 'debit',
-      type: 'withdraw',
-      authorisedByPalm: true,
-    },
-    {
-      id: 'tx-gt-4',
-      time: '09:45 AM',
-      date: 'Wednesday, November 15, 2026',
-      merchant: 'INTER-BANK SALARY DIRECT DEPOSIT',
-      amountMinor: 5000000,
-      direction: 'credit',
-      type: 'deposit',
-      authorisedByPalm: false,
-    },
-  ],
-  zenith: [
-    {
-      id: 'tx-zn-1',
-      time: '07:40 PM',
-      date: 'Friday, November 17, 2026',
-      merchant: 'CENTRAL DINING HALL — DINNER',
-      amountMinor: 185000,
-      direction: 'debit',
-      type: 'payment',
-      authorisedByPalm: true,
-    },
-    {
-      id: 'tx-zn-2',
-      time: '01:10 PM',
-      date: 'Friday, November 17, 2026',
-      merchant: 'STUDENT UNION SNACK BAR',
-      amountMinor: 120000,
-      direction: 'debit',
-      type: 'payment',
-      authorisedByPalm: true,
-    },
-    {
-      id: 'tx-zn-3',
-      time: '08:25 AM',
-      date: 'Thursday, November 16, 2026',
-      merchant: 'CAMPUS ESPRESSO BAR',
-      amountMinor: 65000,
-      direction: 'debit',
-      type: 'payment',
-      authorisedByPalm: true,
-    },
-  ],
-  kuda: [
-    {
-      id: 'tx-kd-1',
-      time: '12:00 PM',
-      date: 'Wednesday, November 15, 2026',
-      merchant: 'CAMPUS SHUTTLE PAY-BY-PALM',
-      amountMinor: 25000,
-      direction: 'debit',
-      type: 'payment',
-      authorisedByPalm: true,
-    },
-    {
-      id: 'tx-kd-2',
-      time: '09:00 AM',
-      date: 'Wednesday, November 01, 2026',
-      merchant: 'INCOMING TRANSFER FROM ACCESS',
-      amountMinor: 20000000,
-      direction: 'credit',
-      type: 'deposit',
-      authorisedByPalm: false,
-    },
-  ],
-};
-
 function mapCards(linked: LinkedCard[]): VirtualCard[] {
   return linked.map((c) => {
-    const key = c.bank.toLowerCase().includes('gt')
-      ? 'gtbank'
-      : c.bank.toLowerCase().includes('zen')
-      ? 'zenith'
-      : 'kuda';
-
     return {
       id: c.id,
       name: c.name,
@@ -183,11 +77,11 @@ function mapCards(linked: LinkedCard[]): VirtualCard[] {
       cardNumber: c.cardNumber || `•••• •••• •••• ${c.last4}`,
       last4: c.last4,
       expiry: `${c.expMonth}/${c.expYear}`,
-      balanceMinor: c.balanceMinor || 12500000,
+      balanceMinor: 0,
       isPaused: Boolean(c.isPaused),
       isDefault: Boolean(c.isDefault),
       theme: c.theme,
-      transactions: (SAMPLE_TXS[key] ?? SAMPLE_TXS.gtbank) || [],
+      transactions: [],
     };
   });
 }
@@ -226,8 +120,6 @@ export default function Dashboard() {
     };
   }, [menuOpen]);
 
-  const [receiveModalOpen, setReceiveModalOpen] = useState(false);
-  const [sendModalOpen, setSendModalOpen] = useState(false);
   const [selectedTx, setSelectedTx] = useState<TransactionSummary | null>(null);
 
   // Stack swipe animation state
@@ -263,13 +155,13 @@ export default function Dashboard() {
 
   // Format balance parts: integer part and kobo decimals
   const balanceParts = useMemo(() => {
-    const nairaStr = formatNaira(activeCard?.balanceMinor ?? 12500000).replace('₦', '');
+    const nairaStr = formatNaira(me?.balanceMinor ?? 0).replace('₦', '');
     const parts = nairaStr.split('.');
     return {
       whole: parts[0] ?? '0',
       fraction: parts[1] ?? '00',
     };
-  }, [activeCard?.balanceMinor]);
+  }, [me?.balanceMinor]);
 
   // Cycle to next card (swipe up / swipe left / tap)
   const cycleNext = useCallback(() => {
@@ -368,45 +260,11 @@ export default function Dashboard() {
     setCards(mapCards(getCards()));
     toast.show(
       paused
-        ? `"${activeCard.name}" paused. Palm payments disabled.`
-        : `"${activeCard.name}" resumed. Palm payments active.`,
+        ? `"${activeCard.name}" paused. Display preference updated.`
+        : `"${activeCard.name}" resumed. Display preference updated.`,
       paused ? 'info' : 'success'
     );
     setMenuOpen(false);
-  };
-
-  // Handle successful transfer from SendMoneyModal
-  const handleTransferSuccess = (amountMinor: number, recipient: string, note?: string) => {
-    if (!activeCard) return;
-    deductCardBalance(activeCard.id, amountMinor);
-
-    const newTx: VirtualCard['transactions'][0] = {
-      id: `tx-transfer-${Date.now()}`,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      date: 'Today',
-      merchant: note
-        ? `TRANSFER: ${recipient.toUpperCase()} (${note.toUpperCase()})`
-        : `TRANSFER TO ${recipient.toUpperCase()}`,
-      amountMinor,
-      direction: 'debit',
-      type: 'payment',
-      authorisedByPalm: true,
-    };
-
-    setCards((prev) =>
-      prev.map((c, i) => {
-        if (i === activeCardIndex) {
-          return {
-            ...c,
-            balanceMinor: Math.max(0, c.balanceMinor - amountMinor),
-            transactions: [newTx, ...c.transactions],
-          };
-        }
-        return c;
-      })
-    );
-
-    toast.show(`Sent ${formatNaira(amountMinor)} to ${recipient}`, 'success');
   };
 
   if (!me) {
@@ -752,7 +610,7 @@ export default function Dashboard() {
             {/* Send / Transfer */}
             <QuickActionButton
               label="Send"
-              onClick={() => setSendModalOpen(true)}
+              onClick={() => toast.show('Transfers are currently unavailable.', 'info')}
               icon={
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M7 17l10-10M17 7H7M17 7v10" />
@@ -763,7 +621,7 @@ export default function Dashboard() {
             {/* Receive / QR */}
             <QuickActionButton
               label="Receive"
-              onClick={() => setReceiveModalOpen(true)}
+              onClick={() => toast.show('Transfers are currently unavailable.', 'info')}
               icon={
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M17 7L7 17M7 17h10M7 17V7" />
@@ -910,22 +768,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ─── Receive / QR Code Bottom Sheet (Portaled to body, z-[100]) ─── */}
-        <ReceiveMoneyModal
-          isOpen={receiveModalOpen}
-          onClose={() => setReceiveModalOpen(false)}
-          activeCard={activeCard}
-          userPhone={me.phone}
-        />
-
-        {/* ─── Send / Transfer Quick Modal (Portaled to body, z-[100]) ─── */}
-        <SendMoneyModal
-          isOpen={sendModalOpen}
-          onClose={() => setSendModalOpen(false)}
-          activeCard={activeCard}
-          onSuccessTransfer={handleTransferSuccess}
-        />
-
         {/* ─── Transaction Detail Sheet ─── */}
         {selectedTx && (
           <TransactionSheet
@@ -1033,598 +875,3 @@ function DefaultAvatarSvg({ className = 'h-full w-full' }: { className?: string 
 // ---------------------------------------------------------------------------
 // Send / Transfer Modal (Portaled to document.body, z-[100] above BottomNav)
 // ---------------------------------------------------------------------------
-
-function SendMoneyModal({
-  isOpen,
-  onClose,
-  activeCard,
-  onSuccessTransfer,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  activeCard: VirtualCard;
-  onSuccessTransfer: (amountMinor: number, recipient: string, note?: string) => void;
-}) {
-  const [mode, setMode] = useState<'palm' | 'bank'>('palm');
-  const [recipient, setRecipient] = useState('');
-  const [bank, setBank] = useState('GTBank');
-  const [accountNumber, setAccountNumber] = useState('');
-  const [accountName, setAccountName] = useState('');
-  const [amount, setAmount] = useState('');
-  const [note, setNote] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [successReceipt, setSuccessReceipt] = useState<{
-    ref: string;
-    amountMinor: number;
-    recipientName: string;
-    destType: string;
-    date: string;
-  } | null>(null);
-
-  const parsedAmount = parseFloat(amount.replace(/,/g, '')) || 0;
-  const amountMinor = Math.round(parsedAmount * 100);
-  const isOverBalance = amountMinor > activeCard.balanceMinor;
-
-  // Auto-resolve simulated bank account name when 10 digits entered
-  useEffect(() => {
-    if (mode === 'bank' && accountNumber.length === 10) {
-      setAccountName('David A. Adeleke (Verified)');
-    } else if (mode === 'bank') {
-      setAccountName('');
-    }
-  }, [accountNumber, mode]);
-
-  // Reset form when opened or closed
-  useEffect(() => {
-    if (!isOpen) {
-      setSuccessReceipt(null);
-      setAmount('');
-      setRecipient('');
-      setAccountNumber('');
-      setAccountName('');
-      setNote('');
-      setIsSubmitting(false);
-    }
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
-  const quickContacts = [
-    { name: 'Amina Bello', phone: '08023456789' },
-    { name: 'Tunde Adeleke', phone: '08134567890' },
-    { name: 'Chidi Okonkwo', phone: '07012345678' },
-  ];
-
-  const quickAmounts = [1000, 2000, 5000, 10000, 20000];
-
-  const handleSend = () => {
-    if (amountMinor <= 0 || isOverBalance) return;
-    const destName =
-      mode === 'palm'
-        ? recipient || 'Palm User'
-        : `${accountName || 'Account ' + accountNumber} (${bank})`;
-    setIsSubmitting(true);
-    setTimeout(() => {
-      onSuccessTransfer(amountMinor, destName, note);
-      setIsSubmitting(false);
-      setSuccessReceipt({
-        ref: `PBP-${Math.floor(10000000 + Math.random() * 90000000)}`,
-        amountMinor,
-        recipientName: destName,
-        destType: mode === 'palm' ? 'PayByPalm P2P' : `${bank} Direct Transfer`,
-        date: new Date().toLocaleString([], {
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      });
-    }, 550);
-  };
-
-  const isFormValid =
-    amountMinor > 0 &&
-    !isOverBalance &&
-    (mode === 'palm' ? recipient.trim().length >= 3 : accountNumber.trim().length === 10);
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/60 backdrop-blur-sm sm:items-center p-0 sm:p-4 animate-fade-in">
-      {/* Tap backdrop to close */}
-      <div className="fixed inset-0" onClick={onClose} aria-hidden="true" />
-
-      <div className="relative z-10 w-full max-w-md rounded-t-[32px] sm:rounded-3xl bg-white shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[92vh] animate-slide-up pb-7 sm:pb-6">
-        {/* Handle for mobile bottom sheet */}
-        <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-slate-200 sm:hidden" />
-
-        {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 pt-4 pb-2">
-          <div>
-            <h3 className="text-lg font-black text-slate-900 tracking-tight">
-              {successReceipt ? 'Transfer Receipt' : 'Send Money'}
-            </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {successReceipt
-                ? 'Payment completed and verified'
-                : `Instant debit from ${activeCard.name}`}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 active:scale-95 transition-all"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Content Body */}
-        <div className="overflow-y-auto px-6 pt-2 pb-4 space-y-4">
-          {successReceipt ? (
-            /* ── Success Receipt State ── */
-            <div className="text-center py-4 space-y-4">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 ring-8 ring-emerald-50">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </div>
-
-              <div>
-                <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest">Transfer Successful</p>
-                <h2 className="text-3xl font-black text-slate-900 tracking-tight mt-1">
-                  {formatNaira(successReceipt.amountMinor)}
-                </h2>
-              </div>
-
-              <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100 text-left space-y-2.5 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Recipient</span>
-                  <span className="font-bold text-slate-800 text-right truncate max-w-[200px]">{successReceipt.recipientName}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Transfer Type</span>
-                  <span className="font-semibold text-slate-700">{successReceipt.destType}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Debit Source</span>
-                  <span className="font-semibold text-slate-700">{activeCard.name} (•{activeCard.last4})</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Reference ID</span>
-                  <span className="font-mono text-slate-600">{successReceipt.ref}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Timestamp</span>
-                  <span className="text-slate-600">{successReceipt.date}</span>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-full rounded-2xl bg-[#1d4ed8] py-3.5 text-sm font-bold text-white shadow-lg shadow-blue-600/25 active:scale-95 transition-all"
-              >
-                Done
-              </button>
-            </div>
-          ) : (
-            /* ── Send Money Form ── */
-            <>
-              {/* Source Card Info Pill */}
-              <div className="flex items-center justify-between rounded-2xl bg-blue-50/70 p-3 border border-blue-100">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#1d4ed8] text-white shrink-0">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="2" y="5" width="20" height="14" rx="2" />
-                      <line x1="2" y1="10" x2="22" y2="10" />
-                    </svg>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-medium text-slate-500 leading-none">From Card</p>
-                    <p className="text-xs font-bold text-slate-900 truncate mt-0.5">
-                      {activeCard.name} (•{activeCard.last4})
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-[10px] text-slate-400 leading-none">Available</p>
-                  <p className="text-xs font-black text-[#1d4ed8] mt-0.5">
-                    {formatNaira(activeCard.balanceMinor)}
-                  </p>
-                </div>
-              </div>
-
-              {/* Mode Selection Tabs */}
-              <div className="grid grid-cols-2 gap-1.5 rounded-2xl bg-slate-100 p-1">
-                <button
-                  type="button"
-                  onClick={() => setMode('palm')}
-                  className={`flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-bold transition-all ${
-                    mode === 'palm'
-                      ? 'bg-white text-[#1d4ed8] shadow-sm'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <PalmIcon className="h-4 w-4" />
-                  <span>Palm User (P2P)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode('bank')}
-                  className={`flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-bold transition-all ${
-                    mode === 'bank'
-                      ? 'bg-white text-[#1d4ed8] shadow-sm'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 21h18M3 10h18M5 10v11M19 10v11M9 10v11M15 10v11M12 2L2 7h20L12 2z" />
-                  </svg>
-                  <span>Bank Transfer</span>
-                </button>
-              </div>
-
-              {/* Recipient Input */}
-              {mode === 'palm' ? (
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-700">Recipient Phone / Palm ID</label>
-                  <input
-                    type="text"
-                    value={recipient}
-                    onChange={(e) => setRecipient(e.target.value)}
-                    placeholder="e.g. 08123456789 or @amina"
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#1d4ed8] focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
-                  {/* Quick Contacts */}
-                  <div className="flex items-center gap-1.5 pt-1 overflow-x-auto no-scrollbar">
-                    <span className="text-[10px] text-slate-400 shrink-0">Recent:</span>
-                    {quickContacts.map((contact) => (
-                      <button
-                        key={contact.phone}
-                        type="button"
-                        onClick={() => setRecipient(contact.phone)}
-                        className={`rounded-full px-2.5 py-1 text-[10px] font-semibold transition-all shrink-0 ${
-                          recipient === contact.phone
-                            ? 'bg-[#1d4ed8] text-white'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                      >
-                        {contact.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  <div>
-                    <label className="text-xs font-bold text-slate-700">Select Bank</label>
-                    <select
-                      value={bank}
-                      onChange={(e) => setBank(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-medium text-slate-900 focus:bg-white focus:border-[#1d4ed8] focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                    >
-                      <option value="GTBank">Guaranty Trust Bank (GTBank)</option>
-                      <option value="Access Bank">Access Bank</option>
-                      <option value="Zenith Bank">Zenith Bank</option>
-                      <option value="Kuda Bank">Kuda Microfinance Bank</option>
-                      <option value="OPay">OPay Digital Services</option>
-                      <option value="PalmPay">PalmPay</option>
-                      <option value="First Bank">First Bank of Nigeria</option>
-                      <option value="UBA">United Bank for Africa (UBA)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-700">Account Number</label>
-                    <input
-                      type="text"
-                      maxLength={10}
-                      value={accountNumber}
-                      onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ''))}
-                      placeholder="10-digit NUBAN number"
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-mono font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#1d4ed8] focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                    />
-                    {accountName && (
-                      <div className="mt-1.5 flex items-center gap-1.5 text-emerald-600 text-[11px] font-bold">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                        <span>{accountName}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Amount Input */}
-              <div className="space-y-1.5 pt-1">
-                <div className="flex justify-between items-center">
-                  <label className="text-xs font-bold text-slate-700">Amount (₦)</label>
-                  {isOverBalance && (
-                    <span className="text-[11px] font-semibold text-rose-500">Exceeds available balance</span>
-                  )}
-                </div>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base font-bold text-slate-400">
-                    ₦
-                  </span>
-                  <input
-                    type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="0.00"
-                    className={`w-full rounded-xl border pl-8 pr-3.5 py-2.5 text-base font-black text-slate-900 focus:bg-white focus:outline-none focus:ring-2 ${
-                      isOverBalance
-                        ? 'border-rose-300 bg-rose-50/50 focus:border-rose-500 focus:ring-rose-500/20'
-                        : 'border-slate-200 bg-slate-50 focus:border-[#1d4ed8] focus:ring-blue-500/20'
-                    }`}
-                  />
-                </div>
-
-                {/* Quick Amount Chips */}
-                <div className="flex items-center gap-1.5 pt-1 overflow-x-auto no-scrollbar">
-                  {quickAmounts.map((q) => (
-                    <button
-                      key={q}
-                      type="button"
-                      onClick={() => setAmount(String(q))}
-                      className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-200 active:scale-95 transition-all shrink-0"
-                    >
-                      +₦{q.toLocaleString()}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Note / Memo */}
-              <div>
-                <label className="text-xs font-bold text-slate-700">Note / Reason (Optional)</label>
-                <input
-                  type="text"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="e.g. Lunch, project supplies"
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#1d4ed8] focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                />
-              </div>
-
-              {/* Submit Button */}
-              <button
-                type="button"
-                disabled={!isFormValid || isSubmitting}
-                onClick={handleSend}
-                className={`w-full rounded-2xl py-3.5 text-sm font-bold text-white shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 ${
-                  !isFormValid || isSubmitting
-                    ? 'bg-slate-300 shadow-none cursor-not-allowed text-slate-500'
-                    : 'bg-[#1d4ed8] shadow-blue-600/30 hover:bg-blue-700'
-                }`}
-              >
-                {isSubmitting ? (
-                  <>
-                    <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                    </svg>
-                    <span>Authorizing Transfer...</span>
-                  </>
-                ) : (
-                  <span>
-                    {parsedAmount > 0 ? `Send ${formatNaira(amountMinor)}` : 'Enter Amount'}
-                  </span>
-                )}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Receive / QR Code Modal (Portaled to document.body, z-[100] above BottomNav)
-// ---------------------------------------------------------------------------
-
-function ReceiveMoneyModal({
-  isOpen,
-  onClose,
-  activeCard,
-  userPhone,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  activeCard: VirtualCard;
-  userPhone: string;
-}) {
-  const [copied, setCopied] = useState(false);
-
-  if (!isOpen) return null;
-
-  const handleCopy = () => {
-    navigator.clipboard?.writeText(userPhone).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2200);
-  };
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/60 backdrop-blur-sm sm:items-center p-0 sm:p-4 animate-fade-in">
-      {/* Tap backdrop to close */}
-      <div className="fixed inset-0" onClick={onClose} aria-hidden="true" />
-
-      <div className="relative z-10 w-full max-w-md rounded-t-[32px] sm:rounded-3xl bg-white shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[92vh] animate-slide-up pb-7 sm:pb-6">
-        {/* Handle for mobile bottom sheet */}
-        <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-slate-200 sm:hidden" />
-
-        {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 pt-4 pb-2">
-          <div>
-            <h3 className="text-lg font-black text-slate-900 tracking-tight">Receive Funds</h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Receive instantly to your linked bank card
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 active:scale-95 transition-all"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Content Body */}
-        <div className="overflow-y-auto px-6 pt-2 pb-4 space-y-4 text-center">
-          {/* QR Card Container */}
-          <div className="relative mx-auto w-48 h-48 rounded-3xl bg-white p-3 shadow-md border-2 border-blue-100/80 flex items-center justify-center">
-            {/* Scannable styled SVG QR matrix */}
-            <svg viewBox="0 0 160 160" className="w-full h-full text-slate-900" fill="currentColor">
-              {/* Corner Position Detection Patterns */}
-              {/* Top-Left */}
-              <rect x="10" y="10" width="40" height="40" rx="6" fill="#0f2468" />
-              <rect x="16" y="16" width="28" height="28" rx="4" fill="white" />
-              <rect x="22" y="22" width="16" height="16" rx="2" fill="#1d4ed8" />
-
-              {/* Top-Right */}
-              <rect x="110" y="10" width="40" height="40" rx="6" fill="#0f2468" />
-              <rect x="116" y="16" width="28" height="28" rx="4" fill="white" />
-              <rect x="122" y="22" width="16" height="16" rx="2" fill="#1d4ed8" />
-
-              {/* Bottom-Left */}
-              <rect x="10" y="110" width="40" height="40" rx="6" fill="#0f2468" />
-              <rect x="16" y="116" width="28" height="28" rx="4" fill="white" />
-              <rect x="22" y="122" width="16" height="16" rx="2" fill="#1d4ed8" />
-
-              {/* QR Data Matrix Bits */}
-              <rect x="60" y="15" width="8" height="8" rx="1.5" />
-              <rect x="75" y="15" width="8" height="8" rx="1.5" />
-              <rect x="90" y="15" width="8" height="8" rx="1.5" />
-              <rect x="60" y="30" width="8" height="8" rx="1.5" />
-              <rect x="85" y="30" width="12" height="8" rx="1.5" />
-              <rect x="15" y="60" width="8" height="8" rx="1.5" />
-              <rect x="30" y="60" width="8" height="8" rx="1.5" />
-              <rect x="45" y="60" width="8" height="8" rx="1.5" />
-              <rect x="110" y="60" width="8" height="8" rx="1.5" />
-              <rect x="125" y="60" width="18" height="8" rx="1.5" />
-              <rect x="15" y="75" width="8" height="8" rx="1.5" />
-              <rect x="35" y="75" width="16" height="8" rx="1.5" />
-              <rect x="110" y="75" width="14" height="8" rx="1.5" />
-              <rect x="135" y="75" width="8" height="8" rx="1.5" />
-              <rect x="15" y="90" width="12" height="8" rx="1.5" />
-              <rect x="35" y="90" width="8" height="8" rx="1.5" />
-              <rect x="110" y="90" width="8" height="8" rx="1.5" />
-              <rect x="125" y="90" width="8" height="8" rx="1.5" />
-              <rect x="140" y="90" width="8" height="8" rx="1.5" />
-              <rect x="60" y="115" width="8" height="8" rx="1.5" />
-              <rect x="75" y="115" width="18" height="8" rx="1.5" />
-              <rect x="60" y="130" width="12" height="8" rx="1.5" />
-              <rect x="80" y="130" width="8" height="8" rx="1.5" />
-              <rect x="110" y="115" width="8" height="8" rx="1.5" />
-              <rect x="125" y="115" width="8" height="8" rx="1.5" />
-              <rect x="140" y="115" width="8" height="8" rx="1.5" />
-              <rect x="110" y="130" width="18" height="8" rx="1.5" />
-              <rect x="135" y="130" width="12" height="8" rx="1.5" />
-            </svg>
-
-            {/* Center Palm Icon Badge */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1d4ed8] text-white shadow-md ring-4 ring-white">
-                <PalmIcon className="h-6 w-6" />
-              </div>
-            </div>
-          </div>
-
-          {/* PayByPalm ID Card Box with Copy button */}
-          <div className="rounded-2xl bg-slate-50 p-4 border border-slate-200/90 text-left">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Your PayByPalm ID</p>
-                <p className="font-mono text-lg font-black text-slate-900 tracking-wide mt-0.5">
-                  {userPhone}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleCopy}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition-all active:scale-95 ${
-                  copied
-                    ? 'bg-emerald-500 text-white shadow-sm'
-                    : 'bg-[#1d4ed8] text-white shadow-sm hover:bg-blue-700'
-                }`}
-              >
-                {copied ? (
-                  <>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    <span>Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                    </svg>
-                    <span>Copy ID</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            {/* Destination Settlement Card Pill */}
-            <div className="mt-3 pt-3 border-t border-slate-200/80 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2 text-slate-600">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                <span>Settles directly into:</span>
-              </div>
-              <span className="font-bold text-slate-800 truncate max-w-[170px]">
-                {activeCard.name} (•{activeCard.last4})
-              </span>
-            </div>
-          </div>
-
-          {/* Instructions Box */}
-          <div className="grid grid-cols-2 gap-2 text-left">
-            <div className="rounded-xl bg-blue-50/60 p-3 border border-blue-100">
-              <div className="flex items-center gap-1.5 text-blue-800 font-bold text-xs">
-                <PalmIcon className="h-4 w-4 text-[#1d4ed8]" />
-                <span>Campus Reader</span>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1 leading-snug">
-                Scan your palm at any campus POS or cafeteria scanner.
-              </p>
-            </div>
-
-            <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
-              <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-[#1d4ed8]">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-                </svg>
-                <span>Peer-to-Peer</span>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1 leading-snug">
-                Share your phone number for instant student transfers.
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-full rounded-2xl bg-slate-100 py-3 text-sm font-bold text-slate-700 hover:bg-slate-200 active:scale-95 transition-all"
-          >
-            Done
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}

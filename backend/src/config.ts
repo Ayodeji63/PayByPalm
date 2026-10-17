@@ -13,10 +13,11 @@ import { z } from 'zod';
 const intFromEnv = (fallback: number) =>
   z.coerce.number().int().refine(Number.isFinite, 'must be an integer').default(fallback);
 
-const schema = z
+export const configSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: intFromEnv(8080),
+    TRUST_PROXY_HOPS: intFromEnv(0).refine(n => n >= 0 && n <= 1, 'must be 0 or 1'),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
     SUPABASE_URL: z.string().url('SUPABASE_URL must be a full URL'),
@@ -33,11 +34,15 @@ const schema = z
     MAX_CANDIDATES: intFromEnv(4),
 
     ENROL_SESSION_TTL_SECONDS: intFromEnv(90),
-    AUTH_VALIDITY_SECONDS: intFromEnv(60),
+    AUTH_VALIDITY_SECONDS: intFromEnv(60).refine((n) => n > 0 && n <= 60, 'must be between 1 and 60 seconds'),
 
     WALLET_BASE_URL: z.string().url('WALLET_BASE_URL must be a full URL'),
     EXTRA_CORS_ORIGINS: z.string().default(''),
-    MAX_IMAGE_BYTES: intFromEnv(2 * 1024 * 1024),
+    MAX_IMAGE_BYTES: intFromEnv(2 * 1024 * 1024).refine(n => n > 0 && n <= 8 * 1024 * 1024, 'must be between 1 byte and 8 MiB'),
+  })
+  .refine((c) => c.NODE_ENV !== 'production' || c.PALM_PROVIDER !== 'mock', {
+    message: 'Mock payment authorization is forbidden in production',
+    path: ['PALM_PROVIDER'],
   })
   // The real key is only needed when the real provider is selected. This is what
   // lets the entire app run — and be demoed — with no Tencent access at all.
@@ -56,7 +61,7 @@ const schema = z
     path: ['MAX_CANDIDATES'],
   });
 
-const parsed = schema.safeParse(process.env);
+const parsed = configSchema.safeParse(process.env);
 
 if (!parsed.success) {
   const detail = parsed.error.issues

@@ -12,6 +12,8 @@
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:8080';
 
 const STORAGE_KEY = 'paybypalm.session';
+let sessionRevision = 0;
+export const getSessionRevision = (): number => sessionRevision;
 
 export interface Session {
   accessToken: string;
@@ -54,7 +56,15 @@ export class ApiError extends Error {
 export function loadSession(): Session | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Session) : null;
+    if (!raw) return null;
+    const session = JSON.parse(raw) as Session;
+    if (!session || typeof session.accessToken !== 'string' ||
+        typeof session.refreshToken !== 'string' || !session.accessToken ||
+        !session.refreshToken || session.accessToken === 'demo') {
+      localStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
+    return session;
   } catch {
     // Corrupt or unavailable storage (private mode, disabled cookies) is not a
     // reason to crash the app; the user simply has to sign in again.
@@ -71,6 +81,8 @@ export function saveSession(session: Session): void {
 }
 
 export function clearSession(): void {
+  sessionRevision += 1;
+  refreshInFlight = null;
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
@@ -102,6 +114,7 @@ export function setUnauthorizedHandler(handler: () => void): void {
 let refreshInFlight: Promise<Session | null> | null = null;
 
 async function refreshSession(): Promise<Session | null> {
+  const revision = getSessionRevision();
   const current = loadSession();
   if (!current?.refreshToken) return null;
 
@@ -115,6 +128,7 @@ async function refreshSession(): Promise<Session | null> {
         });
         if (!response.ok) return null;
         const data = (await response.json()) as { session: Session };
+        if (revision !== getSessionRevision()) return null;
         saveSession(data.session);
         return data.session;
       } catch {
@@ -122,7 +136,7 @@ async function refreshSession(): Promise<Session | null> {
       } finally {
         // Cleared on the next tick so simultaneous callers all see this attempt.
         setTimeout(() => {
-          refreshInFlight = null;
+          if (revision === getSessionRevision()) refreshInFlight = null;
         }, 0);
       }
     })();
@@ -132,6 +146,7 @@ async function refreshSession(): Promise<Session | null> {
 }
 
 async function send<T>(path: string, options: RequestOptions, retrying = false): Promise<T> {
+  const revision = getSessionRevision();
   const session = options.anonymous ? null : loadSession();
 
   const headers: Record<string, string> = {};
@@ -152,6 +167,10 @@ async function send<T>(path: string, options: RequestOptions, retrying = false):
     throw new ApiError(0, 'network_error', 'No connection. Check your network and try again.');
   }
 
+  if (!options.anonymous && revision !== getSessionRevision()) {
+    throw new ApiError(0, 'session_changed', 'Session changed. Please sign in again.');
+  }
+
   if (response.status === 204) return undefined as T;
 
   let payload: unknown = null;
@@ -159,6 +178,10 @@ async function send<T>(path: string, options: RequestOptions, retrying = false):
     payload = await response.json();
   } catch {
     payload = null;
+  }
+
+  if (!options.anonymous && revision !== getSessionRevision()) {
+    throw new ApiError(0, 'session_changed', 'Session changed. Please sign in again.');
   }
 
   if (!response.ok) {
@@ -170,8 +193,16 @@ async function send<T>(path: string, options: RequestOptions, retrying = false):
     // One retry after a token refresh, then give up and send them to sign in.
     if (response.status === 401 && !options.anonymous && !retrying) {
       const refreshed = await refreshSession();
+      if (revision !== getSessionRevision()) {
+        throw new ApiError(0, 'session_changed', 'Session changed. Please sign in again.');
+      }
       if (refreshed) return send<T>(path, options, true);
 
+      clearSession();
+      onUnauthorized?.();
+    }
+
+    if (response.status === 401 && !options.anonymous && retrying) {
       clearSession();
       onUnauthorized?.();
     }
@@ -210,6 +241,7 @@ export interface Me {
   phone: string;
   palmEnrolled: boolean;
   hasPin: boolean;
+  email: string | null;
   balanceMinor: number;
   currency: string;
   createdAt: string;

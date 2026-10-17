@@ -9,10 +9,12 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { AppError, unauthorized } from '../errors.js';
+import { AppError, unauthorized, forbidden } from '../errors.js';
 import { getProfile, getWalletAccountId, getBalanceMinor } from '../db/queries.js';
 import { requireUser, userAuth } from '../middleware/userAuth.js';
+import { userRateLimit } from '../middleware/abuseLimits.js';
 import { validate } from '../middleware/validate.js';
+import { config } from '../config.js';
 import { topUp } from '../services/paymentService.js';
 
 export const walletRouter: Router = Router();
@@ -25,7 +27,7 @@ const BCRYPT_ROUNDS = 10;
 // Polled by the wallet app, so a payment made at a terminal shows up on the phone
 // within seconds. Kept deliberately cheap: two indexed reads.
 
-walletRouter.get('/me', userAuth, async (req, res) => {
+walletRouter.get('/me', userAuth, userRateLimit('user-read', 240, 60), async (req, res) => {
   const user = requireUser(req);
   const profile = await getProfile(user.id);
   const balanceMinor = await getBalanceMinor(await getWalletAccountId(user.id));
@@ -33,7 +35,8 @@ walletRouter.get('/me', userAuth, async (req, res) => {
   res.json({
     id: profile.id,
     fullName: profile.full_name,
-    phone: profile.phone,
+    email: user.email,
+    phone: profile.phone ?? '',
     palmEnrolled: profile.palm_enrolled,
     hasPin: profile.pin_hash !== null,
     balanceMinor,
@@ -49,6 +52,7 @@ walletRouter.get('/me', userAuth, async (req, res) => {
 walletRouter.post(
   '/me/pin',
   userAuth,
+  userRateLimit('wallet-pin', 5, 900),
   validate({
     body: z.object({
       currentPin: z.string().regex(/^\d{4}$/).optional(),
@@ -73,10 +77,14 @@ walletRouter.post(
       if (!ok) throw unauthorized('Current PIN is incorrect.');
     }
 
-    const { error } = await db
-      .from('profiles')
+    let update = db.from('profiles')
       .update({ pin_hash: await bcrypt.hash(newPin, BCRYPT_ROUNDS) })
       .eq('id', user.id);
+    update = profile.pin_hash ? update.eq('pin_hash', profile.pin_hash) : update.is('pin_hash', null);
+    const { data, error } = await update.select('id');
+    if (!error && !data?.length) {
+      throw new AppError(409, 'pin_changed', 'Your PIN was already updated. Please sign in again.');
+    }
 
     if (error) throw new AppError(500, 'db_error', `Could not update PIN: ${error.message}`);
 
@@ -96,7 +104,12 @@ walletRouter.post(
 
 walletRouter.post(
   '/topup',
+  (_req, _res, next) => {
+    if (config.isProduction) return next(forbidden('Sandbox funding is disabled in production.'));
+    next();
+  },
   userAuth,
+  userRateLimit('sandbox-topup', 5, 60),
   validate({
     body: z.object({
       amountMinor: z

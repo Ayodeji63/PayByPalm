@@ -4,7 +4,7 @@
 #
 #   ./supabase/tests/run.sh
 #
-# Requires Docker. Nothing else — no Supabase CLI, no local psql, no network
+# Requires Docker and Python 3. Nothing else — no Supabase CLI, no local psql, no network
 # access to your Supabase project. The container is created and destroyed here.
 #
 # What this proves (see schema_test.sql for the assertions):
@@ -32,7 +32,7 @@ cleanup() { docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 rm -rf "$STAGE"; mkdir -p "$STAGE"
-cp "$SUPA"/migrations/*.sql "$SUPA"/seed.sql "$HERE"/*.sql "$STAGE"/
+cp "$SUPA"/migrations/*.sql "$SUPA"/seed.sql "$HERE"/*.sql "$SUPA"/repairs/restore_email_phone_constraint.sql "$STAGE"/
 
 cleanup
 docker run -d --name "$CONTAINER" \
@@ -70,10 +70,33 @@ out=$(pg -v ON_ERROR_STOP=1 -q -f /sql/seed.sql 2>&1) || fail "seed.sql (rerun)"
 counts=$(pg -Atc "select (select count(*) from accounts where kind='float')
                      || '/' || (select count(*) from merchants)
                      || '/' || (select count(*) from terminals)" 2>&1)
-[ "$counts" = "1/1/1" ] || fail "seed is not idempotent" "float/merchants/terminals = $counts"
+[ "$counts" = "1/1/0" ] || fail "seed is not idempotent" "float/merchants/terminals = $counts"
 echo "verified seed.sql is idempotent"
 echo
 
 result=$(pg -v ON_ERROR_STOP=1 -f /sql/schema_test.sql 2>&1); rc=$?
 echo "$result"
 [ $rc -eq 0 ] || { echo; echo "SCHEMA TESTS FAILED (exit $rc)"; exit 1; }
+
+result=$(pg -v ON_ERROR_STOP=1 -f /sql/payment_integrity_test.sql 2>&1); rc=$?
+echo "$result"
+[ $rc -eq 0 ] || fail "payment integrity" "$result"
+
+python3 "$HERE/payment_concurrency_test.py" "$CONTAINER"
+
+result=$(pg -v ON_ERROR_STOP=1 -f /sql/api_abuse_test.sql 2>&1); rc=$?
+echo "$result"
+[ $rc -eq 0 ] || fail "API abuse limits" "$result"
+python3 "$HERE/api_abuse_concurrency_test.py" "$CONTAINER"
+
+result=$(pg -v ON_ERROR_STOP=1 -f /sql/phone_identity_test.sql 2>&1); rc=$?
+echo "$result"
+[ $rc -eq 0 ] || fail "phone identity" "$result"
+
+result=$(pg -v ON_ERROR_STOP=1 -f /sql/email_phone_repair_test.sql 2>&1); rc=$?
+echo "$result"
+[ $rc -eq 0 ] || fail "email phone constraint repair" "$result"
+
+result=$(pg -v ON_ERROR_STOP=1 -f /sql/email_identity_test.sql 2>&1); rc=$?
+echo "$result"
+[ $rc -eq 0 ] || fail "email identity" "$result"

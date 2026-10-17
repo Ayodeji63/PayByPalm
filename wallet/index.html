@@ -4,16 +4,15 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
+    <meta name="referrer" content="no-referrer" />
     <meta name="theme-color" content="#3b68e8" />
 
     <!-- Inter font -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
-    <!-- Paystack inline popup -->
-    <script src="https://js.paystack.co/v2/inline.js"></script>
     <meta name="description" content="PayByPalm — Seamless, contactless biometric palm payments." />
     
     <!-- PWA Web App Meta Tags -->
@@ -25,7 +24,7 @@
 
     <!-- Icons & Manifest -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
 
     <title>PayByPalm — Biometric Wallet</title>
@@ -33,14 +32,5 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch((err) => {
-            console.warn('PWA service worker registration failed:', err);
-          });
-        });
-      }
-    </script>
   </body>
 </html>

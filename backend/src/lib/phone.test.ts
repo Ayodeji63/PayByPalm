@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalisePhone, syntheticEmailFor } from './phone.js';
+import { normalisePhone, syntheticEmailFor, internationalPhoneFor } from './phone.js';
 
 describe('normalisePhone', () => {
   it('canonicalises every common way of writing the same number', () => {
@@ -42,5 +42,12 @@ describe('syntheticEmailFor', () => {
   it('uses a non-routable domain', () => {
     // Nothing is ever sent to this address; accounts are created pre-confirmed.
     expect(syntheticEmailFor('08010001234')).toMatch(/\.local$/);
+  });
+});
+
+describe("internationalPhoneFor", () => {
+  it("converts local and international inputs to the same SMS destination", () => {
+    expect(internationalPhoneFor("08010001234")).toBe("+2348010001234");
+    expect(internationalPhoneFor("+2348010001234")).toBe("+2348010001234");
   });
 });

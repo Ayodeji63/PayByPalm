@@ -11,11 +11,12 @@
  */
 
 import { Router } from 'express';
+import { terminalRateLimit } from '../middleware/abuseLimits.js';
 import { requireTerminal, terminalAuth } from '../middleware/terminalAuth.js';
 
 export const terminalRouter: Router = Router();
 
-terminalRouter.get('/terminal/me', terminalAuth, (req, res) => {
+terminalRouter.get('/terminal/me', terminalAuth, terminalRateLimit('terminal-read', 120, 60), (req, res) => {
   const terminal = requireTerminal(req);
   res.json({
     terminalId: terminal.id,

@@ -13,6 +13,7 @@
  */
 
 import bcrypt from 'bcryptjs';
+import { consumeBudget } from '../middleware/abuseLimits.js';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
 import {
@@ -24,7 +25,7 @@ import {
   maskName,
   type Profile,
 } from '../db/queries.js';
-import { AppError, badRequest, conflict, fromPostgresError, notFound, unauthorized } from '../errors.js';
+import { AppError, badRequest, conflict, fromPostgresError, notFound, unauthorized, forbidden } from '../errors.js';
 import { normaliseImage } from '../lib/image.js';
 import { palm } from '../palm/index.js';
 import { decide, explain, rejectWithout, thresholds, type PolicyOutcome } from '../palm/policy.js';
@@ -87,6 +88,8 @@ async function loadForTerminal(transactionId: string, terminal: AuthedTerminal):
   return txn;
 }
 
+export const getTerminalTransaction = loadForTerminal;
+
 // ---------------------------------------------------------------------------
 // Create
 // ---------------------------------------------------------------------------
@@ -94,22 +97,22 @@ async function loadForTerminal(transactionId: string, terminal: AuthedTerminal):
 export async function createTransaction(
   terminal: AuthedTerminal,
   amountMinor: number,
-  description?: string,
+  description: string | undefined,
+  saleId: string,
 ): Promise<TransactionRow> {
-  const { data, error } = await db
-    .from('transactions')
-    .insert({
-      terminal_id: terminal.id,
-      merchant_id: terminal.merchantId,
-      amount_minor: amountMinor,
-      description: description ?? null,
-      status: 'pending',
-    })
-    .select('*')
-    .single();
+  const { data, error } = await db.rpc('create_terminal_transaction', {
+    p_terminal_id: terminal.id,
+    p_sale_id: saleId,
+    p_amount: amountMinor,
+    p_description: description ?? null,
+  });
+  if (error) {
+    const mapped = fromPostgresError(error);
+    if (mapped) throw mapped;
+    throw new AppError(500, 'db_error', 'Could not create transaction.');
+  }
 
-  if (error) throw new AppError(500, 'db_error', `Could not create transaction: ${error.message}`);
-  return data as TransactionRow;
+  return (Array.isArray(data) ? data[0] : data) as TransactionRow;
 }
 
 // ---------------------------------------------------------------------------
@@ -223,7 +226,7 @@ export async function authenticateTransaction(
     // Terminal state, not retryable: presenting the palm again will not conjure
     // funds. Better to say so now than to let someone tap Confirm on a payment
     // that is guaranteed to fail.
-    await db
+    const { data: failed, error: failureError } = await db
       .from('transactions')
       .update({
         status: 'failed',
@@ -232,7 +235,12 @@ export async function authenticateTransaction(
         match_mode: mode,
         failure_reason: 'insufficient_funds',
       })
-      .eq('id', txn.id);
+      .eq('id', txn.id)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle();
+    if (failureError) throw new AppError(500, 'db_error', 'Could not update payment.');
+    if (!failed) throw conflict('invalid_transaction_state', 'Payment state changed.');
 
     return {
       decision: 'reject',
@@ -244,7 +252,12 @@ export async function authenticateTransaction(
   }
 
   // --- accepted or step-up ------------------------------------------------
-  const { error } = await db
+  const pinRequired = outcome.decision === 'step_up';
+  if (pinRequired && !profile.pin_hash) {
+    return { decision: 'reject', mode, score: outcome.score, reason: 'no_pin_set', message: 'Additional confirmation requires a wallet PIN.' };
+  }
+
+  const { data: authenticated, error } = await db
     .from('transactions')
     .update({
       status: 'authenticated',
@@ -255,22 +268,13 @@ export async function authenticateTransaction(
     })
     .eq('id', txn.id)
     // Only from 'pending' — if two terminals raced, the loser must not overwrite.
-    .eq('status', 'pending');
+    .eq('status', 'pending')
+    .select('*')
+    .maybeSingle();
 
   if (error) throw new AppError(500, 'db_error', `Could not authenticate: ${error.message}`);
 
-  const pinRequired = outcome.decision === 'step_up';
-
-  if (pinRequired && !profile.pin_hash) {
-    // A mid-confidence match with no PIN on file has no safe way forward.
-    return {
-      decision: 'reject',
-      mode,
-      score: outcome.score,
-      reason: 'no_pin_set',
-      message: 'Additional confirmation needed, but no wallet PIN is set on this account.',
-    };
-  }
+  if (!authenticated) throw conflict('invalid_transaction_state', 'Payment state changed. Please start again.');
 
   return {
     decision: outcome.decision,
@@ -294,7 +298,6 @@ export interface Receipt {
   terminalLabel: string;
   settledAt: string | null;
   maskedName: string;
-  balanceMinor: number;
 }
 
 export async function confirmTransaction(
@@ -304,12 +307,12 @@ export async function confirmTransaction(
 ): Promise<Receipt> {
   const txn = await loadForTerminal(transactionId, terminal);
 
+  if (txn.status === 'settled') return receiptFor(txn, terminal);
+
   if (txn.status !== 'authenticated') {
     throw conflict(
       'invalid_transaction_state',
-      txn.status === 'settled'
-        ? 'This payment has already been completed.'
-        : `This transaction is ${txn.status} and cannot be confirmed.`,
+      `This transaction is ${txn.status} and cannot be confirmed.`,
     );
   }
 
@@ -318,11 +321,7 @@ export async function confirmTransaction(
   const authenticatedAt = txn.authenticated_at ? Date.parse(txn.authenticated_at) : 0;
   const ageSeconds = (Date.now() - authenticatedAt) / 1000;
 
-  if (!txn.authenticated_at || ageSeconds > config.AUTH_VALIDITY_SECONDS) {
-    await db
-      .from('transactions')
-      .update({ status: 'failed', failure_reason: 'stale_auth' })
-      .eq('id', txn.id);
+  if (!txn.authenticated_at || !Number.isFinite(ageSeconds) || ageSeconds < 0 || ageSeconds > config.AUTH_VALIDITY_SECONDS) {
 
     throw conflict(
       'stale_authentication',
@@ -339,7 +338,9 @@ export async function confirmTransaction(
 
   // Whether a PIN is required is re-derived from the stored score rather than
   // trusted from the client, so a terminal cannot skip step-up by omitting a flag.
-  const requiresPin = decide(txn.match_score).decision === 'step_up';
+  const decision = decide(txn.match_score).decision;
+  if (decision === 'reject') throw conflict('payment_match_rejected', 'Please scan your palm again.');
+  const requiresPin = decision === 'step_up';
 
   if (requiresPin) {
     if (!pin) {
@@ -348,6 +349,7 @@ export async function confirmTransaction(
     if (!profile.pin_hash) {
       throw conflict('no_pin_set', 'No wallet PIN is set on this account.');
     }
+    await consumeBudget('wallet-pin', profile.id, 5, 900);
     const ok = await bcrypt.compare(pin, profile.pin_hash);
     if (!ok) {
       throw unauthorized('Incorrect PIN.');
@@ -356,7 +358,7 @@ export async function confirmTransaction(
 
   // The database does the rest atomically: locks the row, re-checks the balance
   // under that lock, writes the balanced pair, flips the status.
-  const { data, error } = await db.rpc('post_transaction', { txn_id: txn.id });
+  const { data, error } = await db.rpc('post_transaction', { txn_id: txn.id, p_auth_validity_seconds: config.AUTH_VALIDITY_SECONDS });
 
   if (error) {
     const mapped = fromPostgresError(error as { code?: string; message?: string });
@@ -365,16 +367,17 @@ export async function confirmTransaction(
   }
 
   const settled = (Array.isArray(data) ? data[0] : data) as TransactionRow;
-  const balanceMinor = await getBalanceMinor(await getWalletAccountId(profile.id));
+  return receiptFor(settled, terminal, profile);
+}
 
+async function receiptFor(txn: TransactionRow, terminal: AuthedTerminal, profile?: Profile): Promise<Receipt> {
   return {
-    transactionId: settled.id,
-    amountMinor: Number(settled.amount_minor),
+    transactionId: txn.id,
+    amountMinor: Number(txn.amount_minor),
     merchantName: terminal.merchantName,
     terminalLabel: terminal.label,
-    settledAt: settled.settled_at,
-    maskedName: maskName(profile.full_name),
-    balanceMinor,
+    settledAt: txn.settled_at,
+    maskedName: profile ? maskName(profile.full_name) : 'Customer',
   };
 }
 
@@ -422,7 +425,8 @@ export async function topUp(
   amountMinor: number,
   description = 'Wallet top-up',
 ): Promise<{ transactionId: string; balanceMinor: number }> {
-  if (!Number.isInteger(amountMinor) || amountMinor <= 0) {
+  if (config.isProduction) throw forbidden('Sandbox funding is disabled in production.');
+  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
     throw badRequest('invalid_amount', 'Top-up amount must be a positive whole number of kobo.');
   }
 

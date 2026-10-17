@@ -30,7 +30,14 @@ never reach a browser, a phone, or the Pi.
 | `migrations/0007_functions.sql` | `post_transaction()`, `post_topup()`, `balance_of()` |
 | `migrations/0008_rls.sql` | RLS policies, function grants, realtime publication |
 | `migrations/0009_indexes.sql` | lookup indexes |
-| `seed.sql` | float account, one merchant, one terminal |
+| `migrations/0010_revoke_dev_terminal.sql` | retire published device credential |
+| `migrations/0011_payment_integrity.sql` | stable sales, immutable states, atomic expiry and retry |
+| `migrations/0012_api_abuse_limits.sql` | shared API budgets and stream leases |
+| `migrations/0013_phone_identity.sql` | native phone identity compatibility |
+| `migrations/0014_email_identity.sql` | email identity and nonexclusive profile phone lookup |
+| `migrations/0015_passwordless_email.sql` | email-only passwordless provisioning with optional phone |
+| `migrations/0016_restore_full_signup.sql` | restore required profile fields for new signup |
+| `seed.sql` | float account, one merchant; device credentials are provisioned separately |
 | `tests/run.sh` | full verification against a throwaway Postgres |
 
 Apply migrations in filename order. They are not individually idempotent — run them
@@ -41,7 +48,7 @@ once against a fresh project. `seed.sql` **is** safe to re-run.
 ### Option A — Supabase SQL Editor (no tooling required)
 
 Paste the contents of each file into the SQL Editor and run them **in order**:
-`0001` → `0009`, then `seed.sql`.
+`0001` → `0016`, then `seed.sql`. Apply pending migrations through `0016` to existing installations. See `backend/SECURITY_PAYMENTS.md` for rollout requirements.
 
 ### Option B — Supabase CLI
 
@@ -62,7 +69,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/seed.sql
 
 ## Seeding users
 
-`seed.sql` covers only the rows that need no auth user. The five test users need
+`seed.sql` covers only the float account and merchant. It does not provision terminal credentials. The five test users need
 `auth.users` rows, which SQL cannot create properly — Supabase hashes passwords and
 issues identities through its Admin API. Insert them with the Admin API and the
 `handle_new_user` trigger creates each profile and wallet automatically:
@@ -90,18 +97,18 @@ await supabase.auth.admin.createUser({
 ./supabase/tests/run.sh
 ```
 
-Requires Docker and nothing else — no Supabase CLI, no local psql, no network access
+Requires Docker and Python 3 — no Supabase CLI, no local psql, no network access
 to your project. It spins up Postgres 17, applies every migration from scratch, checks
-`seed.sql` is idempotent, runs 14 invariant tests, and destroys the container.
+`seed.sql` is idempotent, runs schema and payment integrity tests, and destroys the container.
 
 The tests cover:
 
 | | |
 |---|---|
-| T1–T2 | `handle_new_user` provisions profile + wallet; signup without metadata is rejected |
+| T1–T2 | `handle_new_user` provisions profile + wallet; signup without required profile metadata is rejected |
 | T3 | `post_topup` writes a balanced pair; the float account carries the offsetting debit |
 | T4 | a payment settles as a balanced pair and both balances derive correctly |
-| T5 | replaying confirm raises `PB002` and charges nothing |
+| T5 | replaying confirm returns the original transaction and charges nothing |
 | T6–T7 | overdrawing raises `PB003` and writes no ledger entries |
 | T8 | an unbalanced write is rejected by the deferred trigger |
 | T9–T10 | one float account only; `kind` and `user_id` cannot disagree |
@@ -156,3 +163,7 @@ double-entry representation of money issued into the closed loop.
 `post_topup()` is the hackathon stand-in for money entering the closed loop. In production
 an inbound Wema NIP / virtual-account webhook would verify the credit and call this same
 function. The ledger shape does not change.
+
+New public signup uses confirmed email. Follow `backend/EMAIL_SETUP.md` before
+enabling the hosted provider; the legacy admin-created user examples above are
+for trusted test tooling only, not the public signup flow.

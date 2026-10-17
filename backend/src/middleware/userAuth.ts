@@ -10,7 +10,7 @@
 
 import type { NextFunction, Request, Response } from 'express';
 import { authClient } from '../db/client.js';
-import { unauthorized } from '../errors.js';
+import { AppError, unauthorized } from '../errors.js';
 
 export interface AuthedUser {
   id: string;
@@ -47,6 +47,11 @@ export async function userAuth(req: Request, _res: Response, next: NextFunction)
   if (error || !data.user) {
     req.log.debug({ err: error }, 'rejected user token');
     next(unauthorized('Session expired or invalid. Please sign in again.'));
+    return;
+  }
+
+  if (!data.user.email || !data.user.email_confirmed_at || data.user.email.toLowerCase().endsWith('@phone.paybypalm.local')) {
+    next(new AppError(403, 'email_verification_required', 'Sign in with a verified email address to continue.'));
     return;
   }
 

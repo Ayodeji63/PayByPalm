@@ -36,12 +36,12 @@ begin
     'phone_last4 not generated correctly';
 end $$;
 
-\echo '--- T2: signup without metadata is rejected'
+\echo '--- T2: signup without required profile metadata is rejected'
 do $$
 begin
   begin
-    insert into auth.users (email, raw_user_meta_data) values ('c@test', '{"full_name":"No Phone"}');
-    raise exception 'TEST FAILED: profile created without phone';
+    insert into auth.users (email,raw_user_meta_data) values ('c@test','{"full_name":"No Phone"}');
+    raise exception 'profile created without required signup fields';
   exception when invalid_parameter_value then null;
   end;
 end $$;
@@ -81,18 +81,14 @@ begin
   assert v_mbal = 125000, format('merchant balance wrong: %s', v_mbal);
 end $$;
 
-\echo '--- T5: replaying confirm on a settled txn raises PB002, charges nothing'
+\echo '--- T5: replaying confirm returns the settled transaction, charges nothing'
 do $$
 declare v_txn uuid; v_before bigint; v_after bigint;
 begin
   select id into v_txn from public.transactions where status='settled' and merchant_id is not null limit 1;
   select balance_minor into v_before from public.account_balances
     where account_id=(select id from public.accounts where user_id='11111111-1111-1111-1111-111111111111');
-  begin
-    perform public.post_transaction(v_txn);
-    raise exception 'TEST FAILED: replay was allowed';
-  exception when sqlstate 'PB002' then null;
-  end;
+  assert (select id from public.post_transaction(v_txn)) = v_txn, 'replay did not return original transaction';
   select balance_minor into v_after from public.account_balances
     where account_id=(select id from public.accounts where user_id='11111111-1111-1111-1111-111111111111');
   assert v_before = v_after, 'replay changed the balance';

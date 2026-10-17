@@ -15,6 +15,9 @@ import { z } from 'zod';
 import { AppError, forbidden, notFound } from '../errors.js';
 import { requireTerminal, terminalAuth } from '../middleware/terminalAuth.js';
 import { requireUser, userAuth } from '../middleware/userAuth.js';
+import { userRateLimit, terminalRateLimit } from '../middleware/abuseLimits.js';
+import { imageJson, imageSchema } from '../middleware/requestBody.js';
+import { enrolStream } from '../lib/enrolStream.js';
 import { validate } from '../middleware/validate.js';
 import {
   claimSession,
@@ -33,7 +36,7 @@ const idParam = z.object({ id: z.string().uuid('Not a valid session id') });
 // POST /enrol/sessions          (terminal)
 // ---------------------------------------------------------------------------
 
-enrolRouter.post('/enrol/sessions', terminalAuth, async (req, res) => {
+enrolRouter.post('/enrol/sessions', terminalAuth, terminalRateLimit('enrol-create', 10, 60), async (req, res) => {
   const terminal = requireTerminal(req);
   const session = await createSession(terminal);
 
@@ -51,6 +54,7 @@ enrolRouter.post('/enrol/sessions', terminalAuth, async (req, res) => {
 enrolRouter.get(
   '/enrol/sessions/:id',
   terminalAuth,
+  terminalRateLimit('terminal-read', 120, 60),
   validate({ params: idParam }),
   async (req, res) => {
     res.json(await getSessionView(req.params.id as string));
@@ -68,49 +72,11 @@ enrolRouter.get(
 enrolRouter.get(
   '/enrol/sessions/:id/stream',
   terminalAuth,
+  terminalRateLimit('enrol-stream', 10, 60),
   validate({ params: idParam }),
   async (req, res) => {
     const sessionId = req.params.id as string;
-
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      // Tells nginx and friends not to buffer, which would defeat the point.
-      'X-Accel-Buffering': 'no',
-    });
-
-    let closed = false;
-    const send = (event: string, payload: unknown) => {
-      if (closed) return;
-      res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
-    };
-
-    const finish = () => {
-      if (closed) return;
-      closed = true;
-      clearInterval(timer);
-      res.end();
-    };
-
-    req.on('close', finish);
-
-    const tick = async () => {
-      try {
-        const view = await getSessionView(sessionId);
-        send('status', view);
-
-        // Nothing further will happen to a session in one of these states.
-        if (view.status === 'completed' || view.status === 'expired') finish();
-      } catch (err) {
-        req.log.warn({ err }, 'enrolment stream tick failed');
-        send('error', { message: 'Lost track of this session. Fall back to polling.' });
-        finish();
-      }
-    };
-
-    const timer = setInterval(() => void tick(), 1000);
-    await tick();
+    await enrolStream(req, res, requireTerminal(req).id, sessionId, signal => getSessionView(sessionId, signal));
   },
 );
 
@@ -123,6 +89,7 @@ enrolRouter.get(
 enrolRouter.post(
   '/enrol/sessions/:id/claim',
   userAuth,
+  userRateLimit('enrol-claim', 10, 60),
   validate({ params: idParam }),
   async (req, res) => {
     const user = requireUser(req);
@@ -140,6 +107,7 @@ enrolRouter.post(
 enrolRouter.get(
   '/enrol/sessions/:id/mine',
   userAuth,
+  userRateLimit('user-read', 240, 60),
   validate({ params: idParam }),
   async (req, res) => {
     const user = requireUser(req);
@@ -168,9 +136,11 @@ enrolRouter.get(
 enrolRouter.post(
   '/enrol/sessions/:id/palm',
   terminalAuth,
+  terminalRateLimit('palm-register', 6, 60),
+  imageJson,
   validate({
     params: idParam,
-    body: z.object({ imageB64: z.string().min(1, 'A palm image is required') }),
+    body: z.object({ imageB64: imageSchema }),
   }),
   async (req, res) => {
     const terminal = requireTerminal(req);
@@ -185,7 +155,7 @@ enrolRouter.post(
 // POST /palm/revoke                (phone)
 // ---------------------------------------------------------------------------
 
-enrolRouter.post('/palm/revoke', userAuth, async (req, res) => {
+enrolRouter.post('/palm/revoke', userAuth, userRateLimit('palm-revoke', 3, 300), async (req, res) => {
   const user = requireUser(req);
   const result = await revokePalm(user.id);
 

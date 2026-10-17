@@ -4,7 +4,7 @@
 -- This file seeds only the rows that need no Supabase Auth user:
 --   * the single system float account
 --   * one merchant, "Yaba Tech Cafeteria", and its ledger account
---   * one terminal for that merchant
+-- Device credentials are provisioned separately; none are seeded.
 --
 -- The five test users need rows in auth.users, which SQL alone cannot create
 -- properly (Supabase hashes passwords and issues identities through its Admin
@@ -37,31 +37,8 @@ select 'Yaba Tech Cafeteria', id from new_account;
 
 
 -- ---------------------------------------------------------------------------
--- 3. Terminal
--- ---------------------------------------------------------------------------
--- DEV KEY — replace before anything resembling production.
---
---   plaintext : pbp_dev_terminal_key_001
---   sha256    : 4093fc76e48a3db5c7db148e448d692bb996cf965c04a6729f9f992aeb3e836b
---
--- Send the plaintext as the X-Terminal-Key header. Only the hash is stored, so a
--- dump of this table yields no working credential.
---
--- The hash is written literally rather than computed with pgcrypto's digest():
--- Supabase installs pgcrypto into the `extensions` schema, so an unqualified
--- digest() call resolves on a bare Postgres but fails on a real Supabase project.
-
-insert into public.terminals (merchant_id, label, api_key_hash)
-select m.id,
-       'Counter 1',
-       '4093fc76e48a3db5c7db148e448d692bb996cf965c04a6729f9f992aeb3e836b'
-from public.merchants m
-where m.name = 'Yaba Tech Cafeteria'
-  and not exists (
-    select 1 from public.terminals t
-    where t.merchant_id = m.id and t.label = 'Counter 1'
-  );
-
+-- 3. Terminal credentials are provisioned separately per device.
+-- Never seed a reusable public development credential.
 
 -- ---------------------------------------------------------------------------
 -- Confirmation

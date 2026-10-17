@@ -76,6 +76,7 @@ async function seedUser(user: DemoUser): Promise<{ id: string; created: boolean 
 }
 
 async function main(): Promise<void> {
+  if (config.isProduction) throw new Error('Demo funding is forbidden in production.');
   console.log(`Seeding demo users against ${config.SUPABASE_URL}\n`);
 
   const { data: float, error: floatError } = await db

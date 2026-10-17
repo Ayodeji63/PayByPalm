@@ -9,11 +9,12 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ApiError } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
-import { Field, PinInput } from '../components/ui.js';
+import { Field } from '../components/ui.js';
 import { PageTransition } from '../components/transitions.js';
 
 export default function Auth() {
-  const [mode, setMode] = useState<'signup' | 'signin'>('signup');
+  const location = useLocation();
+  const [mode, setMode] = useState<'signup' | 'signin'>((location.state as { mode?: string } | null)?.mode === 'signin' ? 'signin' : 'signup');
 
   return (
     <PageTransition>
@@ -37,16 +38,16 @@ function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
   const navigate = useNavigate();
 
   const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [pin, setPin] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
-  const fullPhone = phone.startsWith('+') ? phone : `+234${phone.replace(/^0/, '')}`;
+  const fullPhone = phone.startsWith('234') ? `+${phone}` : `+234${phone.replace(/^0/, '')}`;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -57,28 +58,23 @@ function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
       setError('Please agree to the Terms & Privacy Policy.');
       return;
     }
-    if (pin.length !== 4) {
-      setError('Enter a 4-digit security PIN.');
-      return;
-    }
-
     setBusy(true);
     try {
-      const result = await signUp({ fullName, phone: fullPhone, password, pin });
-      navigate('/verify', { state: { phone: result.phone || fullPhone }, replace: true });
+      const result = await signUp({ fullName, phone: fullPhone, email: email.trim().toLowerCase(), password });
+      navigate('/verify', { state: { email: result.email }, replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.details) setFieldErrors(err.details);
         setError(err.message);
       } else {
-        setError('Something went wrong. Please try again.');
+        setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
       }
     } finally {
       setBusy(false);
     }
   }
 
-  const isValid = fullName && phone && password && pin.length === 4;
+  const isValid = fullName.trim().length >= 2 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && phone.length >= 10 && password.length >= 8 && agreed;
 
   return (
     <form onSubmit={onSubmit} noValidate>
@@ -111,7 +107,7 @@ function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
             Create Your Account
           </h1>
           <p className="mt-1.5 text-center text-sm text-white/70">
-            Join thousands paying with their palm
+            Create your wallet with email verification
           </p>
         </div>
       </div>
@@ -127,12 +123,16 @@ function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
             onChange={(e) => setFullName(e.target.value)}
             error={fieldErrors.fullName}
             autoComplete="name"
+            maxLength={120}
             icon={
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 20a7 7 0 0 1 14 0" />
               </svg>
             }
           />
+
+          <Field label="Email address" type="email" value={email} onChange={event => setEmail(event.target.value)}
+            placeholder="you@example.com" autoComplete="email" maxLength={254} error={fieldErrors.email} />
 
           {/* Phone with +234 prefix */}
           <div className="space-y-1.5">
@@ -192,11 +192,6 @@ function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
             }
           />
 
-          {/* 4-digit PIN */}
-          <div className="space-y-2 pt-1">
-            <label className="block text-sm font-semibold text-gray-700">4-Digit Security PIN</label>
-            <PinInput value={pin} onChange={setPin} />
-          </div>
         </div>
 
         {/* Terms */}
@@ -264,24 +259,27 @@ function SignInForm({ onSwitch }: { onSwitch: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const fullPhone = phone.startsWith('+') ? phone : `+234${phone.replace(/^0/, '')}`;
   const returnTo = (location.state as { returnTo?: string } | null)?.returnTo ?? '/dashboard';
-  const isValid = phone && password;
+  const isValid = email && password;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      await signIn(fullPhone, password);
+      await signIn(email.trim().toLowerCase(), password);
       navigate(returnTo, { replace: true });
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'email_verification_required') {
+        navigate('/verify', { state: { email: email.trim().toLowerCase(), emailSent: false }, replace: true });
+        return;
+      }
       setError(err instanceof ApiError ? err.message : 'Something went wrong.');
     } finally {
       setBusy(false);
@@ -323,25 +321,8 @@ function SignInForm({ onSwitch }: { onSwitch: () => void }) {
       {/* Form body — pulled up over the blue header */}
       <div className="relative -mt-6 rounded-t-3xl bg-white px-5 pb-8 pt-6">
         <div className="space-y-4">
-          {/* Phone */}
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-600">Phone Number</label>
-            <div className="relative flex items-center rounded-xl border border-gray-200 bg-gray-50 overflow-hidden focus-within:border-[#2851c5] focus-within:ring-2 focus-within:ring-[#2851c5]/10 transition-all">
-              <div className="flex items-center gap-1.5 border-r border-gray-200 bg-gray-100 px-3 py-3.5">
-                <span className="text-sm">🇳🇬</span>
-                <span className="text-sm font-semibold text-gray-600">+234</span>
-              </div>
-              <input
-                type="tel"
-                inputMode="numeric"
-                placeholder="812 345 6789"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ''))}
-                className="w-full bg-transparent px-4 py-3.5 text-base text-gray-900 outline-none placeholder:text-gray-400"
-                autoComplete="tel"
-              />
-            </div>
-          </div>
+          <Field label="Email address" type="email" value={email} onChange={event => setEmail(event.target.value)}
+            placeholder="you@example.com" autoComplete="username" maxLength={254} />
 
           <Field
             label="Password"
@@ -350,6 +331,7 @@ function SignInForm({ onSwitch }: { onSwitch: () => void }) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
+            maxLength={200}
             icon={
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="11" width="18" height="11" rx="2" />

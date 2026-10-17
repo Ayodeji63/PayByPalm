@@ -9,8 +9,12 @@
  * Pi posts an image to us; we call the provider. See src/palm/tencent.ts.
  */
 
+import { createServer } from 'node:http';
 import cors from 'cors';
 import express from 'express';
+import { AppError } from './errors.js';
+import { ipRateLimit } from './middleware/abuseLimits.js';
+import { requestBody } from './middleware/requestBody.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { errorHandler, notFoundHandler } from './middleware/errors.js';
@@ -26,10 +30,12 @@ import { walletRouter } from './routes/wallet.js';
 export function createApp(): express.Express {
   const app = express();
 
-  // Render and Vercel both sit behind a proxy; without this, client IPs and
-  // protocol detection are wrong.
-  app.set('trust proxy', 1);
+  // Default to the socket address. Trust one hop only on a verified proxy-only deployment.
+  app.set('trust proxy', config.TRUST_PROXY_HOPS);
   app.disable('x-powered-by');
+
+  app.use(requestId);
+  app.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
 
   app.use(
     cors({
@@ -38,7 +44,7 @@ export function createApp(): express.Express {
         // browser, so the same-origin policy this protects is not in play.
         if (!origin) return callback(null, true);
         if (config.corsOrigins.includes(origin)) return callback(null, true);
-        return callback(new Error(`Origin ${origin} is not allowed`));
+        return callback(new AppError(403, 'origin_not_allowed', 'Origin is not allowed.'));
       },
       credentials: true,
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Terminal-Key', 'X-Mock-User', 'X-Request-Id'],
@@ -46,12 +52,8 @@ export function createApp(): express.Express {
     }),
   );
 
-  // Palm images arrive as base64, which inflates by about a third. The real limit
-  // is MAX_IMAGE_BYTES, enforced with a precise message in lib/image.ts; this
-  // ceiling just stops an absurd payload from being buffered at all.
-  app.use(express.json({ limit: '12mb' }));
-
-  app.use(requestId);
+  app.use(ipRateLimit('requests', 300, 60));
+  app.use(requestBody);
 
   // Carries the X-Mock-User hint to the mock palm provider without widening the
   // provider interface. A no-op when the real provider is running.
@@ -83,7 +85,14 @@ export function createApp(): express.Express {
 if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
   const app = createApp();
 
-  const server = app.listen(config.PORT, () => {
+  const server = createServer(app);
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    logger.fatal({ code: error.code, port: config.PORT }, error.code === 'EADDRINUSE'
+      ? 'API port is already in use. Stop the existing backend or choose another PORT.'
+      : 'API could not start.');
+    process.exit(1);
+  });
+  server.listen(config.PORT, () => {
     logger.info(
       {
         port: config.PORT,

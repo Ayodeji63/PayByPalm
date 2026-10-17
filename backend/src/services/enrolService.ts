@@ -42,12 +42,10 @@ export interface SessionView {
 // Loading and expiry
 // ---------------------------------------------------------------------------
 
-async function load(sessionId: string): Promise<EnrolSessionRow> {
-  const { data, error } = await db
-    .from('enrol_sessions')
-    .select('*')
-    .eq('id', sessionId)
-    .maybeSingle();
+async function load(sessionId: string, signal?: AbortSignal): Promise<EnrolSessionRow> {
+  let query = db.from('enrol_sessions').select('*').eq('id', sessionId);
+  if (signal) query = query.abortSignal(signal);
+  const { data, error } = await query.maybeSingle();
 
   if (error) throw new AppError(500, 'db_error', `Could not load session: ${error.message}`);
   if (!data) throw notFound('This enrolment session does not exist.');
@@ -61,12 +59,13 @@ async function load(sessionId: string): Promise<EnrolSessionRow> {
  * only moment expiry actually matters is when someone tries to use the session,
  * and that always goes through here.
  */
-async function expireIfStale(session: EnrolSessionRow): Promise<EnrolSessionRow> {
+async function expireIfStale(session: EnrolSessionRow, signal?: AbortSignal): Promise<EnrolSessionRow> {
   const isOpen = session.status === 'pending' || session.status === 'claimed';
   if (!isOpen) return session;
   if (Date.parse(session.expires_at) > Date.now()) return session;
 
-  await db.from('enrol_sessions').update({ status: 'expired' }).eq('id', session.id);
+  const query = db.from('enrol_sessions').update({ status: 'expired' }).eq('id', session.id);
+  await (signal ? query.abortSignal(signal) : query);
   return { ...session, status: 'expired' };
 }
 
@@ -100,8 +99,8 @@ export async function createSession(
 // Terminal: poll
 // ---------------------------------------------------------------------------
 
-export async function getSessionView(sessionId: string): Promise<SessionView> {
-  const session = await expireIfStale(await load(sessionId));
+export async function getSessionView(sessionId: string, signal?: AbortSignal): Promise<SessionView> {
+  const session = await expireIfStale(await load(sessionId, signal), signal);
 
   const view: SessionView = {
     sessionId: session.id,
@@ -110,7 +109,7 @@ export async function getSessionView(sessionId: string): Promise<SessionView> {
   };
 
   if (session.user_id) {
-    const profile = await getProfile(session.user_id);
+    const profile = await getProfile(session.user_id, signal);
     // Masked even here. The terminal shows "Hi Samson O." — enough to confirm the
     // right phone claimed the session, not a name broadcast to the queue behind.
     view.userDisplayName = maskName(profile.full_name);

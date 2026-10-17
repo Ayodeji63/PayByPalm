@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { terminalApi, TerminalApiError, type AuthenticateOutcome } from './api.js';
+import { loadPendingSale, savePendingSale, clearPendingSale } from './paymentRecovery.js';
 import { resolveTerminalKey, TIMINGS } from './config.js';
 import { KioskFrame, Pane, TButton } from './ui.js';
 import { Idle } from './screens/Idle.js';
@@ -35,6 +36,7 @@ type Screen =
   | { name: 'confirm'; transactionId: string; amountMinor: number; outcome: AuthenticateOutcome }
   | { name: 'stepup'; transactionId: string; amountMinor: number; outcome: AuthenticateOutcome }
   | { name: 'result'; ok: boolean; title: string; detail?: string; amountMinor?: number }
+  | { name: 'recovery' }
   | { name: 'enrol' };
 
 interface Identity {
@@ -43,16 +45,21 @@ interface Identity {
 }
 
 export default function TerminalApp() {
-  const [screen, setScreen] = useState<Screen>({ name: 'idle' });
+  const [screen, setScreen] = useState<Screen>(() => {
+    try { return { name: loadPendingSale() ? 'recovery' : 'idle' }; }
+    catch { return { name: 'recovery' }; }
+  });
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [configured] = useState(() => resolveTerminalKey() !== null);
   const [online, setOnline] = useState(true);
   const [stepUpError, setStepUpError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [recoveryPin, setRecoveryPin] = useState('');
 
   const toIdle = useCallback(() => {
     setStepUpError(null);
-    setScreen({ name: 'idle' });
+    try { setScreen(loadPendingSale() ? { name: 'recovery' } : { name: 'idle' }); }
+    catch { setScreen({ name: 'recovery' }); }
   }, []);
 
   // --- identity ----------------------------------------------------------
@@ -105,17 +112,23 @@ export default function TerminalApp() {
   // --- actions -----------------------------------------------------------
 
   async function startSale(amountMinor: number, description?: string) {
-    try {
-      const txn = await terminalApi.createTransaction(amountMinor, description);
-      setScreen({ name: 'capture', transactionId: txn.transactionId, amountMinor });
-    } catch (err) {
-      setScreen({
-        name: 'result',
-        ok: false,
-        title: 'Could not start the sale',
-        detail: err instanceof TerminalApiError ? err.message : 'Please try again.',
-      });
+    if (busy) return;
+    if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0 || amountMinor > 100_000_000) {
+      setScreen({ name: 'result', ok: false, title: 'Invalid amount', detail: 'Enter an amount up to ₦1,000,000.' });
+      return;
     }
+    setBusy(true);
+    try {
+      if (loadPendingSale()) { setScreen({ name: 'recovery' }); return; }
+      const sale = { saleId: crypto.randomUUID(), amountMinor, description, confirming: false };
+      savePendingSale(sale);
+      const txn = await terminalApi.createTransaction(amountMinor, description, sale.saleId);
+      savePendingSale({ ...sale, transactionId: txn.transactionId });
+      setScreen({ name: 'capture', transactionId: txn.transactionId, amountMinor: txn.amountMinor });
+    } catch {
+      // Creation might have committed. Preserve the sale reference for recovery.
+      setScreen({ name: 'recovery' });
+    } finally { setBusy(false); }
   }
 
   function handleOutcome(
@@ -124,29 +137,26 @@ export default function TerminalApp() {
     outcome: AuthenticateOutcome,
   ) {
     if (outcome.decision === 'reject') {
-      setScreen({
-        name: 'result',
-        ok: false,
-        // The backend already phrases these for a customer to read; it knows
-        // whether this was a bad match, an empty bin, or no money.
-        title:
-          outcome.reason === 'insufficient_funds' ? 'Not enough balance' : 'Palm not recognised',
-        detail:
-          outcome.reason === 'insufficient_funds'
-            ? outcome.message
-            : `${outcome.message} Try again or use your phone.`,
-      });
+      void abandon(transactionId);
       return;
     }
     setScreen({ name: 'confirm', transactionId, amountMinor, outcome });
   }
 
   /** The only path that moves money. */
-  async function settle(transactionId: string, amountMinor: number, pin?: string) {
+  async function settle(transactionId: string, _amountMinor: number, pin?: string) {
     setBusy(true);
     setStepUpError(null);
     try {
+      const sale = loadPendingSale();
+      if (!sale || sale.transactionId !== transactionId) throw new Error('Payment recovery required.');
+      savePendingSale({ ...sale, confirming: true });
       const receipt = await terminalApi.confirm(transactionId, pin);
+      if (receipt.transactionId !== transactionId || receipt.amountMinor !== sale.amountMinor || !receipt.settledAt) {
+        throw new Error('Settlement receipt could not be verified.');
+      }
+      clearPendingSale();
+      setRecoveryPin('');
       setScreen({
         name: 'result',
         ok: true,
@@ -169,20 +179,67 @@ export default function TerminalApp() {
         return;
       }
 
-      setScreen({ name: 'result', ok: false, title: 'Payment failed', detail: message, amountMinor });
+      setStepUpError(message);
+      setScreen({ name: 'recovery' });
     } finally {
       setBusy(false);
     }
   }
 
-  /** Cancel the open transaction, best effort, then go home. */
-  const abandon = useCallback(
-    (transactionId?: string) => {
-      if (transactionId) void terminalApi.cancel(transactionId).catch(() => undefined);
+  /** Keep uncertain outcomes attached to the original sale. */
+  const abandon = useCallback(async (transactionId?: string) => {
+    try {
+      const sale = loadPendingSale();
+      const id = transactionId ?? sale?.transactionId;
+      if (!id && sale) { setScreen({ name: 'recovery' }); return; }
+      if (id) {
+        const current = await terminalApi.status(id);
+        if (current.status === 'settled') { setScreen({ name: 'recovery' }); return; }
+        if (current.status === 'failed' || current.status === 'cancelled') {
+          clearPendingSale();
+          toIdle();
+          return;
+        }
+        const cancelled = await terminalApi.cancel(id);
+        if (cancelled.status !== 'cancelled') throw new Error('Cancellation not confirmed.');
+      }
+      clearPendingSale();
+      setRecoveryPin('');
       toIdle();
-    },
-    [toIdle],
-  );
+    } catch { setScreen({ name: 'recovery' }); }
+  }, [toIdle]);
+
+  async function recoverSale() {
+    if (busy) return;
+    setBusy(true);
+    setStepUpError(null);
+    try {
+      let sale = loadPendingSale();
+      if (!sale) { toIdle(); return; }
+      if (!sale.transactionId) {
+        const txn = await terminalApi.createTransaction(sale.amountMinor, sale.description, sale.saleId);
+        sale = { ...sale, transactionId: txn.transactionId };
+        savePendingSale(sale);
+      }
+      const id = sale.transactionId!;
+      const state = await terminalApi.status(id);
+      if (state.status === 'settled' || (state.status === 'authenticated' && sale.confirming)) {
+        // A retry of a previous explicit confirmation, never a fresh sale.
+        await settle(id, sale.amountMinor, recoveryPin || undefined);
+      } else if (state.status === 'pending' && !sale.confirming) {
+        setScreen({ name: 'capture', transactionId: id, amountMinor: state.amountMinor });
+      } else if (state.status === 'failed' || state.status === 'cancelled') {
+        clearPendingSale();
+        setScreen({ name: 'result', ok: false, title: 'Payment not completed', detail: 'No new charge was made. Start a new sale only if needed.' });
+      } else {
+        // An interrupted authorization without a Confirm tap is abandoned.
+        await abandon(id);
+      }
+    } catch {
+      setStepUpError('Payment status is unknown. Keep this sale open and retry when connected.');
+      setScreen({ name: 'recovery' });
+    } finally { setBusy(false); }
+  }
 
   // --- not configured ----------------------------------------------------
   if (!configured) {
@@ -191,10 +248,9 @@ export default function TerminalApp() {
         <Pane className="items-center justify-center text-center">
           <p className="t-lg">Terminal not configured</p>
           <p className="t-sm mt-4 max-w-[600px] text-ink-muted">
-            No device key. Launch with <code>?k=&lt;X-Terminal-Key&gt;</code> once — the key is
-            stored on the device and removed from the address bar.
+            No device credential is configured. Contact the terminal administrator to provision this device.
           </p>
-          <p className="t-sm mt-4 text-ink-faint">See pi/README.md</p>
+
         </Pane>
       </KioskFrame>
     );
@@ -217,6 +273,20 @@ export default function TerminalApp() {
             Retry
           </TButton>
         </div>
+      )}
+
+      {screen.name === 'recovery' && (
+        <Pane className="items-center justify-center text-center">
+          <p className="t-lg">Resolve the previous payment</p>
+          <p className="t-sm mt-4">Its outcome must be checked before starting another sale. Retrying uses the same payment reference.</p>
+          {stepUpError && <p role="alert" className="t-sm mt-4">{stepUpError}</p>}
+          <label className="mt-4">Payer PIN, if required
+            <input type="password" inputMode="numeric" maxLength={4} value={recoveryPin}
+              onChange={(e) => setRecoveryPin(e.target.value.replace(/\D/g, ''))} className="ml-3 rounded border p-2" />
+          </label>
+          <TButton className="mt-6" disabled={busy} onClick={() => void recoverSale()}>Check or retry this payment</TButton>
+          <TButton tone="ghost" className="mt-4" disabled={busy} onClick={() => void abandon()}>Cancel pending sale</TButton>
+        </Pane>
       )}
 
       {screen.name === 'idle' && (

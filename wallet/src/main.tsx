@@ -5,6 +5,13 @@ import App from './App.js';
 import { AuthProvider } from './lib/auth.js';
 import { ToastProvider } from './components/Toast.js';
 import './index.css';
+import { startPwa } from './lib/pwa.js';
+
+// Also handle Supabase's Site URL fallback if a hosted redirect was not allowlisted.
+if (window.location.pathname === '/' && /(?:refresh_token|error_code)=/.test(window.location.hash)) {
+  window.history.replaceState(window.history.state, '', '/auth/confirm' + window.location.hash);
+}
+startPwa();
 
 /**
  * The kiosk is loaded on demand so a customer opening the wallet never

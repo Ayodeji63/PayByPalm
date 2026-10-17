@@ -11,8 +11,8 @@ import { AppError, notFound } from '../errors.js';
 export interface Profile {
   id: string;
   full_name: string;
-  phone: string;
-  phone_last4: string;
+  phone: string | null;
+  phone_last4: string | null;
   pin_hash: string | null;
   palm_enrolled: boolean;
   created_at: string;
@@ -25,12 +25,12 @@ function orThrow<T>(data: T | null, error: { message: string } | null, what: str
   return data;
 }
 
-export async function getProfile(userId: string): Promise<Profile> {
-  const { data, error } = await db
-    .from('profiles')
+export async function getProfile(userId: string, signal?: AbortSignal): Promise<Profile> {
+  let query = db.from('profiles')
     .select('id, full_name, phone, phone_last4, pin_hash, palm_enrolled, created_at')
-    .eq('id', userId)
-    .maybeSingle();
+    .eq('id', userId);
+  if (signal) query = query.abortSignal(signal);
+  const { data, error } = await query.maybeSingle();
   return orThrow(data as Profile | null, error, 'profile');
 }
 

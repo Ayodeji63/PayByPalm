@@ -1,55 +1,54 @@
-/**
- * Error handling.
- *
- * Two rules:
- *   1. Anything we threw deliberately (AppError) becomes its own status and code.
- *   2. Anything else becomes a generic 500. Unexpected errors are logged in full
- *      but never described to the caller — an internal message is exactly the kind
- *      of thing that leaks a table name or a key.
- */
-
 import type { NextFunction, Request, Response } from 'express';
 import { AppError, PalmProviderError } from '../errors.js';
+import { logger } from '../logger.js';
 
 export function notFoundHandler(req: Request, res: Response): void {
-  res.status(404).json({
-    error: { code: 'not_found', message: `No route for ${req.method} ${req.path}` },
-    requestId: req.id,
-  });
+  res.status(404).json({ error: { code: 'not_found', message: 'Route not found.' }, requestId: req.id });
 }
 
-export function errorHandler(
-  err: unknown,
-  req: Request,
-  res: Response,
-  // Express identifies an error handler by its four-parameter signature, so this
-  // must stay even though it is unused.
-  _next: NextFunction,
-): void {
+export function errorHandler(err: unknown, req: Request, res: Response, next: NextFunction): void {
+  const log = req.log ?? logger;
+  if (res.headersSent) { next(err); return; }
+  // Parser errors may contain the raw request body in their message/body fields.
+  // Log only a safe classification, never the parser's error object.
+  const type = (err as { type?: string } | null)?.type;
+  const parserErrors: Record<string, [number, string, string]> = {
+    'entity.parse.failed': [400, 'invalid_json', 'Request body must be valid JSON.'],
+    'entity.too.large': [413, 'body_too_large', 'Request body is too large.'],
+    'encoding.unsupported': [415, 'unsupported_encoding', 'Compressed request bodies are not supported.'],
+    'charset.unsupported': [415, 'unsupported_charset', 'Use UTF-8 JSON.'],
+    'request.aborted': [400, 'request_aborted', 'Request body was interrupted.'],
+    'request.size.invalid': [400, 'invalid_body_size', 'Request body length is invalid.'],
+  };
+  if (type && parserErrors[type]) {
+    const [status, code, message] = parserErrors[type]!;
+    log.warn({ code, status }, 'invalid request body');
+    res.status(status).json({ error: { code, message }, requestId: req.id });
+    return;
+  }
   if (err instanceof AppError) {
-    // Provider failures are worth a louder log — they usually mean the palm
-    // service is down or the key is wrong, and both need someone to look.
-    const level = err instanceof PalmProviderError ? 'error' : err.status >= 500 ? 'error' : 'warn';
-    req.log[level]({ err, code: err.code, status: err.status }, 'request failed');
-
+    const level = err instanceof PalmProviderError || err.status >= 500 ? 'error' : 'warn';
+    log[level]({ err, code: err.code, status: err.status }, 'request failed');
+    const privateError = err.status >= 500 || err.code === 'signup_failed';
+    const publicSignupErrors: Record<string, string> = {
+      email_delivery_limited: 'The email service is limiting verification messages. Please try later or contact support.',
+      email_delivery_restricted: 'Verification email is not available for this address yet. Please contact support.',
+      email_signup_unavailable: 'We could not send a confirmation email. Please try again later or contact support.',
+      email_confirmation_required: 'Email verification needs to be configured. Please contact support.',
+      email_send_failed: 'We could not send a new confirmation link. Please try again later.',
+      link_completion_failed: 'We could not finish sign-in. Please request a new link.',
+      signup_completion_failed: 'Your email is verified. Please sign in, or request a new confirmation link to finish setup.',
+      pin_setup_failed: 'Your email is verified, but PIN setup failed. Please request a new confirmation link to finish setup.',
+    };
+    const message = publicSignupErrors[err.code] ?? (err instanceof PalmProviderError ? 'Palm service is unavailable. Please try again.'
+      : privateError ? 'Unable to complete the request. Please try again.' : err.message);
+    if (err.status === 429) res.setHeader('Retry-After', String(err.details?.retryAfter ?? 60));
     res.status(err.status).json({
-      error: {
-        code: err.code,
-        message: err.message,
-        ...(err.details ? { details: err.details } : {}),
-      },
+      error: { code: err.code, message, ...(!privateError && err.details ? { details: err.details } : {}) },
       requestId: req.id,
     });
     return;
   }
-
-  req.log.error({ err }, 'unhandled error');
-
-  res.status(500).json({
-    error: {
-      code: 'internal_error',
-      message: 'Something went wrong. Please try again.',
-    },
-    requestId: req.id,
-  });
+  log.error({ err }, 'unhandled error');
+  res.status(500).json({ error: { code: 'internal_error', message: 'Unable to complete the request. Please try again.' }, requestId: req.id });
 }

@@ -7,7 +7,29 @@
  * selected bank card.
  */
 
-const STORAGE_KEY = 'paybypalm.tokenized_cards';
+const LEGACY_STORAGE_KEY = 'paybypalm.tokenized_cards';
+const STORAGE_PREFIX = 'paybypalm.tokenized_cards.v2';
+let cardOwner: string | null = null;
+
+export function setCardOwner(userId: string | null): void {
+  const previousOwner = cardOwner;
+  cardOwner = userId;
+  try {
+    if (previousOwner && previousOwner !== userId) {
+      localStorage.removeItem(`${STORAGE_PREFIX}:${previousOwner}`);
+    }
+    // Legacy records have no verifiable owner; never import them.
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    if (userId) localStorage.removeItem(`${LEGACY_STORAGE_KEY}:${userId}`);
+    localStorage.removeItem('paybypalm.user_pin');
+    localStorage.removeItem('paybypalm.biometric_unlock');
+  } catch { /* Storage may be unavailable. */ }
+}
+
+function storageKey(): string {
+  if (!cardOwner) throw new Error('Sign in before accessing cards.');
+  return `${STORAGE_PREFIX}:${cardOwner}`;
+}
 
 export interface CardTheme {
   gradient: string;
@@ -78,61 +100,12 @@ export const BANK_THEMES: Record<string, CardTheme> = {
   },
 };
 
-export const INITIAL_CARDS: LinkedCard[] = [
-  {
-    id: 'card-gtbank',
-    name: 'GTBank Platinum Debit',
-    bank: 'GTBank',
-    cardType: 'mastercard',
-    cardNumber: '5495 7381 3753 1517',
-    last4: '1517',
-    expMonth: '09',
-    expYear: '28',
-    isDefault: true,
-    balanceMinor: 12500000, // ₦125,000.00
-    isPaused: false,
-    theme: BANK_THEMES.gtbank ?? DEFAULT_CARD_THEME,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'card-zenith',
-    name: 'Zenith Bank Classic Debit',
-    bank: 'Zenith Bank',
-    cardType: 'visa',
-    cardNumber: '4111 8294 6201 8832',
-    last4: '8832',
-    expMonth: '11',
-    expYear: '27',
-    isDefault: false,
-    balanceMinor: 4250000, // ₦42,500.00
-    isPaused: false,
-    theme: BANK_THEMES.zenith ?? DEFAULT_CARD_THEME,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'card-kuda',
-    name: 'Kuda Bank Smart Card',
-    bank: 'Kuda Bank',
-    cardType: 'verve',
-    cardNumber: '5061 0284 9173 4490',
-    last4: '4490',
-    expMonth: '04',
-    expYear: '29',
-    isDefault: false,
-    balanceMinor: 85000000, // ₦850,000.00
-    isPaused: false,
-    theme: BANK_THEMES.kuda ?? DEFAULT_CARD_THEME,
-    createdAt: new Date().toISOString(),
-  },
-];
-
 export function getCards(): LinkedCard[] {
+  if (!cardOwner) return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey());
     if (!raw) {
-      // Initialize with realistic Nigerian tokenized bank cards
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_CARDS));
-      return INITIAL_CARDS;
+      return [];
     }
     const parsed = JSON.parse(raw) as LinkedCard[];
     // Sanitize any card that might contain non-numeric letters in last4 (e.g., from Paystack mock references)
@@ -147,9 +120,9 @@ export function getCards(): LinkedCard[] {
         cardNumber: c.cardNumber && !/[a-zA-Z]/.test(c.cardNumber) ? c.cardNumber : `•••• •••• •••• ${cleanLast4}`,
       };
     });
-    return sanitized.length > 0 ? sanitized : INITIAL_CARDS;
+    return sanitized;
   } catch {
-    return INITIAL_CARDS;
+    return [];
   }
 }
 
@@ -178,7 +151,7 @@ export function addCard(card: Omit<LinkedCard, 'id' | 'createdAt'>): LinkedCard 
 
   // Prepend so the newly added card is front of the stack
   cards.unshift(newCard);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
+  localStorage.setItem(storageKey(), JSON.stringify(cards));
   return newCard;
 }
 
@@ -191,7 +164,7 @@ export function removeCard(id: string): void {
       first.isDefault = true;
     }
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
+  localStorage.setItem(storageKey(), JSON.stringify(cards));
 }
 
 export function getDefaultCard(): LinkedCard | null {
@@ -204,7 +177,7 @@ export function setDefaultCard(id: string): void {
   cards.forEach((c) => {
     c.isDefault = c.id === id;
   });
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
+  localStorage.setItem(storageKey(), JSON.stringify(cards));
 }
 
 export function togglePauseCard(id: string): boolean {
@@ -216,23 +189,24 @@ export function togglePauseCard(id: string): boolean {
       pausedState = Boolean(c.isPaused);
     }
   });
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
+  localStorage.setItem(storageKey(), JSON.stringify(cards));
   return pausedState;
 }
 
 export function deductCardBalance(id: string, amountMinor: number): boolean {
+  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) return false;
   const cards = getCards();
   let success = false;
   cards.forEach((c) => {
     if (c.id === id) {
-      if (c.balanceMinor >= amountMinor) {
+      if (!c.isPaused && c.balanceMinor >= amountMinor) {
         c.balanceMinor -= amountMinor;
         success = true;
       }
     }
   });
   if (success) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
+    localStorage.setItem(storageKey(), JSON.stringify(cards));
   }
   return success;
 }

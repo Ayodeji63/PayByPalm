@@ -1,140 +1,82 @@
-/**
- * Authentication routes.
- *
- * Supabase Auth owns credentials. This module's job is to create the auth user
- * with the metadata the handle_new_user() trigger needs, and to hash the wallet
- * PIN — which the trigger deliberately does not do, because a SQL trigger has no
- * safe way to hash a secret.
- */
-
+/** Email/password signup, email verification and wallet sessions. */
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { authClient, db } from '../db/client.js';
-import { AppError, conflict, unauthorized } from '../errors.js';
-import { normalisePhone, syntheticEmailFor } from '../lib/phone.js';
+import { authClient } from '../db/client.js';
+import { config } from '../config.js';
+import { AppError, unauthorized } from '../errors.js';
+import { normalisePhone } from '../lib/phone.js';
+import { classifyAuthFailure } from '../lib/authFailure.js';
+import { ipRateLimit, rateLimit } from '../middleware/abuseLimits.js';
 import { validate } from '../middleware/validate.js';
 
 export const authRouter: Router = Router();
+const emailSchema = z.string().trim().toLowerCase().email('Enter a valid email address').max(254)
+  .refine(email => !email.endsWith('@phone.paybypalm.local'), 'Use an email address you can receive mail at');
+const signupSchema = z.object({ fullName: z.string().trim().min(2).max(120), email: emailSchema,
+  phone: z.string().min(7).max(32), password: z.string().min(8).max(200) });
+const loginSchema = z.object({ email: emailSchema, password: z.string().min(1).max(200) });
+const dev = config.NODE_ENV === 'development';
+// A server-owned target: callers cannot turn confirmation into an open redirect.
+const emailRedirectTo = new URL('/auth/confirm', config.WALLET_BASE_URL).href;
 
-/** Cost 10: comfortably slow for a 4-digit PIN, fast enough not to stall a till. */
-const BCRYPT_ROUNDS = 10;
-
-const pinSchema = z
-  .string()
-  .regex(/^\d{4}$/, 'PIN must be exactly 4 digits')
-  // Reject the PINs an attacker tries first. A 4-digit space is small enough that
-  // this is worth doing.
-  .refine((p) => !/^(\d)\1{3}$/.test(p), 'PIN cannot be four identical digits')
-  .refine((p) => p !== '1234' && p !== '0000', 'Choose a less predictable PIN');
-
-const signupSchema = z.object({
-  fullName: z.string().trim().min(2, 'Enter your full name').max(120),
-  phone: z.string().min(7, 'Enter your phone number'),
-  password: z.string().min(8, 'Password must be at least 8 characters').max(200),
-  pin: pinSchema,
-});
-
-const loginSchema = z.object({
-  phone: z.string().min(7, 'Enter your phone number'),
-  password: z.string().min(1, 'Enter your password'),
-});
-
-// ---------------------------------------------------------------------------
-// POST /auth/signup
-// ---------------------------------------------------------------------------
-
-authRouter.post('/auth/signup', validate({ body: signupSchema }), async (req, res) => {
-  const { fullName, phone, password, pin } = req.body as z.infer<typeof signupSchema>;
-  const normalisedPhone = normalisePhone(phone);
-  const email = syntheticEmailFor(normalisedPhone);
-
-  // full_name and phone go in as user metadata because handle_new_user() reads
-  // them from there to build the profile and its wallet account. It raises if
-  // either is missing, so this is not optional.
-  const { data, error } = await db.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: { full_name: fullName.trim(), phone: normalisedPhone },
-  });
-
-  if (error) {
-    const message = error.message.toLowerCase();
-    if (message.includes('already') || message.includes('registered') || message.includes('duplicate')) {
-      throw conflict('phone_taken', 'An account already exists for this phone number.');
+authRouter.post('/auth/signup', validate({ body: signupSchema }),
+  ipRateLimit('signup-ip', dev ? 300 : 60, 3600),
+  rateLimit('signup-email', dev ? 30 : 5, 3600, req => req.body.email), async (req, res) => {
+    const { fullName, phone, email, password } = req.body as z.infer<typeof signupSchema>;
+    const { data, error } = await authClient.auth.signUp({ email, password,
+      options: { emailRedirectTo, data: { full_name: fullName.trim(), phone: normalisePhone(phone) } } });
+    if (error) {
+      req.log.error({ authErrorCode: error.code ?? 'unknown', authErrorName: error.name, authStatus: error.status, authFailureCategory: classifyAuthFailure(error) }, 'Email signup failed');
+      const code = error.code === 'over_email_send_rate_limit' ? 'email_delivery_limited'
+        : error.code === 'email_address_not_authorized' ? 'email_delivery_restricted' : 'email_signup_unavailable';
+      throw new AppError(503, code, 'Email verification is unavailable.');
     }
-    req.log.error({ err: error }, 'signup failed');
-    throw new AppError(400, 'signup_failed', error.message);
-  }
-
-  const userId = data.user?.id;
-  if (!userId) throw new AppError(500, 'signup_failed', 'Account was not created.');
-
-  // The profile row already exists — the trigger made it. Add the PIN hash.
-  const { error: pinError } = await db
-    .from('profiles')
-    .update({ pin_hash: await bcrypt.hash(pin, BCRYPT_ROUNDS) })
-    .eq('id', userId);
-
-  if (pinError) {
-    req.log.error({ err: pinError, userId }, 'could not store PIN hash');
-    throw new AppError(500, 'signup_failed', 'Account created but the PIN could not be saved.');
-  }
-
-  // Sign in immediately so the app does not have to ask for the password again.
-  const { data: session, error: signInError } = await authClient.auth.signInWithPassword({
-    email,
-    password,
+    if (data.session || !data.user) throw new AppError(503, 'email_confirmation_required', 'Email confirmation must be enabled.');
+    res.status(201).json({ email, verificationRequired: true });
   });
 
-  if (signInError || !session.session) {
-    throw new AppError(500, 'signin_failed', 'Account created — please sign in.');
-  }
-
-  res.status(201).json({
-    user: { id: userId, fullName: fullName.trim(), phone: normalisedPhone },
-    session: {
-      accessToken: session.session.access_token,
-      refreshToken: session.session.refresh_token,
-      expiresAt: session.session.expires_at,
-    },
+// The default Supabase link verifies the email first, then returns a session
+// in the browser fragment. Rotate it and check the authoritative Auth identity.
+authRouter.post('/auth/confirm', ipRateLimit('email-confirm-ip', 20, 900),
+  validate({ body: z.object({ refreshToken: z.string().min(1).max(4096) }) }),
+  rateLimit('email-confirm-token', 5, 900, req => req.body.refreshToken), async (req, res) => {
+    const { data, error } = await authClient.auth.refreshSession({ refresh_token: req.body.refreshToken });
+    if (error || !data.session) throw new AppError(400, 'invalid_confirmation', 'This link is invalid or expired. Please sign in or request a new link.');
+    const identity = await authClient.auth.getUser(data.session.access_token);
+    const user = identity.data.user;
+    if (identity.error || !user?.email_confirmed_at || !user.email ||
+      !emailSchema.safeParse(user.email).success || user.id !== data.session.user.id) {
+      throw new AppError(400, 'invalid_confirmation', 'Email verification could not be confirmed. Please sign in again.');
+    }
+    res.json({ session: { accessToken: data.session.access_token, refreshToken: data.session.refresh_token, expiresAt: data.session.expires_at } });
   });
-});
 
-// ---------------------------------------------------------------------------
-// POST /auth/login
-// ---------------------------------------------------------------------------
-
-authRouter.post('/auth/login', validate({ body: loginSchema }), async (req, res) => {
-  const { phone, password } = req.body as z.infer<typeof loginSchema>;
-  const email = syntheticEmailFor(phone);
-
-  const { data, error } = await authClient.auth.signInWithPassword({ email, password });
-
-  if (error || !data.session || !data.user) {
-    // One message for both "no such account" and "wrong password", so this cannot
-    // be used to discover which phone numbers are registered.
-    throw unauthorized('Incorrect phone number or password.');
-  }
-
-  res.json({
-    user: { id: data.user.id },
-    session: {
-      accessToken: data.session.access_token,
-      refreshToken: data.session.refresh_token,
-      expiresAt: data.session.expires_at,
-    },
+authRouter.post('/auth/resend-confirmation', ipRateLimit('otp-send-ip', 5, 3600),
+  validate({ body: z.object({ email: emailSchema }) }),
+  rateLimit('otp-send-email', 1, 60, req => req.body.email),
+  rateLimit('otp-send-email-hour', 5, 3600, req => req.body.email), async (req, res) => {
+    const { error } = await authClient.auth.resend({ type: 'signup', email: req.body.email, options: { emailRedirectTo } });
+    if (error) throw new AppError(503, 'email_send_failed', 'Could not send a new verification link. Please try again later.');
+    res.json({ sent: true });
   });
-});
 
-// ---------------------------------------------------------------------------
-// POST /auth/refresh
-// ---------------------------------------------------------------------------
+authRouter.post('/auth/login', ipRateLimit('login-ip', 20, 300), validate({ body: loginSchema }),
+  rateLimit('login-email', 10, 900, req => req.body.email), async (req, res) => {
+    const { email, password } = req.body as z.infer<typeof loginSchema>;
+    const { data, error } = await authClient.auth.signInWithPassword({ email, password });
+    if (error?.code === 'email_not_confirmed') throw new AppError(403, 'email_verification_required', 'Verify your email before signing in.');
+    if (error || !data.session || !data.user) throw unauthorized('Incorrect email or password.');
+    if (!data.user.email_confirmed_at || data.user.email?.toLowerCase() !== email) throw new AppError(403, 'email_verification_required', 'Verify your email before signing in.');
+    res.json({ user: { id: data.user.id }, session: {
+      accessToken: data.session.access_token, refreshToken: data.session.refresh_token, expiresAt: data.session.expires_at,
+    } });
+  });
 
 authRouter.post(
   '/auth/refresh',
-  validate({ body: z.object({ refreshToken: z.string().min(1) }) }),
+  ipRateLimit('refresh-ip', 60, 300),
+  validate({ body: z.object({ refreshToken: z.string().min(1).max(4096) }) }),
+  rateLimit('refresh-token', 20, 300, req => req.body.refreshToken),
   async (req, res) => {
     const { refreshToken } = req.body as { refreshToken: string };
     const { data, error } = await authClient.auth.refreshSession({ refresh_token: refreshToken });

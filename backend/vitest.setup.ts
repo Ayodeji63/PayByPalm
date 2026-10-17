@@ -6,7 +6,7 @@
  * config, so this is the only place the values can be set early enough.
  *
  * Everything here is syntactically valid and functionally inert — no test in this
- * suite makes a network call, so the Supabase URL and keys are never dialled. The
+ * suite contacts an external service, so the Supabase URL and keys are never dialled. The
  * thresholds are pinned rather than inherited from a developer's .env so the
  * policy tests assert against known boundaries.
  */

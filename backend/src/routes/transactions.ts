@@ -20,11 +20,14 @@ import { db } from '../db/client.js';
 import { AppError, forbidden, notFound } from '../errors.js';
 import { requireTerminal, terminalAuth } from '../middleware/terminalAuth.js';
 import { requireUser, userAuth } from '../middleware/userAuth.js';
+import { userRateLimit, terminalRateLimit, rateLimit } from '../middleware/abuseLimits.js';
+import { imageJson, imageSchema } from '../middleware/requestBody.js';
 import { validate } from '../middleware/validate.js';
 import {
   authenticateTransaction,
   cancelTransaction,
   confirmTransaction,
+  getTerminalTransaction,
   createTransaction,
 } from '../services/paymentService.js';
 
@@ -45,8 +48,10 @@ const idParam = z.object({ id: z.string().uuid('Not a valid transaction id') });
 transactionsRouter.post(
   '/transactions',
   terminalAuth,
+  terminalRateLimit('sale-create', 60, 60),
   validate({
     body: z.object({
+      saleId: z.string().uuid(),
       amountMinor: z
         .number()
         .int('Amount must be a whole number of kobo')
@@ -57,12 +62,13 @@ transactionsRouter.post(
   }),
   async (req, res) => {
     const terminal = requireTerminal(req);
-    const { amountMinor, description } = req.body as {
+    const { amountMinor, description, saleId } = req.body as {
       amountMinor: number;
+      saleId: string;
       description?: string;
     };
 
-    const txn = await createTransaction(terminal, amountMinor, description);
+    const txn = await createTransaction(terminal, amountMinor, description, saleId);
 
     res.status(201).json({
       transactionId: txn.id,
@@ -86,10 +92,12 @@ transactionsRouter.post(
 transactionsRouter.post(
   '/transactions/:id/authenticate',
   terminalAuth,
+  terminalRateLimit('palm-authenticate', 30, 60),
+  imageJson,
   validate({
     params: idParam,
     body: z.object({
-      imageB64: z.string().min(1, 'A palm image is required'),
+      imageB64: imageSchema,
       last4: z
         .string()
         .regex(/^\d{4}$/, 'Enter the last 4 digits of the phone number')
@@ -121,6 +129,8 @@ transactionsRouter.post(
 transactionsRouter.post(
   '/transactions/:id/confirm',
   terminalAuth,
+  terminalRateLimit('payment-confirm', 60, 60),
+  rateLimit('payment-pin', 5, 60, req => `${req.terminal!.id}:${req.params.id}`),
   validate({
     params: idParam,
     body: z
@@ -132,18 +142,36 @@ transactionsRouter.post(
     const { pin } = (req.body ?? {}) as { pin?: string };
 
     const receipt = await confirmTransaction(req.params.id as string, terminal, pin);
-    res.json(receipt);
+    res.json({
+      transactionId: receipt.transactionId, amountMinor: receipt.amountMinor,
+      merchantName: receipt.merchantName, terminalLabel: receipt.terminalLabel,
+      settledAt: receipt.settledAt, maskedName: receipt.maskedName,
+    });
   },
 );
 
 transactionsRouter.post(
   '/transactions/:id/cancel',
   terminalAuth,
+  terminalRateLimit('payment-cancel', 60, 60),
   validate({ params: idParam }),
   async (req, res) => {
     const terminal = requireTerminal(req);
     const txn = await cancelTransaction(req.params.id as string, terminal);
     res.json({ transactionId: txn.id, status: txn.status });
+  },
+);
+
+// Recover a lost confirmation response using the same terminal and transaction.
+transactionsRouter.get(
+  '/terminal/transactions/:id',
+  terminalAuth,
+  terminalRateLimit('terminal-read', 120, 60),
+  validate({ params: idParam }),
+  async (req, res) => {
+    const terminal = requireTerminal(req);
+    const txn = await getTerminalTransaction(req.params.id as string, terminal);
+    res.json({ transactionId: txn.id, status: txn.status, amountMinor: Number(txn.amount_minor) });
   },
 );
 
@@ -186,10 +214,11 @@ const shapeHistoryRow = (row: HistoryRow) => ({
 transactionsRouter.get(
   '/transactions',
   userAuth,
+  userRateLimit('user-read', 240, 60),
   validate({
     query: z.object({
       limit: z.coerce.number().int().min(1).max(100).default(25),
-      offset: z.coerce.number().int().min(0).default(0),
+      offset: z.coerce.number().int().min(0).max(100_000).default(0),
     }),
   }),
   async (req, res) => {
@@ -220,6 +249,7 @@ transactionsRouter.get(
 transactionsRouter.get(
   '/transactions/:id',
   userAuth,
+  userRateLimit('user-read', 240, 60),
   validate({ params: idParam }),
   async (req, res) => {
     const user = requireUser(req);
@@ -251,6 +281,7 @@ transactionsRouter.get(
 transactionsRouter.post(
   '/transactions/:id/dispute',
   userAuth,
+  userRateLimit('dispute', 10, 60),
   validate({
     params: idParam,
     body: z

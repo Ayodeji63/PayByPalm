@@ -142,3 +142,18 @@ without it a QR scan opens a 404.
 
 Then set `WALLET_BASE_URL` on the **backend** to this app's deployed origin. It is both the CORS
 allow-list and the base of the enrolment link encoded into every QR code.
+
+## Signup, email verification and PWA installation
+
+Signup collects full name, phone, email and password. After real email verification,
+new users set a wallet PIN for payments. Existing users sign in with email/password.
+The passwordless email-only experiment has been undone. Hosted configuration and
+migration rollback: [backend/EMAIL_SETUP.md](../backend/EMAIL_SETUP.md).
+
+Profile includes PWA installation when supported and platform instructions otherwise.
+Serve the production build over HTTPS. API responses and payments are not cached;
+offline navigation displays a connection-required page.
+
+Optional browser acceptance: make Playwright available to Node, serve a production
+preview at `http://127.0.0.1:4178` and run `node wallet/tests/pwa-browser.mjs` from the
+repository root. It uses API fixtures and sends no live email.

@@ -83,9 +83,10 @@ export function Amount({
             ))}
           </div>
 
+          {amountMinor > 100_000_000 && <p role="alert" className="t-sm mt-4">Maximum payment: ₦1,000,000.</p>}
           <TButton
             className="mt-auto"
-            disabled={amountMinor <= 0}
+            disabled={amountMinor <= 0 || amountMinor > 100_000_000}
             onClick={() => onCharge(amountMinor, description ?? undefined)}
           >
             Charge

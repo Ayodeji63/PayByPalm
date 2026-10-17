@@ -208,7 +208,7 @@ export function OtpInput({
   );
 
   return (
-    <div className="flex justify-center gap-3">
+    <div className="grid justify-center gap-2" style={{ gridTemplateColumns: `repeat(${length}, minmax(0, 52px))` }}>
       {Array.from({ length }, (_, i) => (
         <input
           key={i}
@@ -220,6 +220,8 @@ export function OtpInput({
           onChange={(e) => handleChange(i, e.target.value)}
           onKeyDown={(e) => handleKeyDown(i, e)}
           className={`otp-box ${value[i] ? 'filled' : ''}`}
+          style={{ width: '100%', minWidth: 0 }}
+          aria-label={`Email code digit ${i + 1} of ${length}`}
           autoFocus={i === 0}
           autoComplete="one-time-code"
         />
@@ -229,7 +231,7 @@ export function OtpInput({
 }
 
 // ---------------------------------------------------------------------------
-// PIN Input — 4 digit boxes for signup
+// PIN Input — user-chosen wallet PIN
 // ---------------------------------------------------------------------------
 
 export function PinInput({
@@ -265,7 +267,7 @@ export function PinInput({
   );
 
   return (
-    <div className="flex justify-center gap-4">
+    <div className="grid justify-center gap-4" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 64px))' }}>
       {Array.from({ length: 4 }, (_, i) => (
         <input
           key={i}
@@ -277,6 +279,8 @@ export function PinInput({
           onChange={(e) => handleChange(i, e.target.value)}
           onKeyDown={(e) => handleKeyDown(i, e)}
           className="pin-box"
+          style={{ width: '100%', minWidth: 0 }}
+          aria-label={`PIN digit ${i + 1} of 4`}
           autoComplete="off"
         />
       ))}

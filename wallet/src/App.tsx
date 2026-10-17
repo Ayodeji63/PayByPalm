@@ -21,6 +21,8 @@ import Dashboard from './routes/Dashboard.js';
 /**
  * Lazy-loaded routes — only fetched when needed.
  */
+const SetupPin = lazy(() => import('./routes/SetupPin.js'));
+const ConfirmEmail = lazy(() => import('./routes/ConfirmEmail.js'));
 const Verify = lazy(() => import('./routes/Verify.js'));
 const Scan = lazy(() => import('./routes/Scan.js'));
 const Profile = lazy(() => import('./routes/Profile.js'));
@@ -45,7 +47,7 @@ function Loading() {
 }
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { status } = useAuth();
+  const { status, me } = useAuth();
   const location = useLocation();
   if (status === 'loading') return <Loading />;
   if (status === 'anonymous') {
@@ -56,6 +58,9 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
         state={{ returnTo: `${location.pathname}${location.search}${location.hash}` }}
       />
     );
+  }
+  if (me && !me.hasPin && location.pathname !== '/setup-pin') {
+    return <Navigate to="/setup-pin" replace />;
   }
   return <>{children}</>;
 }
@@ -106,7 +111,7 @@ export default function App() {
       <Route path="/" element={<LandingOrDashboard />} />
       <Route path="/login" element={<Auth />} />
 
-      {/* OTP verification — after signup, before dashboard */}
+      {/* Email verification after signup */}
       <Route
         path="/verify"
         element={
@@ -115,6 +120,10 @@ export default function App() {
           </Suspense>
         }
       />
+
+      <Route path="/auth/confirm" element={<Suspense fallback={<Loading />}><ConfirmEmail /></Suspense>} />
+
+      <Route path="/setup-pin" element={<AuthedFull><SetupPin /></AuthedFull>} />
 
       {/* ── Authenticated routes WITH AppShell (bottom nav) ── */}
 

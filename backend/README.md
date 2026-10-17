@@ -124,25 +124,20 @@ Reports which palm provider is live — "why did matching stop working?" is near
 
 ### Auth
 
-Phone is the identity anchor; there is no email field. Supabase Auth needs an address, so one
-is derived from the phone number internally — see [`src/lib/phone.ts`](src/lib/phone.ts).
+Signup uses full name, phone, email and password, followed by an email
+confirmation link. Returning users sign in with email/password. See [email setup](EMAIL_SETUP.md).
 
 ```bash
-# Sign up
-curl -X POST $API/auth/signup -H 'Content-Type: application/json' -d '{
-  "fullName": "Ada Okonkwo",
-  "phone": "08010001001",
-  "password": "palmpay2026",
-  "pin": "2468"
-}'
+curl -X POST $API/auth/signup -H 'Content-Type: application/json' \
+  -d '{"fullName":"Ada Okonkwo","phone":"08010001001","email":"ada@example.com","password":"your-strong-password"}'
 
-# Log in
+# Open the confirmation link in your inbox before signing in.
+# To request another link:
+curl -X POST $API/auth/resend-confirmation -H 'Content-Type: application/json' \
+  -d '{"email":"ada@example.com"}'
+
 curl -X POST $API/auth/login -H 'Content-Type: application/json' \
-  -d '{"phone":"08010001001","password":"palmpay2026"}'
-
-# Refresh
-curl -X POST $API/auth/refresh -H 'Content-Type: application/json' \
-  -d '{"refreshToken":"<refresh-token>"}'
+  -d '{"email":"ada@example.com","password":"your-strong-password"}'
 ```
 
 ```bash
@@ -216,10 +211,11 @@ after a flaky response cannot enrol twice.
 ### Payment — palm only, no phone, no QR
 
 ```bash
-# 1. Terminal states an amount (₦1,250 = 125000 kobo)
+# 1. Terminal states an amount (₦1,250 = 125000 kobo).
+# Generate a new saleId for each sale; keep it unchanged on retries.
 curl -X POST $API/transactions -H "X-Terminal-Key: $TERMINAL_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"amountMinor":125000,"description":"Lunch"}'
+  -d '{"saleId":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","amountMinor":125000,"description":"Lunch"}'
 
 TXN=<transactionId>
 
@@ -290,7 +286,7 @@ ties together every log line for the request, including the provider call.
 | `already_enrolled` | 409 | Enrolment is one-time |
 | `session_expired` / `session_already_claimed` | 409 | QR handshake failed |
 | `stale_authentication` | 409 | Palm scan older than the validity window |
-| `invalid_transaction_state` | 409 | Includes replayed confirms |
+| `invalid_transaction_state` | 409 | Invalid transitions; settled confirmation retries return the receipt |
 | `palm_provider_error` | 502 | `details.requestId` is the provider's own id — quote it to support |
 
 ## Testing
@@ -344,3 +340,18 @@ would verify that money actually arrived and then call the same `post_topup()` d
 function. The ledger shape does not change; only the trigger for calling it does.
 
 The wallet app labels these funds as sandbox, and it should stay that way in any demo.
+
+## Payment release controls
+
+See [SECURITY_PAYMENTS.md](SECURITY_PAYMENTS.md) for required migration and rollout steps.
+Production rejects sandbox funding and mock matching. Terminal creation requires
+`saleId` (a UUID retained across retries). Use `GET /terminal/transactions/:id`
+with the terminal credential to reconcile uncertain outcomes before creating a new sale.
+Transfers and card charging are currently unavailable.
+
+## API release controls
+
+See [SECURITY_API.md](SECURITY_API.md) for migration 0012, shared rate budgets,
+request-size limits, proxy configuration, and SSE connection caps.
+Terminal receipts no longer contain `balanceMinor`; use the user-authenticated
+`/me` endpoint for wallet balances.

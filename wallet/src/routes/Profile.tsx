@@ -6,18 +6,18 @@
  *   - Account verification badge & identity
  *   - Actionable Biometric Palm Status (direct CTA to /scan when not linked)
  *   - Ultra-clean realistic Payment Methods cards with bank branding, thumbnail & sanitized last4
- *   - Interactive Change 4-Digit PIN modal
- *   - Stateful Biometric App Unlock toggle
+ *   - Availability notice for unsupported security settings
  *   - Activity Logs shortcut & confirmed Sign Out
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth.js';
 import { getCards, type LinkedCard } from '../lib/cardStore.js';
 import { findBank } from '../lib/banks.js';
 import { Button, PageHeader, StatusChip, PalmIcon } from '../components/ui.js';
 import { PageTransition } from '../components/transitions.js';
+import { InstallWallet } from '../components/InstallWallet.js';
 import { useToast } from '../components/Toast.js';
 
 export default function Profile() {
@@ -46,69 +46,10 @@ export default function Profile() {
     toast.show(`Avatar updated to ${next === 'male' ? 'Male' : 'Female'} style.`, 'info');
   };
 
-  // Biometric app unlock state
-  const [biometricUnlock, setBiometricUnlock] = useState(() => {
-    try {
-      return localStorage.getItem('paybypalm.biometric_unlock') !== 'false';
-    } catch {
-      return true;
-    }
-  });
-
-  const toggleBiometricUnlock = () => {
-    const next = !biometricUnlock;
-    setBiometricUnlock(next);
-    try {
-      localStorage.setItem('paybypalm.biometric_unlock', String(next));
-    } catch {
-      /* noop */
-    }
-    toast.show(
-      next ? 'Biometric App Unlock enabled.' : 'Biometric App Unlock disabled.',
-      next ? 'success' : 'info'
-    );
-  };
-
-  // Change PIN modal state
-  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
-  const [currentPin, setCurrentPin] = useState('');
-  const [newPin, setNewPin] = useState('');
-  const [confirmPin, setConfirmPin] = useState('');
-  const [pinError, setPinError] = useState('');
-
   // Sign out confirmation
   const [confirmSignOut, setConfirmSignOut] = useState(false);
 
   if (!me) return null;
-
-  const handleSavePin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (currentPin.length !== 4) {
-      setPinError('Current PIN must be 4 digits.');
-      return;
-    }
-    if (newPin.length !== 4) {
-      setPinError('New PIN must be 4 digits.');
-      return;
-    }
-    if (newPin !== confirmPin) {
-      setPinError('New PIN and confirmation do not match.');
-      return;
-    }
-
-    try {
-      localStorage.setItem('paybypalm.user_pin', newPin);
-    } catch {
-      /* noop */
-    }
-
-    toast.show('4-digit PIN updated successfully.', 'success');
-    setIsPinModalOpen(false);
-    setCurrentPin('');
-    setNewPin('');
-    setConfirmPin('');
-    setPinError('');
-  };
 
   return (
     <PageTransition>
@@ -119,13 +60,14 @@ export default function Profile() {
         />
 
         <div className="space-y-4 pt-1">
+          <InstallWallet />
           {/* ── 1. USER IDENTITY CARD ── */}
           <div className="rounded-3xl bg-white p-5 shadow-sm border border-slate-100">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 User Identity
               </span>
-              <StatusChip tone="success">Account Verified ✓</StatusChip>
+              <StatusChip tone="success">Email verified</StatusChip>
             </div>
 
             <div className="mt-3 flex items-center gap-4">
@@ -153,7 +95,8 @@ export default function Profile() {
                 <p className="text-base font-extrabold text-slate-900 truncate">
                   {me.fullName}
                 </p>
-                <p className="text-xs text-slate-500 font-semibold">{me.phone}</p>
+                <p className="text-xs text-slate-500 font-semibold">{me.phone || 'No phone number added'}</p>
+                <p className="break-all text-xs text-slate-500">{me.email}</p>
                 <button
                   type="button"
                   onClick={toggleAvatarGender}
@@ -275,57 +218,10 @@ export default function Profile() {
           <div className="rounded-3xl bg-white p-5 shadow-sm border border-slate-100">
             <h3 className="text-sm font-extrabold text-slate-900">Security</h3>
             <div className="mt-2 divide-y divide-slate-100">
-              {/* Change 4-Digit PIN */}
-              <button
-                type="button"
-                onClick={() => {
-                  setPinError('');
-                  setIsPinModalOpen(true);
-                }}
-                className="flex w-full items-center justify-between py-3 text-xs font-semibold text-slate-800 hover:text-[#1d4ed8] transition-colors"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                    </svg>
-                  </div>
-                  <span>Change 4-Digit PIN</span>
-                </div>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
-                  <path d="M9 18l6-6-6-6" />
-                </svg>
-              </button>
-
-              {/* Stateful Biometric App Unlock */}
-              <div className="flex items-center justify-between py-3 text-xs font-semibold text-slate-800">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
-                    <PalmIcon className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-slate-800">Biometric App Unlock</p>
-                    <p className="text-[10px] text-slate-400 font-normal">Require biometric scan to open wallet</p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={biometricUnlock}
-                  onClick={toggleBiometricUnlock}
-                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors cursor-pointer ${
-                    biometricUnlock ? 'bg-[#1d4ed8]' : 'bg-slate-300'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                      biometricUnlock ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
+              <p className="py-3 text-xs text-slate-600">
+                PIN changes and biometric app unlock are currently unavailable.
+                Sign out when you finish using a shared device.
+              </p>
 
               {/* Activity Logs */}
               <button
@@ -381,92 +277,6 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* ── 6. CHANGE PIN MODAL ── */}
-        {isPinModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-fade-in">
-            <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl animate-scale-in">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-extrabold text-slate-900">Change 4-Digit PIN</h3>
-                <button
-                  type="button"
-                  onClick={() => setIsPinModalOpen(false)}
-                  className="h-8 w-8 rounded-full bg-slate-100 text-slate-500 font-bold flex items-center justify-center hover:bg-slate-200"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <form onSubmit={handleSavePin} className="mt-4 space-y-3.5">
-                {pinError && (
-                  <p className="text-xs font-bold text-rose-600 bg-rose-50 p-2.5 rounded-xl border border-rose-100">
-                    {pinError}
-                  </p>
-                )}
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700">Current 4-Digit PIN</label>
-                  <input
-                    type="password"
-                    maxLength={4}
-                    inputMode="numeric"
-                    placeholder="••••"
-                    value={currentPin}
-                    onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    className="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-center text-lg font-mono tracking-widest outline-none focus:border-[#1d4ed8]"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700">New 4-Digit PIN</label>
-                  <input
-                    type="password"
-                    maxLength={4}
-                    inputMode="numeric"
-                    placeholder="••••"
-                    value={newPin}
-                    onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    className="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-center text-lg font-mono tracking-widest outline-none focus:border-[#1d4ed8]"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700">Confirm New PIN</label>
-                  <input
-                    type="password"
-                    maxLength={4}
-                    inputMode="numeric"
-                    placeholder="••••"
-                    value={confirmPin}
-                    onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    className="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-center text-lg font-mono tracking-widest outline-none focus:border-[#1d4ed8]"
-                    required
-                  />
-                </div>
-
-                <div className="pt-2 flex gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    full
-                    onClick={() => setIsPinModalOpen(false)}
-                    className="!rounded-xl text-xs font-bold"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    full
-                    className="!bg-[#1d4ed8] !rounded-xl text-xs font-bold !text-white"
-                  >
-                    Update PIN
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
       </div>
     </PageTransition>
   );
