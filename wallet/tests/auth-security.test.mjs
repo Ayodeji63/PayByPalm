@@ -284,13 +284,13 @@ test('dashboard always shows the actual palm enrollment status and its action', 
   assert.equal(unlinked.includes('Terminal Status: Active'),false);
 });
 
-function palmStatusHarness(post) {
+function palmStatusHarness(post, linked = true) {
   const states=[];let index=0, refreshed=0;
   const jsx=(type,props)=>({type,props});
   const dependencies={react:{useEffect:()=>{},useState:initial=>{const slot=index++;if(!(slot in states))states[slot]=initial;return[states[slot],v=>{states[slot]=v;}];},useRef:initial=>{const slot=index++;if(!(slot in states))states[slot]={current:initial};return states[slot];}},'react/jsx-runtime':{jsx,jsxs:jsx},'../lib/api.js':{api:{post}},'./ui.js':{Button:'Button',PalmIcon:'PalmIcon'}};
   const component=load('../src/components/PalmLinkStatus.tsx',{require:name=>dependencies[name]});
   function find(type,label) {
-    index=0;const tree=component.PalmLinkStatus({linked:true,onEnroll:()=>{},onUnlinked:async()=>{refreshed++;}});
+    index=0;const tree=component.PalmLinkStatus({linked,onEnroll:()=>{},onUnlinked:async()=>{refreshed++;}});
     function walk(n){if(Array.isArray(n)){for(const c of n){const r=walk(c);if(r)return r;}}else if(n&&typeof n==='object'){if(n.type===type&&(label===undefined||n.props.children===label))return n;return walk(n.props?.children);}return null;}
     return walk(tree);
   }
@@ -311,6 +311,17 @@ test('unlink failure keeps the palm linked and exposes a retry',async()=>{
   const h=palmStatusHarness(async()=>{throw new Error('Could not confirm removal');});
   h.find('Button','Unlink palm').props.onClick();h.find('Button','Yes, unlink palm').props.onClick();await flushActions();
   assert.ok(h.find('h3','Palm linked'));assert.ok(h.find('p','Could not confirm removal'));assert.ok(h.find('Button','Yes, unlink palm'));assert.equal(h.refreshCount(),0);
+});
+
+test('an account marked unlinked can still remove a retained provider registration',async()=>{
+  const calls=[];
+  const h=palmStatusHarness(async(...args)=>{calls.push(args);return {revoked:true};},false);
+  assert.ok(h.find('h3','Palm not linked'));assert.ok(h.find('Button','Link palm'));
+  h.find('Button','Unlink palm').props.onClick();
+  assert.equal(calls.length,0);
+  h.find('Button','Yes, unlink palm').props.onClick();await flushActions();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)),[['/palm/revoke',{}]]);
+  assert.equal(h.refreshCount(),1);
 });
 
 function terminalHarness(terminalApi, sessionStorage = storage()) {

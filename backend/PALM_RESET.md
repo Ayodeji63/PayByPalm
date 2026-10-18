@@ -4,7 +4,10 @@ The dashboard and Profile both show an explicit **Palm linked / Palm not linked*
 panel based on the authenticated account's enrollment state. The dashboard's
 header no longer always claims the palm is active. **Unlink palm** asks for
 confirmation, calls the authenticated `/palm/revoke` API and refreshes the account.
-Fresh enrollment goes through biometric consent again.
+Fresh enrollment goes through biometric consent again. Palm management is the
+first section of Profile, and the dashboard palm shortcut opens Profile. The
+unlink control remains available even when the local enrollment flag is false,
+so a customer can remove a retained provider registration.
 
 ## Deletion contract
 
@@ -53,6 +56,29 @@ the UI/backend code still needs deployment. Then:
 
 The earlier `2080023` search/application error remains a separate provider issue;
 this reset alone does not establish that 1:N search is healthy.
+
+## Repeat reset on 18 October 2026, 06:47 UTC
+
+The user explicitly requested another reset using a supplied credential. That
+credential differed from the local backend credential; it was supplied to the
+cleanup child process only and was not saved in the repository or `.env`.
+
+- Scope: one distinct account enumerated from bindings, enrollment flags and
+  registration audit history in `atypombnwskmhfqblnbr.supabase.co`.
+- Tencent deletion acknowledgement: `0def314b8d0423cddf789f66263423e8`.
+- Follow-up GetPalm: `9ee5fc6a17368d8d7a9f6e515a6ae3c6`, `2080009` (data not found).
+- Cleanup: one account completed, zero failures.
+- Independent database checks: zero binding rows, zero enrolled profiles and
+  zero claimed/captured enrollment sessions.
+
+Unknown registrations whose user IDs are absent from this database remain
+outside what can be enumerated with the documented API. This does not certify
+an application-wide gallery wipe. The exposed credential should be rotated,
+with the replacement configured privately in Render and the local backend.
+
+The deployed wallet's 16 referenced JavaScript bundles were inspected before
+the UI fix. None contained the unlink control or `/palm/revoke` request. The
+wallet must be deployed before the new Profile control appears on the live site.
 
 ## Regression checks
 

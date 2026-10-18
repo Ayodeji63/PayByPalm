@@ -163,6 +163,23 @@ describe('API security boundaries', () => {
     const result = await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/authenticate', { imageB64: 'AAAA' }, { 'X-Terminal-Key': 'test' });
     expect(result.status).toBe(502); expect(await result.text()).not.toContain('provider-secret-marker');
   });
+  it.each([
+    [1001004,422,'palm_liveness_failed'],[1001005,422,'palm_image_quality_failed'],
+    [1001008,409,'palm_already_bound'],[1001019,409,'palm_verification_expired'],
+    [1001023,502,'palm_provider_database_error'],[1001029,503,'palm_quota_exceeded'],
+    [1001030,503,'palm_license_unavailable'],[1001032,503,'palm_application_unavailable'],
+    [2080003,422,'palm_liveness_failed'],[2080004,422,'palm_image_quality_failed'],
+    [9999999,502,'palm_provider_error'],
+  ] as const)('returns safe, traceable diagnostics for provider code %s',async(providerCode,status,code)=>{
+    mocks.authenticate.mockRejectedValue(new PalmProviderError('private-provider-diagnostic',{providerCode,requestId:'tencent-reference',httpStatus:400}));
+    const r=await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/authenticate',{imageB64:'AAAA'},{'X-Terminal-Key':'test'});
+    expect(r.status).toBe(status);
+    const body=await r.json() as {error:{message:string}};
+    expect(body).toMatchObject({error:{code,details:{provider:'tencent',providerCode,providerRequestId:'tencent-reference',providerHttpStatus:400}},requestId:expect.any(String)});
+    expect(body.error.message).toContain(`Tencent error ${providerCode}`);
+    expect(JSON.stringify(body)).not.toContain('private-provider-diagnostic');
+    expect(mocks.confirm).not.toHaveBeenCalled();
+  });
   it('reports the observed alignment failure as a recapture error without exposing SDK diagnostics', async () => {
     mocks.authenticate.mockRejectedValue(new PalmProviderError('grpc invoke failed. call palm alignment sdk err: call PalmAlignGap by rect fail, ret=-360', {providerCode:999,requestId:'provider-alignment'}));
     const result = await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/authenticate', {imageB64:'AAAA'}, {'X-Terminal-Key':'test'});

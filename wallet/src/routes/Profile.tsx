@@ -62,6 +62,9 @@ export default function Profile() {
         />
 
         <div className="space-y-4 pt-1">
+          <PalmLinkStatus linked={me.palmEnrolled} onEnroll={() => navigate(consentGiven ? '/scan' : '/consent')}
+            onUnlinked={async () => { setConsentGiven(false); await refresh(); }} />
+
           <InstallWallet />
           {/* ── 1. USER IDENTITY CARD ── */}
           <div className="rounded-3xl bg-white p-5 shadow-sm border border-slate-100">
@@ -109,9 +112,6 @@ export default function Profile() {
               </div>
             </div>
           </div>
-
-          <PalmLinkStatus linked={me.palmEnrolled} onEnroll={() => navigate(consentGiven ? '/scan' : '/consent')}
-            onUnlinked={async () => { setConsentGiven(false); await refresh(); }} />
 
           {/* ── 3. PAYMENT METHODS (Realistic Card Thumbnails) ── */}
           <div className="rounded-3xl bg-white p-5 shadow-sm border border-slate-100">

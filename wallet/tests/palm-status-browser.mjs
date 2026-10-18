@@ -48,7 +48,13 @@ try{
  await panel.getByRole('heading',{name:'Palm not linked',exact:true}).waitFor();
  await page.reload();await panel.getByRole('heading',{name:'Palm not linked',exact:true}).waitFor();
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
- assert.equal(removals,3);assert.deepEqual(errors,[]);
- console.log('PASS: dashboard/profile linked and unlinked states; failed removal retains linked status; verified removal refreshes status; fresh consent onboarding; mobile and desktop. Fixture APIs only.');
+ await page.setViewportSize({width:390,height:844});await page.goto(origin+'/profile');
+ const unlink=panel.getByRole('button',{name:'Unlink palm',exact:true});await unlink.waitFor();
+ const bounds=await unlink.boundingBox();assert.ok(bounds&&bounds.y>=0&&bounds.y+bounds.height<844,'Profile unlink must be visible before scrolling');
+ await page.screenshot({path:artifacts+'/profile-unlinked-mobile.png'});
+ await unlink.click();await panel.getByRole('button',{name:'Yes, unlink palm'}).click();
+ await panel.getByRole('status').waitFor();
+ assert.equal(removals,4);assert.deepEqual(errors,[]);
+ console.log('PASS: mobile/desktop dashboard and profile; failed and confirmed removal; fresh consent; removal remains available when the profile flag is false and is visible without scrolling. Fixture APIs only.');
 }catch(error){await page.screenshot({path:artifacts+'/failure.png',fullPage:true}).catch(()=>{});throw error;}
 finally{await context.close();await browser.close();}

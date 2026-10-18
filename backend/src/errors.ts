@@ -52,15 +52,18 @@ export const paymentRequired = (message: string, details?: Record<string, unknow
 export class PalmProviderError extends AppError {
   readonly providerCode: number | undefined;
   readonly requestId: string | undefined;
+  readonly providerHttpStatus: number | undefined;
 
-  constructor(message: string, opts: { providerCode?: number; requestId?: string } = {}) {
+  constructor(message: string, opts: { providerCode?: number; requestId?: string; httpStatus?: number } = {}) {
     super(502, 'palm_provider_error', message, {
       providerCode: opts.providerCode,
       requestId: opts.requestId,
+      providerHttpStatus: opts.httpStatus,
     });
     this.name = 'PalmProviderError';
     this.providerCode = opts.providerCode;
     this.requestId = opts.requestId;
+    this.providerHttpStatus = opts.httpStatus;
   }
 }
 

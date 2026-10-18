@@ -23,6 +23,7 @@ import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { PalmProviderError } from '../errors.js';
 import { createTokenBucket } from '../lib/rateLimiter.js';
+import { classifyTencentError, isTencentPalmAbsent, isTencentSearchMiss } from './tencentErrors.js';
 import type {
   CompareResult,
   DeleteResult,
@@ -42,7 +43,7 @@ const IMAGE_TYPE_RGB = 1;
 interface Envelope<T> {
   code: number;
   message: string;
-  requestId: string;
+  requestId?: string;
   data: T;
 }
 
@@ -67,12 +68,12 @@ interface SearchData {
 /**
  * One POST to PalmAI, with rate limiting, a timeout, and envelope unwrapping.
  *
- * Every failure mode ends as a PalmProviderError carrying the provider's message
- * and requestId. Those two are safe and useful to surface — the requestId is the
- * only handle support can trace a bad match with. The key and the image are not
- * included, here or anywhere.
+ * Every failure ends as a PalmProviderError carrying the original business code,
+ * HTTP status and request ID. Raw provider messages stay in server diagnostics;
+ * the error middleware supplies fixed public explanations. Keys and images are
+ * never attached to the error.
  */
-async function call<T>(path: string, body: unknown): Promise<{ data: T; requestId: string }> {
+async function call<T>(path: string, body: unknown): Promise<{ data: T; requestId?: string }> {
   await limiter.acquire();
 
   const url = `${config.TENCENT_BASE_URL}${path}`;
@@ -81,14 +82,13 @@ async function call<T>(path: string, body: unknown): Promise<{ data: T; requestI
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  let response: Response;
   try {
     // Store only the credential in Render. Tolerate an accidentally pasted
     // prefix so the outbound header always contains exactly one `Bearer `.
     const credential = (config.TENCENT_PALM_API_KEY as string)
       .replace(/^Bearer\s+/i, '')
       .trim();
-    response = await fetch(url, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${credential}`,
@@ -98,7 +98,35 @@ async function call<T>(path: string, body: unknown): Promise<{ data: T; requestI
       body: JSON.stringify(body),
       signal: controller.signal,
     });
+
+    // Tencent can return a business error with HTTP 400 or another non-2xx.
+    // Parse the envelope before considering the transport status, preserving
+    // both identities. Never log a raw gateway response body.
+    const raw: unknown = await response.json().catch(error => {
+      if (error instanceof Error && error.name === 'AbortError') throw error;
+      return null;
+    });
+    const envelope = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Partial<Envelope<T>> : null;
+    if (typeof envelope?.code === 'number' && Number.isSafeInteger(envelope.code) && envelope.code > 0) {
+      const requestId = typeof envelope.requestId === 'string' ? envelope.requestId : undefined;
+      const diagnostic = typeof envelope.message === 'string' ? envelope.message : 'Palm service rejected the request.';
+      logger.warn(
+        { path, traceId, status: response.status, code: envelope.code, requestId,
+          providerDescription: classifyTencentError(envelope.code, diagnostic).description, message: diagnostic },
+        'palm provider returned an error envelope',
+      );
+      throw new PalmProviderError(diagnostic, {providerCode: envelope.code, requestId, httpStatus: response.status});
+    }
+    if (!response.ok) {
+      logger.warn({path, traceId, status: response.status}, 'palm provider returned a non-2xx response');
+      throw new PalmProviderError(`Palm service returned HTTP ${response.status}.`, {httpStatus: response.status});
+    }
+    if (!envelope || envelope.code !== 0 || !Object.hasOwn(envelope, 'data')) {
+      throw new PalmProviderError('Palm service returned a malformed response.', {httpStatus: response.status});
+    }
+    return {data: envelope.data as T, requestId: typeof envelope.requestId === 'string' ? envelope.requestId : undefined};
   } catch (err) {
+    if (err instanceof PalmProviderError) throw err;
     const aborted = err instanceof Error && err.name === 'AbortError';
     throw new PalmProviderError(
       aborted
@@ -108,40 +136,6 @@ async function call<T>(path: string, body: unknown): Promise<{ data: T; requestI
   } finally {
     clearTimeout(timeout);
   }
-
-  if (!response.ok) {
-    // A non-2xx with no parseable envelope — auth failure, gateway error, etc.
-    // The body is read into the log but never into the thrown message, which a
-    // terminal screen will display.
-    const text = await response.text().catch(() => '');
-    logger.warn(
-      { path, traceId, status: response.status, body: text.slice(0, 500) },
-      'palm provider returned a non-2xx response',
-    );
-    throw new PalmProviderError(`Palm service returned HTTP ${response.status}.`, {
-      providerCode: response.status,
-    });
-  }
-
-  let envelope: Envelope<T>;
-  try {
-    envelope = (await response.json()) as Envelope<T>;
-  } catch {
-    throw new PalmProviderError('Palm service returned a malformed response.');
-  }
-
-  if (envelope.code !== 0) {
-    logger.warn(
-      { path, traceId, code: envelope.code, requestId: envelope.requestId, message: envelope.message },
-      'palm provider returned an error envelope',
-    );
-    throw new PalmProviderError(envelope.message || 'Palm service rejected the request.', {
-      providerCode: envelope.code,
-      requestId: envelope.requestId,
-    });
-  }
-
-  return { data: envelope.data, requestId: envelope.requestId };
 }
 
 const rgbImage = (imageB64: string) => ({ Data: imageB64, ImageType: IMAGE_TYPE_RGB });
@@ -176,15 +170,16 @@ export function createTencentProvider(): PalmProvider {
     },
 
     async search(imageB64: string): Promise<SearchResult | null> {
-      let response: { data: SearchData; requestId: string };
+      let response: { data: SearchData; requestId?: string };
       try {
         response = await call<SearchData>('/palm/openai/search_rgb_palm', {
           RgbImage: rgbImage(imageB64),
         });
       } catch (error) {
-        // Guide §6.2.3: this is a normal search miss, never a verified identity.
+        // Both published code tables define a normal search miss. Neither is
+        // a verified identity.
         // Other application, image, credential and transport failures propagate.
-        if (error instanceof PalmProviderError && error.providerCode === 2080010) return null;
+        if (error instanceof PalmProviderError && isTencentSearchMiss(error.providerCode)) return null;
         throw error;
       }
       const { data, requestId } = response;
@@ -215,7 +210,7 @@ export function createTencentProvider(): PalmProvider {
         }
       } catch (error) {
         // Documented GetPalm result when the user has no registered palms.
-        if (!(error instanceof PalmProviderError && error.providerCode === 2080009)) throw error;
+        if (!(error instanceof PalmProviderError && isTencentPalmAbsent(error.providerCode, error.providerHttpStatus))) throw error;
       }
 
       return { meta: { requestId } };

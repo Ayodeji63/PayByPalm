@@ -1,5 +1,51 @@
 # Enrollment conflict and Pi preview responsiveness
 
+## Tencent error codes returned to the app
+
+The RGB API error table supplied by the user matches the currently published
+table: https://palm.tencent.com/docs/palm-api/错误码 . All 38 supplied codes are
+classified in `src/palm/tencentErrors.ts`. The Open API guide separately lists
+`206...` and `208...` codes: https://palm.tencent.com/docs/kyc-api . Both tables
+remain supported because actual service responses have used the latter codes.
+Codes are never renumbered or inferred from an arithmetic offset.
+
+Examples:
+
+| Tencent code | Interpretation / recovery |
+| --- | --- |
+| `1001004` / `2080003` | Liveness failed; capture a real palm again |
+| `1001005` / `2080004` | Image quality failed; improve framing, stability and lighting |
+| `1001008` / `2080007` | Already bound; verify the existing account, no forced rebinding |
+| `1001019` / `2080013` | Verification expired; start a new scan |
+| `1001023` | Database operation failed **or** user deleted; do not assume which |
+| `1001029` / `2080020` | Platform feature quota exhausted; administrator action |
+| `1001030` | Required mid-air palm feature is not licensed |
+| `1001032` / `2080023` | Provider application missing; administrator action |
+
+API failures include a fixed, actionable explanation and the original numeric
+Tencent code in `error.message`. Allowlisted `error.details` contain `provider`,
+`providerCode`, `providerDescription`, `providerRequestId` and
+`providerHttpStatus`, when available. Top-level `requestId` remains PayByPalm's
+backend request ID, distinct from Tencent's ID. Raw SDK diagnostics are not sent
+to clients. Unknown codes remain visible as unknown failures; the observed
+code-999 alignment signature retains its specific handling described below.
+
+Non-2xx JSON responses are parsed for their business code and request ID rather
+than replacing the code with an HTTP status. A non-JSON response retains its
+HTTP status separately; it does not invent a Tencent business code. Only code
+zero on a successful HTTP response can produce a successful operation.
+
+Search codes `1001013` and `2080010` produce a normal no-match rejection, never a
+verified payer. Their original code/request ID remain in provider logs. During
+post-deletion GetPalm checks only `1001012` / `2080009` on HTTP 200, or verified
+empty palm records, establish absence. An ambiguous error, authentication error
+or unsuccessful HTTP status does not authorize clearing database bindings.
+
+Deploy the updated backend on Render for these messages; no migration or Pi
+credential change is required. These classifications improve diagnostics and
+recovery, but do not repair provider configuration or establish successful
+live matching. Regression tests use mocked provider responses.
+
 ## 1:1 comparison: observed alignment error
 
 At 04:43:13 Lagos time on 18 October 2026, the digits lookup reached Tencent's

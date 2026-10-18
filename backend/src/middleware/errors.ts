@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { AppError, PalmProviderError } from '../errors.js';
 import { logger } from '../logger.js';
+import { classifyTencentError } from '../palm/tencentErrors.js';
 
 export function notFoundHandler(req: Request, res: Response): void {
   res.status(404).json({ error: { code: 'not_found', message: 'Route not found.' }, requestId: req.id });
@@ -26,42 +27,22 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     res.status(status).json({ error: { code, message }, requestId: req.id });
     return;
   }
-  // This exact observed diagnostic identifies an alignment failure. Code 999
-  // alone is not enough to classify other provider failures as image problems.
-  if (err instanceof PalmProviderError && err.providerCode === 999 &&
-      err.message.includes('call palm alignment sdk err: call PalmAlignGap by rect fail, ret=-360')) {
-    log.warn({ providerCode: err.providerCode, providerRequestId: err.requestId }, 'palm image alignment failed');
-    res.status(422).json({
-      error: {
-        code: 'palm_image_alignment_failed',
-        message: 'Palm comparison could not align the image. Face your open palm toward the camera, keep your whole hand visible and hold still, then try again.',
-      },
-      requestId: req.id,
-    });
-    return;
-  }
-  // Observed Tencent duplicate-binding response. Never turn it into a forced
-  // rebind: the existing template's owner must be reconciled by an administrator.
-  if(err instanceof PalmProviderError&&err.providerCode===2080007){
-    log.warn({providerCode:err.providerCode,providerRequestId:err.requestId},'palm registration conflict');
-    res.status(409).json({error:{code:'palm_already_bound',message:'This palm is already registered with the palm service. Use its linked account or contact support to reconcile the previous registration.'},requestId:req.id});
-    return;
-  }
-  // Tencent documents 2080023 as "app does not exist". It must never be
-  // interpreted as a palm mismatch or resolved by deleting an enrollment.
-  if (err instanceof PalmProviderError && err.providerCode === 2080023) {
-    log.error({ providerCode: err.providerCode, providerRequestId: err.requestId }, 'palm application configuration rejected');
-    res.status(503).json({
-      error: {
-        code: 'palm_application_unavailable',
-        message: 'Palm payments are unavailable because the palm provider could not find the configured application. Contact the terminal administrator.',
-      },
-      requestId: req.id,
-    });
+  if (err instanceof PalmProviderError) {
+    const mapped = classifyTencentError(err.providerCode, err.message, err.providerHttpStatus);
+    // Expose an allowlist of diagnostics, including on 5xx responses. Never
+    // pass through arbitrary provider text, request bodies or Error.details.
+    const details = {
+      provider: 'tencent', providerCode: err.providerCode,
+      providerDescription: mapped.description, providerRequestId: err.requestId,
+      providerHttpStatus: err.providerHttpStatus,
+    };
+    log[mapped.status >= 500 ? 'error' : 'warn']({...details, code: mapped.code, status: mapped.status}, 'palm request failed');
+    const suffix = err.providerCode === undefined ? '' : ` (Tencent error ${err.providerCode})`;
+    res.status(mapped.status).json({error: {code: mapped.code, message: mapped.message + suffix, details}, requestId: req.id});
     return;
   }
   if (err instanceof AppError) {
-    const level = err instanceof PalmProviderError || err.status >= 500 ? 'error' : 'warn';
+    const level = err.status >= 500 ? 'error' : 'warn';
     log[level]({ err, code: err.code, status: err.status }, 'request failed');
     const privateError = err.status >= 500 || err.code === 'signup_failed';
     const publicSignupErrors: Record<string, string> = {
@@ -81,8 +62,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
       signup_completion_failed: 'Your email is verified. Please sign in, or request a new confirmation link to finish setup.',
       pin_setup_failed: 'Your email is verified, but PIN setup failed. Please request a new confirmation link to finish setup.',
     };
-    const message = publicSignupErrors[err.code] ?? (err instanceof PalmProviderError ? 'Palm service is unavailable. Please try again.'
-      : privateError ? 'Unable to complete the request. Please try again.' : err.message);
+    const message = publicSignupErrors[err.code] ?? (privateError ? 'Unable to complete the request. Please try again.' : err.message);
     if (err.status === 429) res.setHeader('Retry-After', String(err.details?.retryAfter ?? 60));
     res.status(err.status).json({
       error: { code: err.code, message, ...(!privateError && err.details ? { details: err.details } : {}) },

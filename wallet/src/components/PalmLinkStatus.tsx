@@ -40,7 +40,7 @@ export function PalmLinkStatus({ linked, onEnroll, onUnlinked }: {
       </div>
       {removed && <p role="status" className="mt-3 text-sm text-emerald-800">Palm removed from Tencent and PayByPalm. You can enroll again.</p>}
       {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
-      {isLinked ? confirming ? (
+      {confirming ? (
         <div className="mt-4">
           <p className="text-sm text-slate-700">Remove your registered palms from Tencent and your PayByPalm account? You’ll need to enroll again before paying with your palm.</p>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -48,8 +48,13 @@ export function PalmLinkStatus({ linked, onEnroll, onUnlinked }: {
             <Button variant="secondary" disabled={busy} onClick={() => {setConfirming(false);setError('');}}>Keep linked</Button>
           </div>
         </div>
-      ) : <Button variant="secondary" className="mt-4" onClick={() => setConfirming(true)}>Unlink palm</Button>
-      : <Button className="mt-4" onClick={onEnroll}>Link palm</Button>}
+      ) : (
+        <div className="mt-4 space-y-2">
+          {!isLinked && <Button full onClick={onEnroll}>Link palm</Button>}
+          <Button full variant="secondary" onClick={() => { setConfirming(true); setError(''); }}>Unlink palm</Button>
+          {!isLinked && !removed && <p className="text-sm text-slate-600">Previously enrolled a palm? You can remove it here even if its link is no longer shown.</p>}
+        </div>
+      )}
     </section>
   );
 }
