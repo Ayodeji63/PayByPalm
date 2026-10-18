@@ -1,5 +1,32 @@
 # Enrollment conflict and Pi preview responsiveness
 
+## 1:1 comparison: observed alignment error
+
+At 04:43:13 Lagos time on 18 October 2026, the digits lookup reached Tencent's
+`compare_rgb_palm`, which returned code `999` with this diagnostic:
+`call palm alignment sdk err: call PalmAlignGap by rect fail, ret=-360`.
+Provider request ID: `b666b41df2ab3c9aba1e75b539d3b490`.
+
+This establishes an alignment-stage failure, not a successful identity match or
+a card decline. The precise meaning of the internal `-360` return value was not
+found in the reviewed public documentation. Image framing, blur, palm orientation,
+lighting and provider SDK behavior are possible causes, not confirmed diagnoses.
+No captured palm image is retained, so the actual failed frame cannot be inspected.
+
+The source submits the full-resolution camera JPEG, rather than MediaPipe's small
+guidance preview. The three-frame ranking measures whole-frame sharpness; hand
+landmarks and that ranking do not guarantee Tencent can align the palm image.
+Present the enrolled palm facing the camera, keep the whole hand visible, avoid
+tilt/movement, and use even illumination without glare. A clear repeat capture
+that still fails should be escalated with the provider request ID and diagnostic.
+
+The backend maps only this exact code/signature to HTTP 422,
+`palm_image_alignment_failed`, with a fixed recapture instruction. Other code-999
+responses retain their generic error treatment. Deploy the backend for the new
+message. Matching thresholds, image format, capture logic and payment flow have
+not been changed by this error-classification fix. The 1:N `2080023` application
+failure is a separate observed problem.
+
 ## Payment search: application missing
 
 A later read-only audit check found a successful registration at

@@ -18,6 +18,7 @@
  * gallery-list or bulk-delete operation.
  */
 
+import { randomBytes } from 'node:crypto';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { PalmProviderError } from '../errors.js';
@@ -75,6 +76,8 @@ async function call<T>(path: string, body: unknown): Promise<{ data: T; requestI
   await limiter.acquire();
 
   const url = `${config.TENCENT_BASE_URL}${path}`;
+  // Guide §3.3: optional 32-character lowercase hex correlation ID.
+  const traceId = randomBytes(16).toString('hex');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -90,6 +93,7 @@ async function call<T>(path: string, body: unknown): Promise<{ data: T; requestI
       headers: {
         Authorization: `Bearer ${credential}`,
         'Content-Type': 'application/json; charset=utf-8',
+        'X-TraceId': traceId,
       },
       body: JSON.stringify(body),
       signal: controller.signal,
@@ -111,7 +115,7 @@ async function call<T>(path: string, body: unknown): Promise<{ data: T; requestI
     // terminal screen will display.
     const text = await response.text().catch(() => '');
     logger.warn(
-      { path, status: response.status, body: text.slice(0, 500) },
+      { path, traceId, status: response.status, body: text.slice(0, 500) },
       'palm provider returned a non-2xx response',
     );
     throw new PalmProviderError(`Palm service returned HTTP ${response.status}.`, {
@@ -128,7 +132,7 @@ async function call<T>(path: string, body: unknown): Promise<{ data: T; requestI
 
   if (envelope.code !== 0) {
     logger.warn(
-      { path, code: envelope.code, requestId: envelope.requestId, message: envelope.message },
+      { path, traceId, code: envelope.code, requestId: envelope.requestId, message: envelope.message },
       'palm provider returned an error envelope',
     );
     throw new PalmProviderError(envelope.message || 'Palm service rejected the request.', {
@@ -172,16 +176,18 @@ export function createTencentProvider(): PalmProvider {
     },
 
     async search(imageB64: string): Promise<SearchResult | null> {
-      const { data, requestId } = await call<SearchData>('/palm/openai/search_rgb_palm', {
-        RgbImage: rgbImage(imageB64),
-      });
-
-      // The published contract does not say how "nobody matched" is expressed.
-      // An empty UserId is treated as a clean no-match rather than an error; if a
-      // gallery miss turns out to arrive as a non-zero `code` instead, it will
-      // surface as a PalmProviderError and show up in palm_audit with that code,
-      // which is exactly where you would look. Revisit once observed against the
-      // real service.
+      let response: { data: SearchData; requestId: string };
+      try {
+        response = await call<SearchData>('/palm/openai/search_rgb_palm', {
+          RgbImage: rgbImage(imageB64),
+        });
+      } catch (error) {
+        // Guide §6.2.3: this is a normal search miss, never a verified identity.
+        // Other application, image, credential and transport failures propagate.
+        if (error instanceof PalmProviderError && error.providerCode === 2080010) return null;
+        throw error;
+      }
+      const { data, requestId } = response;
       if (!data?.UserId) return null;
 
       return {

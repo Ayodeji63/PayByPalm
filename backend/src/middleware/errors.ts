@@ -26,6 +26,20 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     res.status(status).json({ error: { code, message }, requestId: req.id });
     return;
   }
+  // This exact observed diagnostic identifies an alignment failure. Code 999
+  // alone is not enough to classify other provider failures as image problems.
+  if (err instanceof PalmProviderError && err.providerCode === 999 &&
+      err.message.includes('call palm alignment sdk err: call PalmAlignGap by rect fail, ret=-360')) {
+    log.warn({ providerCode: err.providerCode, providerRequestId: err.requestId }, 'palm image alignment failed');
+    res.status(422).json({
+      error: {
+        code: 'palm_image_alignment_failed',
+        message: 'Palm comparison could not align the image. Face your open palm toward the camera, keep your whole hand visible and hold still, then try again.',
+      },
+      requestId: req.id,
+    });
+    return;
+  }
   // Observed Tencent duplicate-binding response. Never turn it into a forced
   // rebind: the existing template's owner must be reconciled by an administrator.
   if(err instanceof PalmProviderError&&err.providerCode===2080007){

@@ -67,7 +67,7 @@ export function rejectWithout(reason: RejectReason): PolicyOutcome {
 export function explain(outcome: PolicyOutcome): string {
   switch (outcome.reason) {
     case 'no_candidates':
-      return 'No enrolled palm matches those digits. Check the number and try again.';
+      return 'No enrolled account matches those phone digits. Use the last 4 digits of the phone number in your wallet profile.';
     case 'ambiguous_bin':
       return 'Too many accounts share those digits. Ask for more digits of the phone number.';
     case 'low_score':

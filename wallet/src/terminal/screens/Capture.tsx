@@ -129,7 +129,7 @@ export function Capture({
         {/* Controls — 40% */}
         <div className="flex min-w-0 flex-1 flex-col">
           {illuminationWarning&&<p role="status" className="t-sm text-warning">{illuminationWarning}</p>}
-          <p className="t-sm text-ink-muted">Last 4 digits (optional)</p>
+          <p className="t-sm text-ink-muted">Last 4 phone digits (optional)</p>
           <div className="mt-2">
             <DigitBoxes value={last4} />
           </div>

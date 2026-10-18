@@ -25,3 +25,25 @@ describe('verified Tencent deletion',()=>{
   await expect(createTencentProvider().delete('user')).rejects.toThrow('could not be verified');
  });
 });
+
+describe('pasted Open API guide compatibility',()=>{
+ it('sends server-side Bearer authentication, JSON and a fresh 32-hex trace ID for each call',async()=>{
+  const fetch=vi.fn().mockResolvedValue(response(0,{IsMatch:true,Score:92}));vi.stubGlobal('fetch',fetch);
+  const provider=createTencentProvider();await provider.compare('user','test-image');await provider.compare('user','test-image');
+  const headers=fetch.mock.calls.map(([,options])=>options.headers);
+  expect(headers[0]).toMatchObject({Authorization:'Bearer test-credential','Content-Type':'application/json; charset=utf-8'});
+  expect(headers[0]['X-TraceId']).toMatch(/^[a-f0-9]{32}$/);expect(headers[1]['X-TraceId']).not.toBe(headers[0]['X-TraceId']);
+  expect(fetch.mock.calls[0]![0]).toBe('https://palm.example.test/palm/openai/compare_rgb_palm');
+  expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({CompareUserId:'user',RgbImage:{Data:'test-image',ImageType:1}});
+ });
+ it('treats documented no-match code 2080010 as no match and does not invent a SessionId',async()=>{
+  const fetch=vi.fn().mockResolvedValue(response(2080010));vi.stubGlobal('fetch',fetch);
+  await expect(createTencentProvider().search('test-image')).resolves.toBeNull();
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch.mock.calls[0]![0]).toBe('https://palm.example.test/palm/openai/search_rgb_palm');
+ });
+ it.each([2080023,2060200,999])('preserves real provider failure %s rather than calling it a no-match',async code=>{
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(code)));
+  await expect(createTencentProvider().search('test-image')).rejects.toMatchObject({providerCode:code});
+ });
+});
