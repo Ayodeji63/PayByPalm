@@ -25,7 +25,7 @@ function load(relativePath, globals = {}) {
   const exports = {};
   vm.runInNewContext(compiled, {
     exports, localStorage: storage(), sessionStorage: storage(),
-    DOMException, setTimeout, URL, URLSearchParams, ...globals,
+    DOMException, Error, setTimeout, URL, URLSearchParams, ...globals,
   });
   return exports;
 }
@@ -369,6 +369,36 @@ test('lost settlement response is recovered using the same transaction', async (
   assert.deepEqual(confirmed, [paymentId, paymentId]);
   assert.equal(app.find('Result').props.ok, true);
   assert.equal(app.recovery.loadPendingSale(), null);
+});
+
+test('cancel recovers a lost initiation response using the same sale reference', async () => {
+  const references = [], cancelled = [];
+  const app = terminalHarness({
+    createTransaction: async (_amount, _description, saleId) => {
+      references.push(saleId);
+      if (references.length === 1) throw new Error('Creation unavailable');
+      return { transactionId: paymentId, amountMinor: 100, status: 'pending' };
+    },
+    status: async () => ({ status: 'pending', amountMinor: 100 }),
+    cancel: async id => { cancelled.push(id); return { status: 'cancelled' }; },
+  });
+  app.find('Idle').props.onNewSale(); app.find('Amount').props.onCharge(100);
+  await flushActions();
+  assert.equal(app.find('p', 'Creation unavailable').props.role, 'alert');
+  app.find('Button', 'Cancel pending sale').props.onClick(); await flushActions();
+  assert.equal(references.length, 2); assert.equal(references[0], references[1]);
+  assert.deepEqual(cancelled, [paymentId]); assert.equal(app.recovery.loadPendingSale(), null);
+  assert.ok(app.find('Idle'));
+});
+
+test('failed cancellation preserves the sale and shows the actual error', async () => {
+  const sessionStorage = storage();
+  const recovery = load('../src/terminal/paymentRecovery.ts', { sessionStorage });
+  recovery.savePendingSale({saleId:'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',amountMinor:100,confirming:true,transactionId:paymentId});
+  const app = terminalHarness({status:async()=>({status:'processing'}),cancel:async()=>{throw new Error('Card charge is still processing');}},sessionStorage);
+  app.find('Button','Cancel pending sale').props.onClick(); await flushActions();
+  assert.ok(app.recovery.loadPendingSale()); assert.equal(app.find('Idle'),null);
+  assert.ok(app.find('p','Card charge is still processing'));
 });
 
 test('corrupt recovery storage cannot silently enable a fresh sale', async () => {

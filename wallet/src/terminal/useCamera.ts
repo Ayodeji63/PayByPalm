@@ -16,7 +16,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import type { HandLandmarker, NormalizedLandmark } from '@mediapipe/tasks-vision';
+import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
+import { getPalmTracker, type PalmTracker } from './palmTracker.js';
 import { TIMINGS } from './config.js';
 import { captureWithLight, type LEDOperation } from './leds.js';
 
@@ -28,48 +29,12 @@ const MEASURE_H = 144;
 
 const JPEG_QUALITY = 0.85;
 
-// Inference is synchronous. Two frames per second keeps Chromium responsive on
-// the Pi while still giving useful placement feedback.
+// Placement guidance uses a reduced preview in a worker; capture stays full-resolution.
 const LANDMARK_INTERVAL_MS = 450;
 const STABLE_LANDMARK_DELTA = 0.009;
 const STABLE_LANDMARK_FRAMES = 4;
-const MEDIAPIPE_WASM =
-  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm';
-const HAND_MODEL =
-  'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
-
-let palmLandmarkerPromise: Promise<HandLandmarker> | null = null;
-
-/**
- * Start the expensive MediaPipe download/initialisation once and retain it for
- * the lifetime of the kiosk. The terminal can warm this while it is idle, so a
- * customer never has to wait for the model after presenting their palm.
- */
-function loadPalmLandmarker(): Promise<HandLandmarker> {
-  if (!palmLandmarkerPromise) {
-    palmLandmarkerPromise = (async () => {
-      const { FilesetResolver, HandLandmarker: HandLandmarkerRuntime } =
-        await import('@mediapipe/tasks-vision');
-      const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM);
-      return HandLandmarkerRuntime.createFromOptions(vision, {
-        baseOptions: { modelAssetPath: HAND_MODEL, delegate: 'CPU' },
-        runningMode: 'VIDEO',
-        numHands: 1,
-        minHandDetectionConfidence: 0.65,
-        minHandPresenceConfidence: 0.65,
-        minTrackingConfidence: 0.6,
-      });
-    })().catch((error: unknown) => {
-      // Permit a later retry after a transient network failure.
-      palmLandmarkerPromise = null;
-      throw error;
-    });
-  }
-  return palmLandmarkerPromise;
-}
-
-export function preloadPalmRecognition(): void {
-  void loadPalmLandmarker().catch(() => undefined);
+export function preloadPalmRecognition():void{
+ try{void getPalmTracker().initialize().catch(()=>undefined);}catch{/* Manual capture remains available. */}
 }
 
 export type AutoCaptureState =
@@ -163,6 +128,7 @@ export function useCamera(active: boolean) {
             // through Chromium + PipeWire on the PayByPalm Raspberry Pi.
             width: { ideal: 1280 },
             height: { ideal: 720 },
+            frameRate: {ideal:24,max:30},
           },
           audio: false,
         });
@@ -285,7 +251,7 @@ export function useAutoCapture(
     }
 
     let stopped = false;
-    let landmarker: HandLandmarker | null = null;
+    let landmarker: PalmTracker | null = null;
     let timer: number | undefined;
     let previous: HandLandmark[] | null = null;
     let stableCount = 0;
@@ -293,17 +259,19 @@ export function useAutoCapture(
     const distance = (a: HandLandmark, b: HandLandmark) =>
       Math.hypot(a.x - b.x, a.y - b.y);
 
-    const sample = () => {
+    const sample = async () => {
       const video = videoRef.current;
       if (!video || !landmarker || video.readyState < 2 || !video.videoWidth) return;
 
       let hands: HandLandmark[][];
       try {
-        hands = landmarker.detectForVideo(video, performance.now()).landmarks;
+        const result=await landmarker.detect(video);
+        if(stopped||result===null)return;
+        hands=result;
       } catch {
         // ML is an enhancement, never a reason to take down the camera. Leave
         // manual capture available if a frame cannot be processed.
-        setState('error');
+        if(!stopped)setState('error');
         return;
       }
       const hand = hands[0];
@@ -364,10 +332,11 @@ export function useAutoCapture(
 
     void (async () => {
       try {
-        landmarker = await loadPalmLandmarker();
+        landmarker=getPalmTracker();
+        await landmarker.initialize();
         if (stopped) return;
         setState('place');
-        timer = window.setInterval(sample, LANDMARK_INTERVAL_MS);
+        timer = window.setInterval(()=>void sample(), LANDMARK_INTERVAL_MS);
       } catch {
         if (!stopped) setState('error');
       }

@@ -105,6 +105,10 @@ texture. Do not stack this with another brightness multiplier. Set `clockwise`
 to false to reverse the chase (LED 0 → 11 → 10...). Apparent clockwise direction
 also depends on how the ring is mounted. Restart the kiosk after changing settings.
 
+White also illuminates the ready-camera positioning preview, so automatic hand
+detection does not depend on an unlit palm. The preview renews the white watchdog
+every five seconds while active, including while the hand model loads or is
+unavailable. It stops renewing during acquisition/processing and on navigation.
 Exposure settles for **300 ms after the white frame is acknowledged by Python**,
 before the existing three-frame camera burst. This is adjustable as
 `TIMINGS.ledExposureSettleMs` in `wallet/src/terminal/config.ts`; rebuild/deploy
@@ -116,10 +120,10 @@ registration follow acquisition; the image format/API payload is unchanged.
 
 | Actual application event | Ring |
 | --- | --- |
-| Terminal identity/session loading, camera/model initialization, backend processing or card-charge confirmation | Blue chase, one bright pixel, approximately 0.1 s per step |
-| Enrollment or payment camera burst | All 12 steady white, capture brightness |
+| Terminal identity/session loading, camera startup, backend processing or card-charge confirmation | Blue chase, one bright pixel, approximately 0.1 s per step |
+| Ready-camera hand positioning and enrollment/payment capture burst | All 12 steady white, capture brightness |
 | Backend returns completed enrollment after binding, profile and session writes | All 12 green, approximately 2 s, then off |
-| Camera/model failure, rejected palm, enrollment failure or backend error | All 12 red, approximately 2 s, then off |
+| Camera failure, rejected palm, enrollment failure or backend error | All 12 red, approximately 2 s; a ready camera then returns to white for retry |
 | Verified payment receipt | Green feedback; an uncertain charge never displays success |
 | Idle / waiting for phone QR claim / normal navigation cleanup | Off |
 

@@ -43,6 +43,14 @@ interface Identity {
   terminalLabel: string;
 }
 
+function recoveryError(err: unknown): string {
+  if (err instanceof TerminalApiError) {
+    const reference = err.requestId ? ` Support reference: ${err.requestId}.` : '';
+    return `${err.message}${reference}`;
+  }
+  return err instanceof Error ? err.message : 'Could not check this sale. Keep its reference and try again.';
+}
+
 export default function TerminalApp() {
   const [screen, setScreen] = useState<Screen>(() => {
     try { return { name: loadPendingSale() ? 'recovery' : 'idle' }; }
@@ -136,9 +144,10 @@ export default function TerminalApp() {
       savePendingSale({ ...sale, transactionId: txn.transactionId });
       leds.close();
       setScreen({ name: 'capture', transactionId: txn.transactionId, amountMinor: txn.amountMinor });
-    } catch {
+    } catch (err) {
       void leds.state('ERROR');
       // Creation might have committed. Preserve the sale reference for recovery.
+      setStepUpError(recoveryError(err));
       setScreen({ name: 'recovery' });
     } finally { setBusy(false); }
   }
@@ -196,13 +205,27 @@ export default function TerminalApp() {
 
   /** Keep uncertain outcomes attached to the original sale. */
   const abandon = useCallback(async (transactionId?: string) => {
+    if (busy) return;
+    setBusy(true);
+    setStepUpError(null);
     try {
-      const sale = loadPendingSale();
-      const id = transactionId ?? sale?.transactionId;
-      if (!id && sale) { setScreen({ name: 'recovery' }); return; }
+      let sale = loadPendingSale();
+      let id = transactionId ?? sale?.transactionId;
+      if (!id && sale) {
+        // Creation may have committed before its response was lost. Recover
+        // that same intent before cancelling; never create a new sale ID.
+        if (sale.confirming) throw new Error('This payment requires administrator review. Its transaction reference is missing.');
+        const txn = await terminalApi.createTransaction(sale.amountMinor, sale.description, sale.saleId);
+        id = txn.transactionId;
+        sale = { ...sale, transactionId: id };
+        savePendingSale(sale);
+      }
       if (id) {
         const current = await terminalApi.status(id);
-        if (current.status === 'settled') { setScreen({ name: 'recovery' }); return; }
+        if (current.status === 'settled') {
+          setStepUpError('This payment has completed. Check this payment to retrieve its receipt.');
+          setScreen({ name: 'recovery' }); return;
+        }
         if (current.status === 'failed' || current.status === 'cancelled') {
           clearPendingSale();
           toIdle();
@@ -213,8 +236,9 @@ export default function TerminalApp() {
       }
       clearPendingSale();
       toIdle();
-    } catch { setScreen({ name: 'recovery' }); }
-  }, [toIdle]);
+    } catch (err) { setStepUpError(recoveryError(err)); setScreen({ name: 'recovery' }); }
+    finally { setBusy(false); }
+  }, [toIdle, busy]);
 
   async function recoverSale() {
     if (busy) return;
@@ -242,11 +266,16 @@ export default function TerminalApp() {
         setScreen({ name: 'result', ok: false, title: 'Payment not completed', detail: 'No new charge was made. Start a new sale only if needed.' });
       } else {
         // An interrupted authorization without a Confirm tap is abandoned.
-        await abandon(id);
+        // recoverSale owns the busy state; cancel directly rather than invoke
+        // the separately guarded Cancel action.
+        const cancelled = await terminalApi.cancel(id);
+        if (cancelled.status !== 'cancelled') throw new Error('Cancellation not confirmed.');
+        clearPendingSale();
+        toIdle();
       }
-    } catch {
+    } catch (err) {
       void leds.state('ERROR');
-      setStepUpError('Payment status is unknown. Keep this sale open and retry when connected.');
+      setStepUpError(recoveryError(err));
       setScreen({ name: 'recovery' });
     } finally { setBusy(false); }
   }

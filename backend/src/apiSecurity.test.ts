@@ -147,6 +147,17 @@ describe('API security boundaries', () => {
     const body = await result.text();
     expect(result.status).toBe(500); expect(body).not.toContain('diagnostic-marker'); expect(body).not.toContain('secret');
   });
+  it('explains missing terminal payment setup without exposing database diagnostics', async () => {
+    mocks.confirm.mockRejectedValue(new AppError(503, 'payment_setup_required', 'private-schema-diagnostic'));
+    const result = await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/confirm', {}, { 'X-Terminal-Key': 'test' });
+    const body = await result.text();
+    expect(result.status).toBe(503); expect(body).toContain('terminal sale recovery database update'); expect(body).not.toContain('private-schema-diagnostic');
+  });
+  it('reports the observed duplicate palm registration as a conflict, without raw provider text',async()=>{
+    mocks.authenticate.mockRejectedValue(new PalmProviderError('private-provider-diagnostic',{providerCode:2080007,requestId:'provider-reference'}));
+    const r=await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/authenticate',{imageB64:'AAAA'},{'X-Terminal-Key':'test'});
+    const body=await r.json() as {error:{code:string;message:string}};expect(r.status).toBe(409);expect(body.error.code).toBe('palm_already_bound');expect(body.error.message).toContain('already registered');expect(JSON.stringify(body)).not.toContain('private-provider-diagnostic');
+  });
   it('hides provider diagnostic text', async () => {
     mocks.authenticate.mockRejectedValue(new PalmProviderError('provider-secret-marker'));
     const result = await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/authenticate', { imageB64: 'AAAA' }, { 'X-Terminal-Key': 'test' });

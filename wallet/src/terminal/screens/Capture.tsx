@@ -46,8 +46,9 @@ export function Capture({
   useEffect(()=>{
     if(busy||captureInProgress.current)return;
     const leds=beginLEDOperation();operation.current=leds;
-    void leds.state(status!=='ready'||autoCaptureState==='loading'?(status==='starting'||status==='ready'?'LOADING':'ERROR'):autoCaptureState==='error'?'ERROR':'OFF');
-  },[status,autoCaptureState,busy]);
+    void leds.state(status==='ready'?'CAPTURING':status==='starting'?'LOADING':'ERROR');
+    if(status==='ready'){const timer=window.setInterval(()=>void leds.state('CAPTURING'),5000);return ()=>window.clearInterval(timer);}
+  },[status,busy]);
 
   async function scan(useLast4: boolean) {
     if (captureInProgress.current || busy || status !== 'ready') return;

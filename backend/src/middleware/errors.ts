@@ -26,11 +26,19 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     res.status(status).json({ error: { code, message }, requestId: req.id });
     return;
   }
+  // Observed Tencent duplicate-binding response. Never turn it into a forced
+  // rebind: the existing template's owner must be reconciled by an administrator.
+  if(err instanceof PalmProviderError&&err.providerCode===2080007){
+    log.warn({providerCode:err.providerCode,providerRequestId:err.requestId},'palm registration conflict');
+    res.status(409).json({error:{code:'palm_already_bound',message:'This palm is already registered with the palm service. Use its linked account or contact support to reconcile the previous registration.'},requestId:req.id});
+    return;
+  }
   if (err instanceof AppError) {
     const level = err instanceof PalmProviderError || err.status >= 500 ? 'error' : 'warn';
     log[level]({ err, code: err.code, status: err.status }, 'request failed');
     const privateError = err.status >= 500 || err.code === 'signup_failed';
     const publicSignupErrors: Record<string, string> = {
+      payment_setup_required: 'Sales are unavailable until the administrator applies the terminal sale recovery database update.',
       card_link_not_configured: 'Card linking is not configured yet. Please contact support.',
       card_storage_unavailable: 'Card storage is unavailable. Please try again later.',
       payment_service_unavailable: 'The payment service could not confirm this request. Check its status before trying again.',

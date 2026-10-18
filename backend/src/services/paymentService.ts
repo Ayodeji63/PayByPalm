@@ -91,6 +91,9 @@ export async function createTransaction(
     p_description: description ?? null,
   });
   if (error) {
+    if (['PGRST202', '42703', '42883'].includes(error.code)) {
+      throw new AppError(503, 'payment_setup_required', 'Sale creation requires a database update. Ask the administrator to apply the terminal sale recovery migration.');
+    }
     const mapped = fromPostgresError(error);
     if (mapped) throw mapped;
     throw new AppError(500, 'db_error', 'Could not create transaction.');

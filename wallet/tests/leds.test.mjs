@@ -34,3 +34,26 @@ test('cancelled operations cannot switch off or show success over a newer captur
 test('ordinary browser terminals and mobile devices require no bridge and keep capture working',async()=>{
  const h=harness(false),op=h.beginLEDOperation();assert.equal(await h.captureWithLight(op,async()=>42,1),42);assert.deepEqual(h.events,[]);
 });
+
+test('payment and enrollment previews stay white even while the hand model loads or fails',()=>{
+ for(const name of ['Capture','Enrol'])for(const guidance of ['loading','error','place']){
+  const effects=[],events=[],intervals=[];let slot=0;
+  const jsx=(type,props)=>({type,props});
+  const dependencies={
+   react:{useEffect:fn=>effects.push(fn),useCallback:fn=>fn,useRef:current=>({current}),useState:initial=>[name==='Enrol'&&slot++===0?'capturing':initial,()=>{}]},
+   'react/jsx-runtime':{jsx,jsxs:jsx},'qrcode.react':{QRCodeSVG:'QR'},
+   '../leds.js':{beginLEDOperation:()=>({state:async state=>{events.push(state);},close:()=>{},active:()=>true})},
+   '../useCamera.js':{useCamera:()=>({status:'ready',videoRef:{current:null}}),useAutoCapture:()=>({state:guidance,landmarks:[]})},
+   '../api.js':{},'../config.js':{TIMINGS:{}},'../../lib/money.js':{formatNaira:()=>''},'../ui.js':{},
+  };
+  const source=readFileSync(new URL(`../src/terminal/screens/${name}.tsx`,import.meta.url),'utf8');
+  const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+  const exports={};vm.runInNewContext(compiled,{exports,require:key=>dependencies[key],window:{setInterval:(fn,ms)=>{intervals.push({fn,ms});return 1;},clearInterval:()=>{}}});
+  exports[name]({amountMinor:100});
+  // First effects are operation ownership cleanup and the camera LED lifecycle.
+  effects[0]();const cleanup=effects[1]();
+  assert.deepEqual(events,['CAPTURING'],`${name}: ${guidance}`);
+  assert.equal(intervals[0].ms,5000);intervals[0].fn();
+  assert.deepEqual(events,['CAPTURING','CAPTURING']);cleanup();
+ }
+});

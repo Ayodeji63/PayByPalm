@@ -45,11 +45,12 @@ export function Enrol({ onExit }: { onExit: () => void }) {
   const operation=useRef<LEDOperation|null>(null);
   useEffect(()=>()=>operation.current?.close(),[]);
   useEffect(()=>{
-    if(busy||captureInProgress.current||(error&&phase==='capturing'))return;
+    if(busy||captureInProgress.current)return;
     const leds=beginLEDOperation();operation.current=leds;
-    const state=phase==='done'?'SUCCESS':phase==='failed'||phase==='expired'?'ERROR':phase==='creating'?'LOADING':phase==='capturing'?(status!=='ready'?(status==='starting'?'LOADING':'ERROR'):autoCaptureState==='loading'?'LOADING':autoCaptureState==='error'?'ERROR':'OFF'):'OFF';
+    const state=phase==='done'?'SUCCESS':phase==='failed'||phase==='expired'?'ERROR':phase==='creating'?'LOADING':phase==='capturing'?(status==='ready'?'CAPTURING':status==='starting'?'LOADING':'ERROR'):'OFF';
     void leds.state(state);
-  },[phase,status,autoCaptureState,busy,error]);
+    if(state==='CAPTURING'){const timer=window.setInterval(()=>void leds.state('CAPTURING'),5000);return ()=>window.clearInterval(timer);}
+  },[phase,status,busy]);
 
   const newSession = useCallback(async () => {
     setPhase('creating');
@@ -151,10 +152,10 @@ export function Enrol({ onExit }: { onExit: () => void }) {
     if (autoCaptureState === 'loading' || autoCaptureState === 'place') {
       autoCaptureFired.current = false;
     }
-    if (autoCaptureState !== 'ready' || autoCaptureFired.current || busy) return;
+    if (autoCaptureState !== 'ready' || autoCaptureFired.current || busy || error) return;
     autoCaptureFired.current = true;
     void capture();
-  }, [autoCaptureState, busy]);
+  }, [autoCaptureState, busy,error]);
 
   const captureCaption =
     autoCaptureState === 'loading'
