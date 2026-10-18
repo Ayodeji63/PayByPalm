@@ -1,120 +1,31 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-const mocks = vi.hoisted(() => ({
-  config: { isProduction: false, AUTH_VALIDITY_SECONDS: 60, PALM_ACCEPT_SCORE: 85, PALM_STEP_UP_SCORE: 70, MAX_CANDIDATES: 4 },
-  single: vi.fn(), eq: vi.fn(), update: vi.fn(), rpc: vi.fn(),
-  balance: vi.fn(), profile: vi.fn(), wallet: vi.fn(), search: vi.fn(),
-}));
-vi.mock('../config.js', () => ({ config: mocks.config }));
-vi.mock('../db/client.js', () => {
-  const query = {
-    select: vi.fn().mockReturnThis(), eq: mocks.eq.mockReturnThis(),
-    update: mocks.update.mockReturnThis(), maybeSingle: mocks.single,
-  };
-  return { db: { from: () => query, rpc: mocks.rpc } };
-});
-vi.mock('../db/queries.js', () => ({
-  getBalanceMinor: mocks.balance, getProfile: mocks.profile,
-  getWalletAccountId: mocks.wallet, getCandidatesByLast4: vi.fn(),
-  maskName: (name: string) => name, maskBalanceMinor: (value: number) => value,
-}));
-vi.mock('../palm/index.js', () => ({ palm: { search: mocks.search } }));
-vi.mock('../lib/image.js', () => ({ normaliseImage: (data: string) => ({ data }) }));
-import { authenticateTransaction, confirmTransaction, createTransaction, topUp } from './paymentService.js';
-
-const terminal = { id: 'terminal', merchantId: 'merchant', merchantName: 'Merchant', label: 'Counter' };
-const profile = { id: 'payer', full_name: 'Payer', pin_hash: null };
-const pending = { id: 'transaction', terminal_id: terminal.id, amount_minor: 100, status: 'pending' };
-const authenticated = { ...pending, status: 'authenticated', matched_user_id: profile.id, match_score: 92, authenticated_at: new Date().toISOString() };
-const settled = { ...authenticated, status: 'settled', settled_at: new Date().toISOString() };
-const log = { info: vi.fn(), warn: vi.fn() } as any;
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  mocks.config.isProduction = false;
-  mocks.single.mockReset(); mocks.rpc.mockReset();
-  mocks.balance.mockReset().mockResolvedValue(1000);
-  mocks.profile.mockReset().mockResolvedValue(profile);
-  mocks.wallet.mockReset().mockResolvedValue('account');
-  mocks.search.mockReset().mockResolvedValue({ userId: profile.id, score: 92 });
-});
-
-describe('payment integrity', () => {
-  it('never credits sandbox funds in production', async () => {
-    mocks.config.isProduction = true;
-    await expect(topUp(profile.id, 100)).rejects.toMatchObject({ status: 403 });
-    expect(mocks.rpc).not.toHaveBeenCalled();
-  });
-  it('uses the stable sale reference for initiation', async () => {
-    mocks.rpc.mockResolvedValue({ data: pending, error: null });
-    await createTransaction(terminal, 100, 'Lunch', 'sale-reference');
-    expect(mocks.rpc).toHaveBeenCalledWith('create_terminal_transaction', {
-      p_terminal_id: terminal.id, p_sale_id: 'sale-reference', p_amount: 100, p_description: 'Lunch',
-    });
-  });
-  it('rejects the losing authentication update instead of returning its payer', async () => {
-    mocks.single.mockResolvedValueOnce({ data: pending, error: null }).mockResolvedValueOnce({ data: null, error: null });
-    await expect(authenticateTransaction(pending.id, terminal, 'image', undefined, log))
-      .rejects.toMatchObject({ code: 'invalid_transaction_state' });
-    expect(mocks.eq).toHaveBeenCalledWith('status', 'pending');
-  });
-  it('does not overwrite another outcome on insufficient funds', async () => {
-    mocks.balance.mockResolvedValue(0);
-    mocks.single.mockResolvedValueOnce({ data: pending, error: null }).mockResolvedValueOnce({ data: null, error: null });
-    await expect(authenticateTransaction(pending.id, terminal, 'image', undefined, log))
-      .rejects.toMatchObject({ code: 'invalid_transaction_state' });
-    expect(mocks.eq).toHaveBeenCalledWith('status', 'pending');
-  });
-  it('does not swallow a failed insufficient-funds state update', async () => {
-    mocks.balance.mockResolvedValue(0);
-    mocks.single.mockResolvedValueOnce({ data: pending, error: null }).mockResolvedValueOnce({ data: null, error: { message: 'failed' } });
-    await expect(authenticateTransaction(pending.id, terminal, 'image', undefined, log))
-      .rejects.toMatchObject({ code: 'db_error' });
-  });
-  it('does not authenticate a step-up payer with no PIN', async () => {
-    mocks.search.mockResolvedValue({ userId: profile.id, score: 78 });
-    mocks.single.mockResolvedValue({ data: pending, error: null });
-    expect(await authenticateTransaction(pending.id, terminal, 'image', undefined, log))
-      .toMatchObject({ decision: 'reject', reason: 'no_pin_set' });
-    expect(mocks.update).not.toHaveBeenCalled();
-  });
-  it('rejects scores below current policy before any settlement', async () => {
-    mocks.single.mockResolvedValue({ data: { ...authenticated, match_score: 60 }, error: null });
-    await expect(confirmTransaction(pending.id, terminal, undefined)).rejects.toMatchObject({ code: 'payment_match_rejected' });
-    expect(mocks.rpc).not.toHaveBeenCalled();
-  });
-  it('returns a receipt without reading or exposing the current wallet balance', async () => {
-    mocks.single.mockResolvedValue({ data: authenticated, error: null });
-    mocks.rpc.mockResolvedValue({ data: settled, error: null });
-    mocks.balance.mockRejectedValue(new Error('balance unavailable'));
-    const receipt = await confirmTransaction(pending.id, terminal, undefined);
-    expect(receipt).toMatchObject({ transactionId: pending.id });
-    expect(receipt).not.toHaveProperty('balanceMinor');
-    expect(mocks.balance).not.toHaveBeenCalled();
-  });
-  it('returns an already settled receipt without another settlement call', async () => {
-    mocks.single.mockResolvedValue({ data: settled, error: null });
-    expect(await confirmTransaction(pending.id, terminal, undefined)).toMatchObject({ transactionId: pending.id });
-    expect(mocks.rpc).not.toHaveBeenCalled();
-    expect(mocks.balance).not.toHaveBeenCalled();
-  });
-  it('shares a payer PIN budget across different terminals and payment IDs', async () => {
-    mocks.single.mockResolvedValue({ data: { ...authenticated, match_score: 78 }, error: null });
-    mocks.profile.mockResolvedValue({ ...profile, pin_hash: 'test-hash' });
-    mocks.rpc.mockResolvedValue({ data: 900, error: null });
-    await expect(confirmTransaction(pending.id, terminal, '2468')).rejects.toMatchObject({ status: 429 });
-    expect(mocks.rpc).toHaveBeenCalledWith('consume_api_budget', expect.objectContaining({ p_limit: 5, p_window_seconds: 900 }));
-    expect(mocks.rpc).not.toHaveBeenCalledWith('post_transaction', expect.anything());
-  });
-  it('passes freshness policy to the atomic settlement function', async () => {
-    mocks.single.mockResolvedValue({ data: authenticated, error: null });
-    mocks.rpc.mockResolvedValue({ data: settled, error: null });
-    await confirmTransaction(pending.id, terminal, undefined);
-    expect(mocks.rpc).toHaveBeenCalledWith('post_transaction', { txn_id: pending.id, p_auth_validity_seconds: 60 });
-  });
-  it('rejects expired authorization without overwriting financial records', async () => {
-    mocks.single.mockResolvedValue({ data: { ...authenticated, authenticated_at: '2000-01-01T00:00:00Z' }, error: null });
-    await expect(confirmTransaction(pending.id, terminal, undefined)).rejects.toMatchObject({ code: 'stale_authentication' });
-    expect(mocks.update).not.toHaveBeenCalled(); expect(mocks.rpc).not.toHaveBeenCalled();
-  });
+import {beforeEach,describe,expect,it,vi} from 'vitest';
+const m=vi.hoisted(()=>({single:vi.fn(),eq:vi.fn(),update:vi.fn(),rpc:vi.fn(),charge:vi.fn(),search:vi.fn(),profile:vi.fn()}));
+vi.mock('../db/client.js',()=>({db:{from:()=>({select:vi.fn().mockReturnThis(),eq:m.eq.mockReturnThis(),is:vi.fn().mockReturnThis(),update:m.update.mockReturnThis(),maybeSingle:m.single}),rpc:m.rpc}}));
+vi.mock('./cardPaymentService.js',()=>({chargeCardPayment:m.charge}));
+vi.mock('../db/queries.js',()=>({getCandidatesByLast4:vi.fn(),getProfile:m.profile,maskName:(n:string)=>n}));
+vi.mock('../palm/index.js',()=>({palm:{search:m.search}}));
+vi.mock('../lib/image.js',()=>({normaliseImage:(data:string)=>({data})}));
+import {authenticateTransaction,confirmTransaction,cancelTransaction,createTransaction} from './paymentService.js';
+const terminal={id:'terminal',merchantId:'merchant',merchantName:'Merchant',label:'Counter'};
+const profile={id:'payer',full_name:'Payer',pin_hash:null,palm_enrolled:true};
+const pending={id:'txn',terminal_id:'terminal',amount_minor:100,status:'pending'};
+const auth={...pending,status:'authenticated',matched_user_id:'payer',match_score:92,authenticated_at:new Date().toISOString()};
+const settled={...auth,status:'settled',settled_at:new Date().toISOString()};
+const log={info:vi.fn(),warn:vi.fn()} as any;
+beforeEach(()=>{vi.clearAllMocks();m.single.mockReset();m.profile.mockResolvedValue(profile);m.search.mockResolvedValue({userId:'payer',score:92});m.charge.mockResolvedValue(undefined);});
+describe('direct card payment policy',()=>{
+ it('keeps stable sale identity',async()=>{m.rpc.mockResolvedValue({data:pending,error:null});await createTransaction(terminal,100,'Lunch','sale');expect(m.rpc).toHaveBeenCalledWith('create_terminal_transaction',{p_terminal_id:'terminal',p_sale_id:'sale',p_amount:100,p_description:'Lunch'});});
+ it('authenticates without an internal balance and binds the displayed card',async()=>{m.single.mockResolvedValueOnce({data:pending}).mockResolvedValueOnce({data:{id:'card',last4:'4081',brand:'visa'}}).mockResolvedValueOnce({data:auth});expect(await authenticateTransaction('txn',terminal,'image',undefined,log)).toMatchObject({decision:'accept',cardLast4:'4081',pinRequired:false});expect(m.update).toHaveBeenCalledWith(expect.objectContaining({payment_card_id:'card'}));expect(m.rpc).not.toHaveBeenCalled();});
+ it('rejects a stale provider match after palm removal',async()=>{m.profile.mockResolvedValue({...profile,palm_enrolled:false});m.single.mockResolvedValue({data:pending});expect(await authenticateTransaction('txn',terminal,'image',undefined,log)).toMatchObject({decision:'reject'});expect(m.update).not.toHaveBeenCalled();});
+ it('requires another scan for a marginal match',async()=>{m.search.mockResolvedValue({userId:'payer',score:78});m.single.mockResolvedValue({data:pending});expect(await authenticateTransaction('txn',terminal,'image',undefined,log)).toMatchObject({decision:'reject',reason:'strong_match_required'});expect(m.update).not.toHaveBeenCalled();});
+ it('rejects missing or paused default card',async()=>{m.single.mockResolvedValueOnce({data:pending}).mockResolvedValueOnce({data:null});expect(await authenticateTransaction('txn',terminal,'image',undefined,log)).toMatchObject({decision:'reject',reason:'no_active_card'});expect(m.update).not.toHaveBeenCalled();});
+ it('does not return a match after losing the update race',async()=>{m.single.mockResolvedValueOnce({data:pending}).mockResolvedValueOnce({data:{id:'card'}}).mockResolvedValueOnce({data:null});await expect(authenticateTransaction('txn',terminal,'image',undefined,log)).rejects.toMatchObject({code:'invalid_transaction_state'});});
+ it('rejects an expired palm before charging',async()=>{m.single.mockResolvedValue({data:{...auth,authenticated_at:'2000-01-01'}});await expect(confirmTransaction('txn',terminal)).rejects.toMatchObject({code:'stale_authentication'});expect(m.charge).not.toHaveBeenCalled();});
+ it('rejects marginal scores instead of accepting a PIN',async()=>{m.single.mockResolvedValue({data:{...auth,match_score:78}});await expect(confirmTransaction('txn',terminal)).rejects.toMatchObject({code:'payment_match_rejected'});expect(m.charge).not.toHaveBeenCalled();});
+ it('charges a card and returns only a verified receipt',async()=>{m.single.mockResolvedValueOnce({data:auth}).mockResolvedValueOnce({data:settled});expect(await confirmTransaction('txn',terminal)).toMatchObject({transactionId:'txn',settledAt:settled.settled_at});expect(m.charge).toHaveBeenCalledWith('txn','terminal');expect(m.rpc).not.toHaveBeenCalled();});
+ it('does not charge an already settled sale',async()=>{m.single.mockResolvedValue({data:settled});await confirmTransaction('txn',terminal);expect(m.charge).not.toHaveBeenCalled();});
+ it('preserves a pending charge without returning success',async()=>{m.single.mockResolvedValueOnce({data:auth}).mockResolvedValueOnce({data:{...auth,status:'processing'}});await expect(confirmTransaction('txn',terminal)).rejects.toMatchObject({code:'card_payment_pending'});});
+ it('reconciles after palm expiry without creating another sale',async()=>{m.single.mockResolvedValueOnce({data:{...auth,status:'processing',authenticated_at:'2000-01-01'}}).mockResolvedValueOnce({data:settled});await confirmTransaction('txn',terminal);expect(m.charge).toHaveBeenCalledTimes(1);});
+ it('cannot cancel an in-flight card payment',async()=>{m.single.mockResolvedValue({data:{...auth,status:'processing'}});await expect(cancelTransaction('txn',terminal)).rejects.toMatchObject({code:'card_payment_pending'});expect(m.update).not.toHaveBeenCalled();});
+ it('rejects another terminal before charging',async()=>{m.single.mockResolvedValue({data:{...auth,terminal_id:'other'}});await expect(confirmTransaction('txn',terminal)).rejects.toMatchObject({status:404});expect(m.charge).not.toHaveBeenCalled();});
 });

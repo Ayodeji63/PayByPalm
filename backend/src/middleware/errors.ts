@@ -31,6 +31,11 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     log[level]({ err, code: err.code, status: err.status }, 'request failed');
     const privateError = err.status >= 500 || err.code === 'signup_failed';
     const publicSignupErrors: Record<string, string> = {
+      card_link_not_configured: 'Card linking is not configured yet. Please contact support.',
+      card_storage_unavailable: 'Card storage is unavailable. Please try again later.',
+      payment_service_unavailable: 'The payment service could not confirm this request. Check its status before trying again.',
+      card_checkout_failed: 'Checkout could not be opened. Check your recent linking requests before trying again.',
+      invalid_checkout: 'Payment checkout could not be opened. Please try again later.',
       email_delivery_limited: 'The email service is limiting verification messages. Please try later or contact support.',
       email_delivery_restricted: 'Verification email is not available for this address yet. Please contact support.',
       email_signup_unavailable: 'We could not send a confirmation email. Please try again later or contact support.',

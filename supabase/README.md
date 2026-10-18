@@ -37,6 +37,7 @@ never reach a browser, a phone, or the Pi.
 | `migrations/0014_email_identity.sql` | email identity and nonexclusive profile phone lookup |
 | `migrations/0015_passwordless_email.sql` | email-only passwordless provisioning with optional phone |
 | `migrations/0016_restore_full_signup.sql` | restore required profile fields for new signup |
+| `migrations/0017_verified_cards.sql` | encrypted card authorizations, linking requests and verification locks |
 | `seed.sql` | float account, one merchant; device credentials are provisioned separately |
 | `tests/run.sh` | full verification against a throwaway Postgres |
 
@@ -48,7 +49,7 @@ once against a fresh project. `seed.sql` **is** safe to re-run.
 ### Option A — Supabase SQL Editor (no tooling required)
 
 Paste the contents of each file into the SQL Editor and run them **in order**:
-`0001` → `0016`, then `seed.sql`. Apply pending migrations through `0016` to existing installations. See `backend/SECURITY_PAYMENTS.md` for rollout requirements.
+`0001` → `0017`, then `seed.sql`. Apply pending migrations through `0017` to existing installations. See `backend/SECURITY_PAYMENTS.md` for rollout requirements.
 
 ### Option B — Supabase CLI
 

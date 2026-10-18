@@ -31,6 +31,10 @@ services:
       - key: SUPABASE_ANON_KEY
         sync: false
 
+      # Sandbox until test-card acceptance is complete. Live keys are rejected here.
+      - key: PAYSTACK_MODE
+        value: test
+
       # Public production wallet origin, without a trailing slash. Used for CORS
       # and terminal enrolment links. This is public configuration, not a secret.
       - key: WALLET_BASE_URL

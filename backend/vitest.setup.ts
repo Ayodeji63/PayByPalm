@@ -13,6 +13,7 @@
 
 const TEST_ENV: Record<string, string> = {
   NODE_ENV: 'test',
+  PAYSTACK_MODE: 'test',
   SUPABASE_URL: 'https://test.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key',
   SUPABASE_ANON_KEY: 'test-anon-key',

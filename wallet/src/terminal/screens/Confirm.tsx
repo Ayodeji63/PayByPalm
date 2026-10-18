@@ -30,23 +30,26 @@ export function Confirm({
   merchantName,
   onConfirm,
   onCancel,
+  busy,
 }: {
   outcome: AuthenticateOutcome;
   amountMinor: number;
   merchantName: string;
   onConfirm: () => void;
   onCancel: () => void;
+  busy: boolean;
 }) {
   const [remaining, setRemaining] = useState(Math.round(TIMINGS.confirmTimeoutMs / 1000));
 
   useEffect(() => {
+    if(busy)return;
     const tick = window.setInterval(() => setRemaining((n) => n - 1), 1000);
     const expire = window.setTimeout(onCancel, TIMINGS.confirmTimeoutMs);
     return () => {
       window.clearInterval(tick);
       window.clearTimeout(expire);
     };
-  }, [onCancel]);
+  }, [onCancel,busy]);
 
   const name = outcome.maskedName ?? 'Customer';
 
@@ -68,16 +71,7 @@ export function Confirm({
             Match {outcome.score ?? '—'}
             {outcome.mode === 'compare' ? ' · verified by number' : ' · palm search'}
           </p>
-          {outcome.maskedBalanceMinor !== undefined && (
-            <p className="t-sm mt-1 text-ink-muted">
-              Balance about {formatNaira(outcome.maskedBalanceMinor)}
-            </p>
-          )}
-          {outcome.pinRequired && (
-            <p className="t-sm mt-3 rounded-xl bg-warning-tint px-3 py-2 text-warning">
-              PIN required to complete
-            </p>
-          )}
+          {outcome.cardLast4 && <p className="t-sm mt-2 text-ink-muted">Pay from {outcome.cardBrand} •••• {outcome.cardLast4}</p>}
         </div>
 
         <div className="shrink-0 rounded-3xl bg-surface px-8 py-6 text-right">
@@ -88,11 +82,11 @@ export function Confirm({
 
       {/* Confirm is the larger target — it is the action the customer came to take. */}
       <div className="flex h-[84px] shrink-0 gap-4">
-        <TButton tone="danger" className="flex-[2]" onClick={onCancel}>
+        <TButton tone="danger" className="flex-[2]" onClick={onCancel} disabled={busy}>
           Cancel
         </TButton>
-        <TButton className="flex-[4]" onClick={onConfirm}>
-          {outcome.pinRequired ? 'Continue' : 'Confirm'}
+        <TButton className="flex-[4]" onClick={onConfirm} disabled={busy}>
+          {busy ? 'Checking payment…' : 'Pay from card'}
         </TButton>
       </div>
     </Pane>

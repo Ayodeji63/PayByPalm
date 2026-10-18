@@ -101,8 +101,8 @@ export const terminalApi = {
   status: (transactionId: string) =>
     send<{ transactionId: string; status: string; amountMinor: number }>(`/terminal/transactions/${transactionId}`, 'GET'),
 
-  confirm: (transactionId: string, pin?: string) =>
-    send<Receipt>(`/transactions/${transactionId}/confirm`, 'POST', pin ? { pin } : {}),
+  confirm: (transactionId: string) =>
+    send<Receipt>(`/transactions/${transactionId}/confirm`, 'POST', {}),
 
   cancel: (transactionId: string) =>
     send<{ transactionId: string; status: string }>(
@@ -138,7 +138,8 @@ export interface AuthenticateOutcome {
   message: string;
   reason?: string;
   maskedName?: string;
-  maskedBalanceMinor?: number;
+  cardLast4?: string;
+  cardBrand?: string;
   pinRequired?: boolean;
 }
 

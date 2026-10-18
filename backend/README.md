@@ -1,5 +1,11 @@
 # PayByPalm — Backend
 
+Current payment rail: palm-authorized direct charges to the saved default card.
+Apply migration 0018 and follow [DIRECT_CARD_PAYMENTS.md](DIRECT_CARD_PAYMENTS.md).
+The historical internal wallet ledger is not a source of spendable card funds.
+Card balances are unavailable from this Paystack integration.
+
+
 Node + TypeScript + Express API for palm-biometric payment on a closed-loop campus wallet.
 
 ## What this service guarantees
@@ -121,6 +127,13 @@ curl $API/health
 
 Reports which palm provider is live — "why did matching stop working?" is nearly always
 "it is running on mock", or the reverse.
+
+### Card linking
+
+The restored card flow uses Paystack-hosted checkout, backend verification,
+encrypted authorizations and refunds. Complete [card setup](CARD_LINKING.md),
+including migration 0017 and backend-only secrets, before enabling it. Terminal
+payments continue to use the wallet ledger.
 
 ### Auth
 

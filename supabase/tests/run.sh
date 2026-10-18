@@ -100,3 +100,13 @@ echo "$result"
 result=$(pg -v ON_ERROR_STOP=1 -f /sql/email_identity_test.sql 2>&1); rc=$?
 echo "$result"
 [ $rc -eq 0 ] || fail "email identity" "$result"
+
+result=$(pg -v ON_ERROR_STOP=1 -f /sql/card_link_test.sql 2>&1); rc=$?
+echo "$result"
+[ $rc -eq 0 ] || fail "verified card linking" "$result"
+
+result=$(pg -v ON_ERROR_STOP=1 -f /sql/card_payment_test.sql 2>&1); rc=$?
+echo "$result"
+[ $rc -eq 0 ] || fail "direct card payments" "$result"
+
+python3 "$HERE/card_payment_concurrency_test.py" "$CONTAINER" || fail "card payment races" "See Python assertion"

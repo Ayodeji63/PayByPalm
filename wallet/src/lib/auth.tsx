@@ -13,7 +13,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -28,8 +27,6 @@ import {
   type Session,
 } from "./api.js";
 import { setCardOwner } from "./cardStore.js";
-import { formatNaira } from "./money.js";
-import { useToast } from "../components/Toast.js";
 
 const POLL_ACTIVE_MS = 3_000;
 const POLL_BACKGROUND_MS = 15_000;
@@ -49,7 +46,7 @@ interface AuthApi {
   confirmEmail: (refreshToken: string) => Promise<void>;
   resendConfirmation: (email: string) => Promise<void>;
   signOut: () => void;
-  /** Force an immediate refresh — after a top-up, or on returning from enrolment. */
+  /** Force an immediate refresh — after a payment, or on returning from enrolment. */
   refresh: () => Promise<void>;
   /** Biometric consent tracking */
   consentGiven: boolean;
@@ -70,7 +67,6 @@ interface AuthResponse {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const toast = useToast();
   const [me, setMe] = useState<Me | null>(null);
   const [status, setStatus] = useState<AuthApi["status"]>(() =>
     loadSession() ? "loading" : "anonymous",
@@ -80,9 +76,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setConsentGivenState(given);
   }, []);
 
-  // Previous balance, kept in a ref so a change does not itself trigger a render.
-  const lastBalance = useRef<number | null>(null);
-
   const fetchMe = useCallback(async () => {
     const revision = getSessionRevision();
     try {
@@ -91,17 +84,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (revision !== getSessionRevision()) return;
       setCardOwner(next.id);
 
-      // A balance that went down while the app was open means money just left the
-      // wallet — at a terminal, seconds ago. Say so.
-      const previous = lastBalance.current;
-      if (previous !== null && next.balanceMinor < previous) {
-        toast.show(
-          `${formatNaira(previous - next.balanceMinor)} paid`,
-          "success",
-        );
-      }
-      lastBalance.current = next.balanceMinor;
-
       setMe(next);
       setStatus("authenticated");
     } catch {
@@ -109,16 +91,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearSession();
       setCardOwner(null);
       setMe(null);
-      lastBalance.current = null;
       setStatus("anonymous");
     }
-  }, [toast]);
+  }, []);
 
   const signOut = useCallback(() => {
     clearSession();
     setCardOwner(null);
     setConsentGiven(false);
-    lastBalance.current = null;
     setMe(null);
     setStatus("anonymous");
   }, [setConsentGiven]);
@@ -127,7 +107,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setUnauthorizedHandler(() => {
       setCardOwner(null);
-      lastBalance.current = null;
       setMe(null);
       setStatus("anonymous");
     });

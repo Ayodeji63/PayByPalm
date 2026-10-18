@@ -1,21 +1,19 @@
 /**
  * Wallet routes — everything the phone app needs.
  *
- * All user-authenticated. Balance is always derived from the ledger; there is no
- * stored balance to return instead.
+ * All user-authenticated. Card balances are unavailable from this provider;
+ * no internal stored-value balance is presented as a card balance.
  */
 
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { AppError, unauthorized, forbidden } from '../errors.js';
-import { getProfile, getWalletAccountId, getBalanceMinor } from '../db/queries.js';
+import { AppError, unauthorized } from '../errors.js';
+import { getProfile } from '../db/queries.js';
 import { requireUser, userAuth } from '../middleware/userAuth.js';
 import { userRateLimit } from '../middleware/abuseLimits.js';
 import { validate } from '../middleware/validate.js';
-import { config } from '../config.js';
-import { topUp } from '../services/paymentService.js';
 
 export const walletRouter: Router = Router();
 
@@ -30,7 +28,6 @@ const BCRYPT_ROUNDS = 10;
 walletRouter.get('/me', userAuth, userRateLimit('user-read', 240, 60), async (req, res) => {
   const user = requireUser(req);
   const profile = await getProfile(user.id);
-  const balanceMinor = await getBalanceMinor(await getWalletAccountId(user.id));
 
   res.json({
     id: profile.id,
@@ -39,7 +36,9 @@ walletRouter.get('/me', userAuth, userRateLimit('user-read', 240, 60), async (re
     phone: profile.phone ?? '',
     palmEnrolled: profile.palm_enrolled,
     hasPin: profile.pin_hash !== null,
-    balanceMinor,
+    balanceMinor: null,
+    cardBalanceAvailable: false,
+    paymentSource: 'linked_card',
     currency: 'NGN',
     createdAt: profile.created_at,
   });
@@ -92,43 +91,5 @@ walletRouter.post(
   },
 );
 
-// ---------------------------------------------------------------------------
-// POST /topup
-// ---------------------------------------------------------------------------
-// HACKATHON SCOPE — simulated credit from the system float account. There is no
-// real money movement here and the wallet app labels it as sandbox funds.
-//
-// This is the seam where a real Wema funding rail plugs in: an inbound NIP or
-// virtual-account webhook would verify that money actually arrived and then call
-// the same post_topup() database function. The ledger shape does not change.
-
-walletRouter.post(
-  '/topup',
-  (_req, _res, next) => {
-    if (config.isProduction) return next(forbidden('Sandbox funding is disabled in production.'));
-    next();
-  },
-  userAuth,
-  userRateLimit('sandbox-topup', 5, 60),
-  validate({
-    body: z.object({
-      amountMinor: z
-        .number()
-        .int('Amount must be a whole number of kobo')
-        .positive('Amount must be greater than zero')
-        .max(10_000_000, 'Demo top-ups are capped at ₦100,000'),
-    }),
-  }),
-  async (req, res) => {
-    const user = requireUser(req);
-    const { amountMinor } = req.body as { amountMinor: number };
-
-    const result = await topUp(user.id, amountMinor, 'Demo top-up');
-
-    res.status(201).json({
-      ...result,
-      simulated: true,
-      message: 'Sandbox funds added.',
-    });
-  },
-);
+// Retired stored-value funding route. Never creates internal funds.
+walletRouter.post('/topup',userAuth,(_req,_res,next)=>next(new AppError(410,'stored_value_retired','Payments debit your linked card. PayByPalm does not hold a spendable wallet balance.')));

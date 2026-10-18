@@ -13,9 +13,9 @@
  *   - Apple Wallet physical stacked deck: cards layered in 1 place.
  *   - touch-action: none enabled on card container so vertical swipe-up works
  *     flawlessly without browser page-scroll interception.
- *   - Wallet balance comes from the server ledger.
+ *   - Card balances are unavailable; payments debit the linked card.
  *   - Quick action buttons (Send, Receive, Add Card, Merchants) in circular white styling.
- *   - Transfers and card linking remain unavailable until server integration.
+ *   - Cards are verified and managed by the backend; transfers remain unavailable.
  *   - Transaction History with time, date, merchant, and soft coral/emerald badges.
  */
 
@@ -25,7 +25,8 @@ import { useNavigate } from 'react-router-dom';
 import { type TransactionSummary } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
 import { formatNaira } from '../lib/money.js';
-import { getCards, togglePauseCard, setDefaultCard, type LinkedCard } from '../lib/cardStore.js';
+import { type LinkedCard } from '../lib/cardStore.js';
+import { useServerCards, editLinkedCard } from '../lib/serverCards.js';
 import { PalmIcon, Skeleton } from '../components/ui.js';
 import { BankCard } from '../components/BankCard.js';
 import { TransactionSheet } from '../components/sheets.js';
@@ -45,7 +46,6 @@ export interface VirtualCard {
   cardNumber: string;
   last4: string;
   expiry: string;
-  balanceMinor: number;
   isPaused: boolean;
   isDefault: boolean;
   theme: {
@@ -77,7 +77,6 @@ function mapCards(linked: LinkedCard[]): VirtualCard[] {
       cardNumber: c.cardNumber || `•••• •••• •••• ${c.last4}`,
       last4: c.last4,
       expiry: `${c.expMonth}/${c.expYear}`,
-      balanceMinor: 0,
       isPaused: Boolean(c.isPaused),
       isDefault: Boolean(c.isDefault),
       theme: c.theme,
@@ -93,7 +92,6 @@ export default function Dashboard() {
 
   // Active card state
   const [activeCardIndex, setActiveCardIndex] = useState(0);
-  const [balanceVisible, setBalanceVisible] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [menuCoords, setMenuCoords] = useState<{ top: number; right: number }>({ top: 64, right: 20 });
@@ -136,32 +134,9 @@ export default function Dashboard() {
     return 'Good evening';
   }, []);
 
-  // Multi-card state initialized from cardStore
-  const [cards, setCards] = useState<VirtualCard[]>(() => mapCards(getCards()));
-
-  // Reload cards on mount or window focus
-  useEffect(() => {
-    const stored = getCards();
-    setCards(mapCards(stored));
-  }, []);
-
-  const activeCard: VirtualCard = (cards[activeCardIndex] ?? cards[0]) as VirtualCard;
-
-  // Automatically make any card cycled to the front the default card to be debited
-  useEffect(() => {
-    if (!activeCard?.id) return;
-    setDefaultCard(activeCard.id);
-  }, [activeCard?.id]);
-
-  // Format balance parts: integer part and kobo decimals
-  const balanceParts = useMemo(() => {
-    const nairaStr = formatNaira(me?.balanceMinor ?? 0).replace('₦', '');
-    const parts = nairaStr.split('.');
-    return {
-      whole: parts[0] ?? '0',
-      fraction: parts[1] ?? '00',
-    };
-  }, [me?.balanceMinor]);
+  const linkedCards = useServerCards();
+  const cards = useMemo(() => mapCards(linkedCards), [linkedCards]);
+  const activeCard: VirtualCard | undefined = cards[activeCardIndex] ?? cards[0];
 
   // Cycle to next card (swipe up / swipe left / tap)
   const cycleNext = useCallback(() => {
@@ -253,17 +228,12 @@ export default function Dashboard() {
     }
   };
 
-  // Toggle card pause status
-  const handleTogglePause = () => {
+  const handleTogglePause = async () => {
     if (!activeCard) return;
-    const paused = togglePauseCard(activeCard.id);
-    setCards(mapCards(getCards()));
-    toast.show(
-      paused
-        ? `"${activeCard.name}" paused. Display preference updated.`
-        : `"${activeCard.name}" resumed. Display preference updated.`,
-      paused ? 'info' : 'success'
-    );
+    try {
+      await editLinkedCard(activeCard.id, activeCard.isPaused ? 'resume' : 'pause');
+      toast.show(activeCard.isPaused ? 'Card resumed.' : 'Card paused.', 'success');
+    } catch (error) { toast.show(error instanceof Error ? error.message : 'Could not update your card.', 'error'); }
     setMenuOpen(false);
   };
 
@@ -455,7 +425,7 @@ export default function Dashboard() {
                           <circle cx="12" cy="12" r="10" />
                           <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
                         </svg>
-                        <span>{activeCard?.isPaused ? 'Resume Card' : 'Lock / Pause Card'}</span>
+                        <span>{activeCard?.isPaused ? 'Resume Card' : 'Pause saved card'}</span>
                       </button>
                     </div>
                   </div>,
@@ -464,43 +434,10 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Balance Presentation */}
           <div className="relative z-10 mt-3">
-            <p className="text-[11px] font-bold tracking-[0.18em] uppercase text-blue-200/80">
-              AVAILABLE BALANCE
-            </p>
-
-            <div className="mt-1 flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-blue-200">₦</span>
-              <div className="flex items-baseline">
-                <h1 className="text-3xl sm:text-[40px] font-black tracking-tight text-white leading-none">
-                  {balanceVisible ? balanceParts.whole : '••••••'}
-                </h1>
-                {balanceVisible && (
-                  <span className="text-xl font-bold text-blue-200/80 ml-0.5">
-                    .{balanceParts.fraction}
-                  </span>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setBalanceVisible(!balanceVisible)}
-                className="ml-2 p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-blue-200/80 hover:text-white transition-all active:scale-95"
-                aria-label={balanceVisible ? 'Hide balance' : 'Show balance'}
-              >
-                {balanceVisible ? (
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                    <circle cx="12" cy="12" r="3" />
-                  </svg>
-                ) : (
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22" />
-                  </svg>
-                )}
-              </button>
-            </div>
+            <h1 className="text-2xl font-bold text-white">{activeCard ? `Pay with your card •••• ${activeCard.last4}` : 'Link a card to pay'}</h1>
+            <p className="mt-2 text-sm text-blue-100">Card balance unavailable. Check your bank app for available funds.</p>
+            <p className="mt-1 text-sm text-blue-100">Payments debit your default linked card directly.</p>
           </div>
         </div>
 
@@ -565,7 +502,8 @@ export default function Dashboard() {
                     holderName={me.fullName}
                     expiry={card.expiry}
                     isPaused={card.isPaused}
-                    isDefault={isFront}
+                    isDefault={card.isDefault}
+                    showPalmBadge={false}
                     onClick={() => {
                       if (!isFront) {
                         setActiveCardIndex(index);

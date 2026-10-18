@@ -1,36 +1,20 @@
-/**
- * Payment flow.
- *
- * Three steps, deliberately separate:
- *
- *   create        a terminal states an amount                 -> 'pending'
- *   authenticate  a palm names the payer                      -> 'authenticated'
- *   confirm       the payer taps Confirm and money moves      -> 'settled'
- *
- * NOTHING IS DEBITED BEFORE CONFIRM. `authenticate` identifies a person and
- * writes no ledger entry whatsoever; the only code path in this system that moves
- * money is `confirm`, and it does so by calling post_transaction() in the database.
- */
-
-import bcrypt from 'bcryptjs';
-import { consumeBudget } from '../middleware/abuseLimits.js';
+/** Palm identifies the payer; confirmation charges the default linked card.
+ * No internal wallet balance is read or debited. */
 import { config } from '../config.js';
 import { db } from '../db/client.js';
 import {
-  getBalanceMinor,
   getCandidatesByLast4,
   getProfile,
-  getWalletAccountId,
-  maskBalanceMinor,
   maskName,
   type Profile,
 } from '../db/queries.js';
-import { AppError, badRequest, conflict, fromPostgresError, notFound, unauthorized, forbidden } from '../errors.js';
+import { AppError, conflict, fromPostgresError, notFound } from '../errors.js';
 import { normaliseImage } from '../lib/image.js';
 import { palm } from '../palm/index.js';
 import { decide, explain, rejectWithout, thresholds, type PolicyOutcome } from '../palm/policy.js';
 import type { AuthedTerminal } from '../middleware/terminalAuth.js';
 import type { Logger } from '../logger.js';
+import { chargeCardPayment } from './cardPaymentService.js';
 
 export interface TransactionRow {
   id: string;
@@ -38,7 +22,7 @@ export interface TransactionRow {
   merchant_id: string | null;
   amount_minor: number;
   description: string | null;
-  status: 'pending' | 'authenticated' | 'settled' | 'failed' | 'cancelled';
+  status: 'pending' | 'authenticated' | 'processing' | 'settled' | 'failed' | 'cancelled';
   matched_user_id: string | null;
   match_score: number | null;
   match_mode: 'compare' | 'search' | null;
@@ -57,9 +41,9 @@ export interface AuthenticateOutcome {
   reason?: string;
   /** Present only on accept/step_up. Masked — never the full name. */
   maskedName?: string;
-  /** Present only on accept/step_up. Rounded down to the nearest ₦100. */
-  maskedBalanceMinor?: number;
-  /** True when confirm will require the wallet PIN. */
+  cardLast4?: string;
+  cardBrand?: string;
+  /** Always false: direct card payments require a full-accept palm match. */
   pinRequired?: boolean;
 }
 
@@ -204,6 +188,8 @@ export async function authenticateTransaction(
       ? await authenticateByLast4(last4!, image.data, log)
       : await authenticateBySearch(image.data);
 
+  if(profile && !profile.palm_enrolled)return {decision:'reject',mode,score:outcome.score,reason:'no_active_palm',message:'Enrol your palm in PayByPalm before making a payment.'};
+
   // --- rejected -----------------------------------------------------------
   if (outcome.decision === 'reject' || !profile) {
     // Left 'pending' on purpose: repositioning a hand and trying again is the
@@ -218,50 +204,18 @@ export async function authenticateTransaction(
     };
   }
 
-  // --- identified, but can they pay? --------------------------------------
-  const accountId = await getWalletAccountId(profile.id);
-  const balanceMinor = await getBalanceMinor(accountId);
-
-  if (balanceMinor < txn.amount_minor) {
-    // Terminal state, not retryable: presenting the palm again will not conjure
-    // funds. Better to say so now than to let someone tap Confirm on a payment
-    // that is guaranteed to fail.
-    const { data: failed, error: failureError } = await db
-      .from('transactions')
-      .update({
-        status: 'failed',
-        matched_user_id: profile.id,
-        match_score: outcome.score,
-        match_mode: mode,
-        failure_reason: 'insufficient_funds',
-      })
-      .eq('id', txn.id)
-      .eq('status', 'pending')
-      .select('id')
-      .maybeSingle();
-    if (failureError) throw new AppError(500, 'db_error', 'Could not update payment.');
-    if (!failed) throw conflict('invalid_transaction_state', 'Payment state changed.');
-
-    return {
-      decision: 'reject',
-      mode,
-      score: outcome.score,
-      reason: 'insufficient_funds',
-      message: 'Not enough balance for this payment.',
-    };
-  }
-
-  // --- accepted or step-up ------------------------------------------------
-  const pinRequired = outcome.decision === 'step_up';
-  if (pinRequired && !profile.pin_hash) {
-    return { decision: 'reject', mode, score: outcome.score, reason: 'no_pin_set', message: 'Additional confirmation requires a wallet PIN.' };
-  }
+  // Palm-only payments require a full accept; marginal matches must rescan.
+  if(outcome.decision !== 'accept')return {decision:'reject',mode,score:outcome.score,reason:'strong_match_required',message:'Please reposition your hand and scan again.'};
+  const card=await db.from('linked_cards').select('id,last4,brand').eq('user_id',profile.id).eq('is_default',true).eq('is_paused',false).is('removed_at',null).maybeSingle();
+  if(card.error)throw new AppError(503,'card_payment_unavailable','Could not check the linked card. Please try again.');
+  if(!card.data)return {decision:'reject',mode,score:outcome.score,reason:'no_active_card',message:'Link an active default card in your PayByPalm account first.'};
 
   const { data: authenticated, error } = await db
     .from('transactions')
     .update({
       status: 'authenticated',
       authenticated_at: new Date().toISOString(),
+      payment_card_id: card.data.id,
       matched_user_id: profile.id,
       match_score: outcome.score,
       match_mode: mode,
@@ -281,14 +235,15 @@ export async function authenticateTransaction(
     mode,
     score: outcome.score,
     maskedName: maskName(profile.full_name),
-    maskedBalanceMinor: maskBalanceMinor(balanceMinor),
-    pinRequired,
+    cardLast4: card.data.last4,
+    cardBrand: card.data.brand,
+    pinRequired: false,
     message: explain(outcome),
   };
 }
 
 // ---------------------------------------------------------------------------
-// Confirm — the only path that moves money
+// Confirm — initiate or reconcile a provider card charge
 // ---------------------------------------------------------------------------
 
 export interface Receipt {
@@ -303,11 +258,17 @@ export interface Receipt {
 export async function confirmTransaction(
   transactionId: string,
   terminal: AuthedTerminal,
-  pin: string | undefined,
 ): Promise<Receipt> {
   const txn = await loadForTerminal(transactionId, terminal);
 
   if (txn.status === 'settled') return receiptFor(txn, terminal);
+
+  if (txn.status === 'processing') {
+    await chargeCardPayment(txn.id,terminal.id);
+    const current=await loadForTerminal(txn.id,terminal);
+    if(current.status==='settled')return receiptFor(current,terminal);
+    throw conflict(current.status==='failed'?'card_declined':'card_payment_pending',current.status==='failed'?'The card payment was declined.':'The card payment is being checked. Do not start another sale.');
+  }
 
   if (txn.status !== 'authenticated') {
     throw conflict(
@@ -334,40 +295,11 @@ export async function confirmTransaction(
     throw conflict('no_matched_user', 'This transaction has no authenticated payer.');
   }
 
-  const profile = await getProfile(txn.matched_user_id);
-
-  // Whether a PIN is required is re-derived from the stored score rather than
-  // trusted from the client, so a terminal cannot skip step-up by omitting a flag.
-  const decision = decide(txn.match_score).decision;
-  if (decision === 'reject') throw conflict('payment_match_rejected', 'Please scan your palm again.');
-  const requiresPin = decision === 'step_up';
-
-  if (requiresPin) {
-    if (!pin) {
-      throw unauthorized('Wallet PIN required to confirm this payment.');
-    }
-    if (!profile.pin_hash) {
-      throw conflict('no_pin_set', 'No wallet PIN is set on this account.');
-    }
-    await consumeBudget('wallet-pin', profile.id, 5, 900);
-    const ok = await bcrypt.compare(pin, profile.pin_hash);
-    if (!ok) {
-      throw unauthorized('Incorrect PIN.');
-    }
-  }
-
-  // The database does the rest atomically: locks the row, re-checks the balance
-  // under that lock, writes the balanced pair, flips the status.
-  const { data, error } = await db.rpc('post_transaction', { txn_id: txn.id, p_auth_validity_seconds: config.AUTH_VALIDITY_SECONDS });
-
-  if (error) {
-    const mapped = fromPostgresError(error as { code?: string; message?: string });
-    if (mapped) throw mapped;
-    throw new AppError(500, 'settlement_failed', `Could not settle payment: ${error.message}`);
-  }
-
-  const settled = (Array.isArray(data) ? data[0] : data) as TransactionRow;
-  return receiptFor(settled, terminal, profile);
+  if(decide(txn.match_score).decision!=='accept')throw conflict('payment_match_rejected','Please scan your palm again.');
+  await chargeCardPayment(txn.id,terminal.id);
+  const current=await loadForTerminal(txn.id,terminal);
+  if(current.status==='settled')return receiptFor(current,terminal);
+  throw conflict(current.status==='failed'?'card_declined':'card_payment_pending',current.status==='failed'?'The card payment was declined.':'The card payment is being checked. Do not start another sale.');
 }
 
 async function receiptFor(txn: TransactionRow, terminal: AuthedTerminal, profile?: Profile): Promise<Receipt> {
@@ -391,6 +323,7 @@ export async function cancelTransaction(
 ): Promise<TransactionRow> {
   const txn = await loadForTerminal(transactionId, terminal);
 
+  if (txn.status === 'processing')throw conflict('card_payment_pending','An initiated card charge cannot be cancelled. Check its status.');
   if (txn.status === 'settled') {
     throw conflict('already_settled', 'This payment has already been completed.');
   }
@@ -406,44 +339,4 @@ export async function cancelTransaction(
 
   if (error) throw new AppError(500, 'db_error', `Could not cancel: ${error.message}`);
   return data as TransactionRow;
-}
-
-// ---------------------------------------------------------------------------
-// Top-up
-// ---------------------------------------------------------------------------
-
-/**
- * HACKATHON SCOPE — simulated funding.
- *
- * This is where a real Wema funding rail plugs in. In production an inbound
- * NIP / virtual-account webhook would verify that money actually arrived and then
- * call this same post_topup() function. The ledger shape does not change; only
- * the trigger for calling it does.
- */
-export async function topUp(
-  userId: string,
-  amountMinor: number,
-  description = 'Wallet top-up',
-): Promise<{ transactionId: string; balanceMinor: number }> {
-  if (config.isProduction) throw forbidden('Sandbox funding is disabled in production.');
-  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
-    throw badRequest('invalid_amount', 'Top-up amount must be a positive whole number of kobo.');
-  }
-
-  const { data, error } = await db.rpc('post_topup', {
-    p_user_id: userId,
-    p_amount: amountMinor,
-    p_description: description,
-  });
-
-  if (error) {
-    const mapped = fromPostgresError(error as { code?: string; message?: string });
-    if (mapped) throw mapped;
-    throw new AppError(500, 'topup_failed', `Could not complete top-up: ${error.message}`);
-  }
-
-  const txn = (Array.isArray(data) ? data[0] : data) as TransactionRow;
-  const balanceMinor = await getBalanceMinor(await getWalletAccountId(userId));
-
-  return { transactionId: txn.id, balanceMinor };
 }

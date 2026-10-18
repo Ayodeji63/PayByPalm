@@ -1,36 +1,25 @@
-/**
- * Linked card store — localStorage-backed for Google Wallet-style Tokenized Card-on-File.
- *
- * PayByPalm does NOT hold stored value or deposits. Instead, it securely stores
- * tokenized bank card authorizations (via Paystack PCI-DSS tokenization).
- * When scanning a palm at a terminal, payment is routed directly to the user's
- * selected bank card.
- */
-
-const LEGACY_STORAGE_KEY = 'paybypalm.tokenized_cards';
-const STORAGE_PREFIX = 'paybypalm.tokenized_cards.v2';
+/** Masked server-card display cache only. No payment credentials or local balances. */
 let cardOwner: string | null = null;
-
+let cards: LinkedCard[] = [];
+const listeners = new Set<() => void>();
+function publish() { listeners.forEach(listener => listener()); }
 export function setCardOwner(userId: string | null): void {
-  const previousOwner = cardOwner;
-  cardOwner = userId;
+  const previous = cardOwner;
+  if (previous !== userId) { cardOwner = userId; cards = []; publish(); }
   try {
-    if (previousOwner && previousOwner !== userId) {
-      localStorage.removeItem(`${STORAGE_PREFIX}:${previousOwner}`);
-    }
-    // Legacy records have no verifiable owner; never import them.
-    localStorage.removeItem(LEGACY_STORAGE_KEY);
-    if (userId) localStorage.removeItem(`${LEGACY_STORAGE_KEY}:${userId}`);
+    localStorage.removeItem('paybypalm.tokenized_cards');
     localStorage.removeItem('paybypalm.user_pin');
     localStorage.removeItem('paybypalm.biometric_unlock');
-  } catch { /* Storage may be unavailable. */ }
+    if (previous) localStorage.removeItem(`paybypalm.tokenized_cards.v2:${previous}`);
+    if (userId) localStorage.removeItem(`paybypalm.tokenized_cards.v2:${userId}`);
+  } catch { /* Display cache does not depend on browser storage. */ }
 }
-
-function storageKey(): string {
-  if (!cardOwner) throw new Error('Sign in before accessing cards.');
-  return `${STORAGE_PREFIX}:${cardOwner}`;
+export const getCardOwner = () => cardOwner;
+export const subscribeCards = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
+export function cacheServerCards(owner: string, next: LinkedCard[]): void {
+  if (owner !== cardOwner) return;
+  cards = next.filter(card => /^\d{4}$/.test(card.last4)); publish();
 }
-
 export interface CardTheme {
   gradient: string;
   chipColor: string;
@@ -48,7 +37,6 @@ export interface LinkedCard {
   expMonth: string;
   expYear: string;
   isDefault: boolean;
-  balanceMinor: number; // Linked account available balance or palm authorization limit
   isPaused?: boolean;
   theme: CardTheme;
   createdAt: string;
@@ -100,113 +88,5 @@ export const BANK_THEMES: Record<string, CardTheme> = {
   },
 };
 
-export function getCards(): LinkedCard[] {
-  if (!cardOwner) return [];
-  try {
-    const raw = localStorage.getItem(storageKey());
-    if (!raw) {
-      return [];
-    }
-    const parsed = JSON.parse(raw) as LinkedCard[];
-    // Sanitize any card that might contain non-numeric letters in last4 (e.g., from Paystack mock references)
-    const sanitized = parsed.map((c, idx) => {
-      let cleanLast4 = (c.last4 || '').replace(/\D/g, '');
-      if (cleanLast4.length !== 4) {
-        cleanLast4 = ['9241', '1517', '8832', '4490'][idx % 4]!;
-      }
-      return {
-        ...c,
-        last4: cleanLast4,
-        cardNumber: c.cardNumber && !/[a-zA-Z]/.test(c.cardNumber) ? c.cardNumber : `•••• •••• •••• ${cleanLast4}`,
-      };
-    });
-    return sanitized;
-  } catch {
-    return [];
-  }
-}
-
-export function addCard(card: Omit<LinkedCard, 'id' | 'createdAt'>): LinkedCard {
-  const cards = getCards();
-  let cleanLast4 = (card.last4 || '').replace(/\D/g, '');
-  if (cleanLast4.length !== 4) {
-    cleanLast4 = '9241';
-  }
-
-  const newCard: LinkedCard = {
-    ...card,
-    last4: cleanLast4,
-    cardNumber: `•••• •••• •••• ${cleanLast4}`,
-    id: `card_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    createdAt: new Date().toISOString(),
-  };
-
-  // If this card is marked default or is the only card, unset other defaults
-  if (card.isDefault || cards.length === 0) {
-    cards.forEach((c) => {
-      c.isDefault = false;
-    });
-    newCard.isDefault = true;
-  }
-
-  // Prepend so the newly added card is front of the stack
-  cards.unshift(newCard);
-  localStorage.setItem(storageKey(), JSON.stringify(cards));
-  return newCard;
-}
-
-export function removeCard(id: string): void {
-  const cards = getCards().filter((c) => c.id !== id);
-  // Ensure there is always a default card if any remain
-  if (cards.length > 0 && !cards.some((c) => c.isDefault)) {
-    const first = cards[0];
-    if (first) {
-      first.isDefault = true;
-    }
-  }
-  localStorage.setItem(storageKey(), JSON.stringify(cards));
-}
-
-export function getDefaultCard(): LinkedCard | null {
-  const cards = getCards();
-  return cards.find((c) => c.isDefault) ?? cards[0] ?? null;
-}
-
-export function setDefaultCard(id: string): void {
-  const cards = getCards();
-  cards.forEach((c) => {
-    c.isDefault = c.id === id;
-  });
-  localStorage.setItem(storageKey(), JSON.stringify(cards));
-}
-
-export function togglePauseCard(id: string): boolean {
-  const cards = getCards();
-  let pausedState = false;
-  cards.forEach((c) => {
-    if (c.id === id) {
-      c.isPaused = !c.isPaused;
-      pausedState = Boolean(c.isPaused);
-    }
-  });
-  localStorage.setItem(storageKey(), JSON.stringify(cards));
-  return pausedState;
-}
-
-export function deductCardBalance(id: string, amountMinor: number): boolean {
-  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) return false;
-  const cards = getCards();
-  let success = false;
-  cards.forEach((c) => {
-    if (c.id === id) {
-      if (!c.isPaused && c.balanceMinor >= amountMinor) {
-        c.balanceMinor -= amountMinor;
-        success = true;
-      }
-    }
-  });
-  if (success) {
-    localStorage.setItem(storageKey(), JSON.stringify(cards));
-  }
-  return success;
-}
+export function getCards(): LinkedCard[] { return cards; }
+export function getDefaultCard(): LinkedCard | null { return cards.find(card => card.isDefault) ?? cards[0] ?? null; }

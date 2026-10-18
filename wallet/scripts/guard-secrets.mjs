@@ -22,6 +22,8 @@ const DIST = new URL('../dist/', import.meta.url).pathname;
 
 /** Anything matching these must never appear in a client bundle. */
 const FORBIDDEN = [
+  { name: 'Paystack secret key', pattern: /\bsk_(?:live|test)_[A-Za-z0-9]{10,}/ },
+  { name: 'Reusable Paystack authorization', pattern: /\bAUTH_[A-Za-z0-9]{6,}/ },
   {
     name: 'Tencent PalmAI key',
     pattern: /\bak_[A-Za-z0-9]{8,}/,

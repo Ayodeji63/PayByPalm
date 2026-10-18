@@ -242,7 +242,9 @@ export interface Me {
   palmEnrolled: boolean;
   hasPin: boolean;
   email: string | null;
-  balanceMinor: number;
+  balanceMinor: null;
+  cardBalanceAvailable: false;
+  paymentSource: 'linked_card';
   currency: string;
   createdAt: string;
 }
@@ -251,7 +253,7 @@ export interface TransactionSummary {
   id: string;
   amountMinor: number;
   description: string | null;
-  status: 'settled' | 'failed' | 'cancelled' | 'pending' | 'authenticated';
+  status: 'settled' | 'failed' | 'cancelled' | 'pending' | 'authenticated' | 'processing';
   merchantName: string | null;
   terminalLabel: string | null;
   authorisedByPalm: boolean;

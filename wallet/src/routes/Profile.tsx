@@ -13,7 +13,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth.js';
-import { getCards, type LinkedCard } from '../lib/cardStore.js';
+import { type LinkedCard } from '../lib/cardStore.js';
+import { useServerCards } from '../lib/serverCards.js';
 import { findBank } from '../lib/banks.js';
 import { Button, PageHeader, StatusChip, PalmIcon } from '../components/ui.js';
 import { PageTransition } from '../components/transitions.js';
@@ -24,7 +25,7 @@ export default function Profile() {
   const { me, signOut } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
-  const cards = getCards();
+  const cards = useServerCards();
 
   // Avatar gender preference ('male' | 'female')
   const [avatarGender, setAvatarGender] = useState<'male' | 'female'>(() => {
@@ -131,7 +132,7 @@ export default function Profile() {
                 </p>
                 <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
                   {me.palmEnrolled
-                    ? 'Your palm print is bound to your primary bank card for touchless terminal debits.'
+                    ? 'Your palm is linked to your PayByPalm wallet for terminal payments.'
                     : 'Enroll your palm print to pay at campus cafeteria and store terminals with just your hand.'}
                 </p>
               </div>
@@ -288,7 +289,7 @@ export default function Profile() {
 
 function PaymentCardRow({ card, onClick }: { card: LinkedCard; onClick: () => void }) {
   const bankMeta = findBank(card.bank);
-  const cleanLast4 = (card.last4 || '').replace(/\D/g, '') || '9241';
+  const cleanLast4 = card.last4;
 
   return (
     <div
@@ -317,7 +318,7 @@ function PaymentCardRow({ card, onClick }: { card: LinkedCard; onClick: () => vo
             </p>
             {card.isDefault && (
               <span className="rounded-full bg-emerald-50 px-2 py-0.2 text-[9px] font-extrabold text-emerald-700 border border-emerald-200">
-                Default Palm
+                Default card
               </span>
             )}
           </div>

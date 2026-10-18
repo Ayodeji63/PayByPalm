@@ -9,7 +9,7 @@
  * backend; our backend calls the palm provider.
  *
  * The flow, and where money moves:
- *   idle → amount → capture → confirm → [step-up] → result
+ *   idle → amount → capture → confirm → result
  *                                        ^^^^^^^
  *   Everything before Confirm is identification. The confirm call is the only
  *   thing in this app that debits anyone.
@@ -24,7 +24,6 @@ import { Idle } from './screens/Idle.js';
 import { Amount } from './screens/Amount.js';
 import { Capture } from './screens/Capture.js';
 import { Confirm } from './screens/Confirm.js';
-import { StepUp } from './screens/StepUp.js';
 import { Result } from './screens/Result.js';
 import { Enrol } from './screens/Enrol.js';
 import { preloadPalmRecognition } from './useCamera.js';
@@ -34,7 +33,6 @@ type Screen =
   | { name: 'amount' }
   | { name: 'capture'; transactionId: string; amountMinor: number }
   | { name: 'confirm'; transactionId: string; amountMinor: number; outcome: AuthenticateOutcome }
-  | { name: 'stepup'; transactionId: string; amountMinor: number; outcome: AuthenticateOutcome }
   | { name: 'result'; ok: boolean; title: string; detail?: string; amountMinor?: number }
   | { name: 'recovery' }
   | { name: 'enrol' };
@@ -54,7 +52,6 @@ export default function TerminalApp() {
   const [online, setOnline] = useState(true);
   const [stepUpError, setStepUpError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [recoveryPin, setRecoveryPin] = useState('');
 
   const toIdle = useCallback(() => {
     setStepUpError(null);
@@ -144,19 +141,18 @@ export default function TerminalApp() {
   }
 
   /** The only path that moves money. */
-  async function settle(transactionId: string, _amountMinor: number, pin?: string) {
+  async function settle(transactionId: string, _amountMinor: number) {
     setBusy(true);
     setStepUpError(null);
     try {
       const sale = loadPendingSale();
       if (!sale || sale.transactionId !== transactionId) throw new Error('Payment recovery required.');
       savePendingSale({ ...sale, confirming: true });
-      const receipt = await terminalApi.confirm(transactionId, pin);
+      const receipt = await terminalApi.confirm(transactionId);
       if (receipt.transactionId !== transactionId || receipt.amountMinor !== sale.amountMinor || !receipt.settledAt) {
         throw new Error('Settlement receipt could not be verified.');
       }
       clearPendingSale();
-      setRecoveryPin('');
       setScreen({
         name: 'result',
         ok: true,
@@ -166,18 +162,6 @@ export default function TerminalApp() {
       });
     } catch (err) {
       const message = err instanceof TerminalApiError ? err.message : 'Payment failed.';
-
-      // A wrong PIN keeps the customer on the PIN pad — sending them back to the
-      // start over one mistyped digit would mean re-scanning their palm.
-      if (
-        pin !== undefined &&
-        err instanceof TerminalApiError &&
-        err.status === 401
-      ) {
-        setStepUpError(message);
-        setBusy(false);
-        return;
-      }
 
       setStepUpError(message);
       setScreen({ name: 'recovery' });
@@ -204,7 +188,6 @@ export default function TerminalApp() {
         if (cancelled.status !== 'cancelled') throw new Error('Cancellation not confirmed.');
       }
       clearPendingSale();
-      setRecoveryPin('');
       toIdle();
     } catch { setScreen({ name: 'recovery' }); }
   }, [toIdle]);
@@ -223,9 +206,9 @@ export default function TerminalApp() {
       }
       const id = sale.transactionId!;
       const state = await terminalApi.status(id);
-      if (state.status === 'settled' || (state.status === 'authenticated' && sale.confirming)) {
+      if (state.status === 'settled' || ((state.status === 'authenticated' || state.status === 'processing') && sale.confirming)) {
         // A retry of a previous explicit confirmation, never a fresh sale.
-        await settle(id, sale.amountMinor, recoveryPin || undefined);
+        await settle(id, sale.amountMinor);
       } else if (state.status === 'pending' && !sale.confirming) {
         setScreen({ name: 'capture', transactionId: id, amountMinor: state.amountMinor });
       } else if (state.status === 'failed' || state.status === 'cancelled') {
@@ -280,10 +263,6 @@ export default function TerminalApp() {
           <p className="t-lg">Resolve the previous payment</p>
           <p className="t-sm mt-4">Its outcome must be checked before starting another sale. Retrying uses the same payment reference.</p>
           {stepUpError && <p role="alert" className="t-sm mt-4">{stepUpError}</p>}
-          <label className="mt-4">Payer PIN, if required
-            <input type="password" inputMode="numeric" maxLength={4} value={recoveryPin}
-              onChange={(e) => setRecoveryPin(e.target.value.replace(/\D/g, ''))} className="ml-3 rounded border p-2" />
-          </label>
           <TButton className="mt-6" disabled={busy} onClick={() => void recoverSale()}>Check or retry this payment</TButton>
           <TButton tone="ghost" className="mt-4" disabled={busy} onClick={() => void abandon()}>Cancel pending sale</TButton>
         </Pane>
@@ -317,28 +296,12 @@ export default function TerminalApp() {
 
       {screen.name === 'confirm' && (
         <Confirm
+          busy={busy}
           outcome={screen.outcome}
           amountMinor={screen.amountMinor}
           merchantName={merchantName}
           onCancel={() => abandon(screen.transactionId)}
-          onConfirm={() => {
-            if (screen.outcome.pinRequired) {
-              setScreen({ ...screen, name: 'stepup' });
-              return;
-            }
-            void settle(screen.transactionId, screen.amountMinor);
-          }}
-        />
-      )}
-
-      {screen.name === 'stepup' && (
-        <StepUp
-          amountMinor={screen.amountMinor}
-          maskedName={screen.outcome.maskedName ?? 'Customer'}
-          error={stepUpError}
-          busy={busy}
-          onCancel={() => abandon(screen.transactionId)}
-          onConfirm={(pin) => void settle(screen.transactionId, screen.amountMinor, pin)}
+          onConfirm={() => void settle(screen.transactionId, screen.amountMinor)}
         />
       )}
 

@@ -12,7 +12,7 @@ PayByPalm serves wallet customers who need to manage money and pay quickly, incl
 
 ## Product Purpose
 
-The wallet lets customers create and secure an account, understand their available balance, fund and manage linked cards, review transactions and receipts, and enrol or unlink a palm for terminal payments. Success means customers can understand their money at a glance and complete common actions confidently without needing a card or phone at the point of sale after enrolment.
+The wallet lets customers create and secure an account, manage linked cards, understand that bank balances must be checked in their bank app, review transactions and receipts, and enrol or unlink a palm for terminal payments. Success means customers can understand their money at a glance and complete common actions confidently without needing a card or phone at the point of sale after enrolment.
 
 ## Positioning
 
@@ -49,7 +49,7 @@ PayByPalm joins an ordinary mobile wallet to a one-time palm-enrolment flow and 
 
 ## Product Principles
 
-- Make current balance, money movement and transaction status immediately understandable.
+- Make the default payment card, direct card charges and transaction status immediately understandable.
 - Keep biometric consent and security boundaries explicit rather than decorative.
 - Prioritize repeat daily actions while keeping infrequent setup tasks findable.
 - Preserve customer control: no debit occurs without explicit confirmation.

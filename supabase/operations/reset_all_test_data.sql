@@ -22,7 +22,7 @@ begin
     into v_tables
     from pg_tables
     where schemaname = 'public' and tablename = any(array[
-      'ledger_entries', 'transactions', 'enrol_sessions', 'api_stream_leases',
+      'card_payment_attempts', 'card_link_attempts', 'linked_cards', 'ledger_entries', 'transactions', 'enrol_sessions', 'api_stream_leases',
       'palm_bindings', 'palm_audit', 'terminals', 'merchants', 'accounts',
       'profiles', 'api_budgets'
     ]);

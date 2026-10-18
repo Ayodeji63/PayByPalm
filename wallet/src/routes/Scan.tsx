@@ -2,7 +2,7 @@
  * Scan — Palm Biometric Terminal Enrolment.
  *
  * Premium biometric enrolment flow matching Google Wallet / Apple Pay standards.
- * Guides the user to bind their palm biometrics to their tokenized Nigerian bank card.
+ * Guides the user to enrol palm biometrics for their PayByPalm wallet.
  *
  * Steps:
  *   - intro: Futuristic glowing biometric palm scanner hero, tokenized card binding pill,
@@ -17,6 +17,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import type { IScannerControls } from '@zxing/browser';
 import { api, ApiError, type EnrolSessionView } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
+import { useServerCards } from '../lib/serverCards.js';
 import { getDefaultCard } from '../lib/cardStore.js';
 import { Button, ErrorState, PalmIcon } from '../components/ui.js';
 import { PageTransition } from '../components/transitions.js';
@@ -151,6 +152,7 @@ export default function Scan() {
 // ---------------------------------------------------------------------------
 
 function Intro({ onStart }: { onStart: () => void }) {
+  useServerCards();
   const defaultCard = getDefaultCard();
 
   return (
@@ -197,7 +199,7 @@ function Intro({ onStart }: { onStart: () => void }) {
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Primary Payment Card
+                Saved payment card
               </p>
               <p className="text-xs font-extrabold text-slate-800">
                 {defaultCard.name} •••• {defaultCard.last4}
@@ -205,7 +207,7 @@ function Intro({ onStart }: { onStart: () => void }) {
             </div>
           </div>
           <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-700 ring-1 ring-emerald-600/20">
-            Auto-debited
+            Saved
           </span>
         </div>
       )}
@@ -241,7 +243,7 @@ function Intro({ onStart }: { onStart: () => void }) {
             </svg>
           }
           title="Instant Revocation Anytime"
-          description="Easily pause, unlink, or switch your linked payment card anytime from your wallet."
+          description="Manage saved cards and check verification refunds from your wallet."
         />
       </div>
 
@@ -491,7 +493,7 @@ function Success({ onDone }: { onDone: () => void }) {
         Palm Successfully Linked!
       </h2>
       <p className="mx-auto mt-2 max-w-xs text-xs text-slate-500 leading-relaxed">
-        Your biometric profile is now securely bound to your payment card. You can now checkout anywhere with just your palm!
+        Your palm is now linked to your PayByPalm account. Link a default card to pay from that card at a configured PayByPalm terminal.
       </p>
 
       <div className="mt-8 w-full">

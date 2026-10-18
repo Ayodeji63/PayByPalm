@@ -1,4 +1,6 @@
-/** Card charging remains disabled until server verification and refunds exist. */
-export function openPaystackPopup(): never {
-  throw new Error('Card linking is currently unavailable.');
+/** Checkout URLs come from authenticated backend initialization, never user input. */
+export function validatedCheckoutUrl(value:string):string {
+ const url=new URL(value);
+ if(url.origin!=='https://checkout.paystack.com'||url.username||url.password)throw new Error('Invalid payment checkout URL.');
+ return url.href;
 }

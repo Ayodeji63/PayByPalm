@@ -81,6 +81,8 @@ const PG_ERROR_MAP: Record<string, { status: number; code: string; message: stri
   PB003: { status: 402, code: 'insufficient_funds', message: 'Insufficient balance' },
   PB004: { status: 500, code: 'account_missing', message: 'A required ledger account is missing' },
   PB006: { status: 409, code: 'stale_authentication', message: 'Palm authorization expired. Please scan again.' },
+  PB009: { status: 503, code: 'merchant_settlement_missing', message: 'This merchant is not configured for card settlement.' },
+  PB008: { status: 409, code: 'no_active_card', message: 'Link an active default card before paying.' },
   PB007: { status: 409, code: 'sale_reference_conflict', message: 'This sale reference has different payment details.' },
   PB005: {
     status: 409,

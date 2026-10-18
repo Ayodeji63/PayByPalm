@@ -24,6 +24,10 @@ export const configSchema = z
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY is required'),
     SUPABASE_ANON_KEY: z.string().min(1, 'SUPABASE_ANON_KEY is required'),
 
+    PAYSTACK_MODE: z.enum(['test', 'live']).default('test'),
+    PAYSTACK_SECRET_KEY: z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/).optional(),
+    CARD_TOKEN_ENCRYPTION_KEY: z.string().regex(/^[A-Za-z0-9+/]{43}=$/, 'must be a base64 encoded 32-byte key').optional(),
+
     PALM_PROVIDER: z.enum(['tencent', 'mock']).default('mock'),
     TENCENT_BASE_URL: z.string().url().default('https://open.intl.palm.tencent.com'),
     TENCENT_PALM_API_KEY: z.string().optional(),
@@ -40,6 +44,8 @@ export const configSchema = z
     EXTRA_CORS_ORIGINS: z.string().default(''),
     MAX_IMAGE_BYTES: intFromEnv(2 * 1024 * 1024).refine(n => n > 0 && n <= 8 * 1024 * 1024, 'must be between 1 byte and 8 MiB'),
   })
+  .refine(c => !c.PAYSTACK_SECRET_KEY || !!c.CARD_TOKEN_ENCRYPTION_KEY, { message: 'CARD_TOKEN_ENCRYPTION_KEY is required with Paystack', path: ['CARD_TOKEN_ENCRYPTION_KEY'] })
+  .refine(c => !c.PAYSTACK_SECRET_KEY || c.PAYSTACK_SECRET_KEY.startsWith(`sk_${c.PAYSTACK_MODE}_`), { message: 'Paystack key must match PAYSTACK_MODE; test mode rejects live keys', path: ['PAYSTACK_SECRET_KEY'] })
   .refine((c) => c.NODE_ENV !== 'production' || c.PALM_PROVIDER !== 'mock', {
     message: 'Mock payment authorization is forbidden in production',
     path: ['PALM_PROVIDER'],

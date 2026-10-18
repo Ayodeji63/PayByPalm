@@ -75,6 +75,15 @@ const post = (path: string, body: unknown, headers: Record<string, string> = {})
 });
 
 describe('API security boundaries', () => {
+  it('returns an unavailable card balance instead of internal funds',async()=>{
+    const r=await fetch(base+'/me',{headers:{Authorization:'Bearer test'}});
+    expect(r.status).toBe(200);expect(await r.json()).toMatchObject({balanceMinor:null,cardBalanceAvailable:false,paymentSource:'linked_card'});
+  });
+  it('retires internal topups without writing a funding transaction',async()=>{
+    const r=await post('/topup',{amountMinor:5000},{Authorization:'Bearer test'});
+    expect(r.status).toBe(410);
+  });
+
   it('returns controlled JSON for malformed input without logging its raw body', async () => {
     const result = await fetch(base + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"password":"secret-marker",' });
     expect(result.status).toBe(400);
@@ -122,6 +131,10 @@ describe('API security boundaries', () => {
       imageB64: 'A'.repeat(MAX_ENCODED_IMAGE + 1),
     }, { 'X-Terminal-Key': 'test' });
     expect(result.status).toBe(400); expect(mocks.authenticate).not.toHaveBeenCalled();
+  });
+  it('rejects terminal PIN fields instead of accepting them as palm authorization',async()=>{
+    expect((await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/confirm',{pin:'2468'},{'X-Terminal-Key':'test'})).status).toBe(400);
+    expect(mocks.confirm).not.toHaveBeenCalled();
   });
   it('only returns transaction-specific receipt fields', async () => {
     const result = await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/confirm', {}, { 'X-Terminal-Key': 'test' });

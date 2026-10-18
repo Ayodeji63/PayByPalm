@@ -22,6 +22,7 @@ try {
     let status = 200;
     let data;
     if (path === '/auth/signup') data = { email: body.email, verificationRequired: true };
+    else if (path === '/cards') data = { enabled: false, testMode: true, amountMinor: 5000, currency: 'NGN', cards: [], attempts: [] };
     else if (path === '/auth/confirm') {
       if (body.refreshToken !== 'fixture-refresh') { status = 400; data = { error: { code: 'invalid_confirmation', message: 'Invalid confirmation link' } }; }
       else data = { session };

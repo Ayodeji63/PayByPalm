@@ -111,14 +111,15 @@ test('card caches do not cross users or survive logout', () => {
   cards.setCardOwner('user-A');
   assert.equal(cards.getCards().length, 0);
   assert.equal(localStorage.getItem('paybypalm.user_pin'), null);
-  cards.addCard({ name: 'A', last4: '1234', isDefault: true });
+  cards.cacheServerCards('user-A', [{ name: 'A', last4: '1234', isDefault: true }]);
   assert.equal(cards.getCards().length, 1);
   cards.setCardOwner('user-B');
   assert.equal(cards.getCards().length, 0);
   assert.equal(localStorage.getItem('paybypalm.tokenized_cards.v2:user-A'), null);
   cards.setCardOwner(null);
   assert.equal(cards.getCards().length, 0);
-  assert.throws(() => cards.addCard({ name: 'signed out', last4: '5678' }));
+  cards.cacheServerCards('user-A', [{ last4: '5678' }]);
+  assert.equal(cards.getCards().length, 0);
 });
 
 test('terminal bootstrap rejects URL and legacy persistent credentials', () => {
@@ -228,48 +229,49 @@ test('pending sale references survive reloads and cannot silently drop corrupt s
   assert.throws(() => reloaded.loadPendingSale());
 });
 
-test('retired card charging never invokes a payment provider', () => {
-  let invoked = false;
-  const paystack = load('../src/lib/paystack.ts', { window: { PaystackPop: { setup: () => { invoked = true; } } } });
-  assert.throws(() => paystack.openPaystackPopup(), /unavailable/);
-  assert.equal(invoked, false);
+test('card checkout rejects attacker-controlled redirect origins', () => {
+  const paystack = load('../src/lib/paystack.ts');
+  assert.equal(paystack.validatedCheckoutUrl('https://checkout.paystack.com/abc'), 'https://checkout.paystack.com/abc');
+  for (const url of ['http://checkout.paystack.com/abc','https://checkout.paystack.com.attacker.test/abc','javascript:alert(1)','https://attacker.test/','https://user@checkout.paystack.com/abc']) {
+    assert.throws(() => paystack.validatedCheckoutUrl(url));
+  }
 });
 
 function renderDashboard(balanceMinor) {
-  const react = nodeRequire('react');
-  const money = load('../src/lib/money.ts');
+  const React = nodeRequire('react');
   const dependencies = {
-    react,
+    react: React,
     'react/jsx-runtime': nodeRequire('react/jsx-runtime'),
-    'react-dom': nodeRequire('react-dom'),
+    'react-dom': { createPortal: children => children },
     'react-router-dom': { useNavigate: () => () => {} },
-    '../lib/auth.js': { useAuth: () => ({ me: { id: 'user', fullName: 'User', phone: '+2348123456789', balanceMinor }, refresh: async () => {} }) },
-    '../lib/api.js': {},
-    '../lib/money.js': money,
-    '../lib/cardStore.js': { getCards: () => [], setDefaultCard: () => {}, togglePauseCard: () => {} },
+    '../lib/auth.js': { useAuth: () => ({ me: { id: 'user', fullName: 'Test User', balanceMinor, phone: '08010001234', palmEnrolled: false }, refresh: async () => {}, consentGiven: false }) },
+    '../lib/money.js': load('../src/lib/money.ts'),
+    '../lib/serverCards.js': { useServerCards: () => [], editLinkedCard: async () => {} },
     '../components/ui.js': { PalmIcon: () => null, Skeleton: () => null },
     '../components/BankCard.js': { BankCard: () => null },
     '../components/sheets.js': { TransactionSheet: () => null },
     '../components/transitions.js': { PageTransition: ({ children }) => children },
     '../components/Toast.js': { useToast: () => ({ show: () => {} }) },
   };
-  const dashboard = load('../src/routes/Dashboard.tsx', {
-    require: name => { if (!(name in dependencies)) throw new Error(name); return dependencies[name]; },
-  });
-  return nodeRequire('react-dom/server').renderToStaticMarkup(react.createElement(dashboard.default));
+  const module = load('../src/routes/Dashboard.tsx', { require: name => {
+    if (!(name in dependencies)) throw new Error('Unexpected dependency: ' + name);
+    return dependencies[name];
+  } });
+  return nodeRequire('react-dom/server').renderToStaticMarkup(React.createElement(module.default));
 }
 
-test('dashboard uses the actual zero wallet balance without invented funds', () => {
+test('dashboard reports unavailable card balance instead of fabricating funds', () => {
   const html = renderDashboard(0);
   assert.equal(html.includes('125,000'), false);
-  assert.match(html, /0/);
+  assert.match(html, /Card balance unavailable/);
   assert.equal(html.includes('Transfer Successful'), false);
 });
 
-test('dashboard renders the server balance when there are no linked cards', () => {
+test('dashboard never presents an old ledger balance as bank funds', () => {
   const text = renderDashboard(9876543).replace(/<[^>]*>/g, '');
-  assert.match(text, /98,765/);
-  assert.match(text, /43/);
+  assert.equal(text.includes('98,765'), false);
+  assert.match(text, /Card balance unavailable/);
+  assert.match(text, /Payments debit your default linked card directly/);
   assert.equal(text.includes('125,000'), false);
 });
 
@@ -444,4 +446,13 @@ test('confirmation parser accepts signup links and rejects recovery, passwordles
   for (const hash of ['', '#type=signup', '#type=recovery&refresh_token=x', '#type=magiclink&refresh_token=x', '#type=signup&refresh_token=x&error_code=otp_expired']) {
     assert.throws(() => confirmation().readEmailConfirmation(hash));
   }
+});
+
+test('processing card payments recover the same sale without a PIN',async()=>{
+ const sessionStorage=storage(),recovery=load('../src/terminal/paymentRecovery.ts',{sessionStorage});
+ recovery.savePendingSale({saleId:'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',amountMinor:100,confirming:true,transactionId:paymentId});
+ const calls=[];
+ const app=terminalHarness({status:async()=>({status:'processing',amountMinor:100}),confirm:async(...args)=>{calls.push(args);return {transactionId:paymentId,amountMinor:100,settledAt:new Date().toISOString(),maskedName:'Payer',merchantName:'Merchant'};}},sessionStorage);
+ app.find('Button','Check or retry this payment').props.onClick();await flushActions();
+ assert.deepEqual(calls,[[paymentId]]);assert.equal(app.find('Result').props.ok,true);
 });

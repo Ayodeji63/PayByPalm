@@ -35,7 +35,7 @@ export default function Activity() {
       }
     })();
     return () => { cancelled = true; };
-  }, [me?.balanceMinor]);
+  }, [me]);
 
   const filtered = transactions.filter((tx) => {
     if (filter === 'debit') return tx.direction === 'debit';

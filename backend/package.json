@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.15.9",
-  "description": "PayByPalm API — palm-biometric payment for a closed-loop campus wallet",
+  "description": "PayByPalm API \u2014 palm-biometric payment for a closed-loop campus wallet",
   "engines": {
     "node": ">=20 <25"
   },
@@ -16,7 +16,9 @@
     "palms:delete-all": "tsx scripts/delete-all-palms.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "cards:test:preflight": "tsx scripts/card-test-preflight.ts",
+    "cards:reconcile": "tsx scripts/reconcile-card-links.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

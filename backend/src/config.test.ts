@@ -10,6 +10,22 @@ describe('production payment configuration', () => {
     const result = configSchema.safeParse({ ...process.env, NODE_ENV: 'production', PALM_PROVIDER: 'tencent', TENCENT_PALM_API_KEY: 'test-only' });
     expect(result.success).toBe(true);
   });
+  it('requires an encryption key before enabling card linking', () => {
+    expect(configSchema.safeParse({ ...process.env, PAYSTACK_SECRET_KEY: 'sk_test_fixture', CARD_TOKEN_ENCRYPTION_KEY: undefined }).success).toBe(false);
+  });
+  it('refuses a live Paystack key in default test mode', () => {
+    expect(configSchema.safeParse({ ...process.env, PAYSTACK_MODE: 'test', PAYSTACK_SECRET_KEY: 'sk_live_fixture', CARD_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32).toString('base64') }).success).toBe(false);
+  });
+  it('defaults to test mode and allows a production-built staging server with test keys', () => {
+    const result = configSchema.safeParse({ ...process.env, NODE_ENV: 'production', PALM_PROVIDER: 'tencent', TENCENT_PALM_API_KEY: 'test-only', PAYSTACK_MODE: undefined, PAYSTACK_SECRET_KEY: 'sk_test_fixture', CARD_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32).toString('base64') });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.PAYSTACK_MODE).toBe('test');
+  });
+  it('requires explicit live mode for live keys and rejects a test key in live mode', () => {
+    const env = { ...process.env, PAYSTACK_MODE: 'live', CARD_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32).toString('base64') };
+    expect(configSchema.safeParse({ ...env, PAYSTACK_SECRET_KEY: 'sk_live_fixture' }).success).toBe(true);
+    expect(configSchema.safeParse({ ...env, PAYSTACK_SECRET_KEY: 'sk_test_fixture' }).success).toBe(false);
+  });
   it.each(['0', '-1', '61'])('rejects an unsafe authorization lifetime %s', value => {
     expect(configSchema.safeParse({ ...process.env, AUTH_VALIDITY_SECONDS: value }).success).toBe(false);
   });

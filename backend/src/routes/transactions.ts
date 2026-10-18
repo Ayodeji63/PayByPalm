@@ -123,25 +123,24 @@ transactionsRouter.post(
 /**
  * POST /transactions/:id/confirm — the explicit Confirm tap.
  *
- * The ONLY route in this API that debits a wallet. Fails if the transaction is
+ * Charges the linked default card after a strong, fresh palm match. Fails if the transaction is
  * not authenticated, or if the palm scan behind it has gone stale.
  */
 transactionsRouter.post(
   '/transactions/:id/confirm',
   terminalAuth,
   terminalRateLimit('payment-confirm', 60, 60),
-  rateLimit('payment-pin', 5, 60, req => `${req.terminal!.id}:${req.params.id}`),
+  rateLimit('payment-confirm-retry', 20, 60, req => `${req.terminal!.id}:${req.params.id}`),
   validate({
     params: idParam,
     body: z
-      .object({ pin: z.string().regex(/^\d{4}$/, 'PIN must be 4 digits').optional() })
+      .object({}).strict()
       .default({}),
   }),
   async (req, res) => {
     const terminal = requireTerminal(req);
-    const { pin } = (req.body ?? {}) as { pin?: string };
 
-    const receipt = await confirmTransaction(req.params.id as string, terminal, pin);
+    const receipt = await confirmTransaction(req.params.id as string, terminal);
     res.json({
       transactionId: receipt.transactionId, amountMinor: receipt.amountMinor,
       merchantName: receipt.merchantName, terminalLabel: receipt.terminalLabel,
@@ -231,7 +230,7 @@ transactionsRouter.get(
       .eq('matched_user_id', user.id)
       // Only outcomes the user can act on. A 'pending' row is a till mid-sale and
       // means nothing on a phone.
-      .in('status', ['settled', 'failed', 'cancelled'])
+      .in('status', ['processing', 'settled', 'failed', 'cancelled'])
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 

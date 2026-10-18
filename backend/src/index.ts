@@ -25,6 +25,10 @@ import { enrolRouter } from './routes/enrol.js';
 import { healthRouter } from './routes/health.js';
 import { terminalRouter } from './routes/terminal.js';
 import { transactionsRouter } from './routes/transactions.js';
+import { cardsRouter } from './routes/cards.js';
+import { paystackWebhookRouter } from './routes/paystackWebhook.js';
+import { startCardPaymentReconciliation } from './services/cardPaymentService.js';
+import { startCardReconciliation } from './services/cardLinkService.js';
 import { walletRouter } from './routes/wallet.js';
 
 export function createApp(): express.Express {
@@ -53,6 +57,7 @@ export function createApp(): express.Express {
   );
 
   app.use(ipRateLimit('requests', 300, 60));
+  app.use(paystackWebhookRouter);
   app.use(requestBody);
 
   // Carries the X-Mock-User hint to the mock palm provider without widening the
@@ -69,6 +74,7 @@ export function createApp(): express.Express {
   app.use(healthRouter);
   app.use(authRouter);
   app.use(walletRouter);
+  app.use(cardsRouter);
   app.use(terminalRouter);
   app.use(enrolRouter);
   app.use(transactionsRouter);
@@ -85,6 +91,8 @@ export function createApp(): express.Express {
 if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
   const app = createApp();
 
+  const stopCardReconciliation = startCardReconciliation();
+  const stopCardPayments = startCardPaymentReconciliation();
   const server = createServer(app);
   server.on('error', (error: NodeJS.ErrnoException) => {
     logger.fatal({ code: error.code, port: config.PORT }, error.code === 'EADDRINUSE'
@@ -107,6 +115,8 @@ if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
 
   const shutdown = (signal: string) => {
     logger.info({ signal }, 'shutting down');
+    stopCardReconciliation();
+    stopCardPayments();
     // Stop accepting new work, let in-flight payments finish, then exit.
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 10_000).unref();

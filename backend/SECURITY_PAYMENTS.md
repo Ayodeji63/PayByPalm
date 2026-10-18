@@ -20,8 +20,9 @@
   outcomes block fresh sales until checked. Lost responses are retried using
   the original sale/transaction IDs. Do not clear browser storage to bypass recovery.
 - Wallet balances come from /me. Sample histories and fabricated balance defaults
-  are removed. Transfers, card linking/charging, and simulated merchant reporting
-  are unavailable until backed by verified server implementations.
+  are removed. Card linking now uses verified server-side Paystack checkout, encrypted authorizations
+  and refund reconciliation; see CARD_LINKING.md. Transfers, automatic card charging
+  and simulated merchant reporting remain unavailable.
 
 ## Required before deployment
 
@@ -40,9 +41,9 @@
 4. Keep PALM_PROVIDER=tencent with a valid provider credential in production.
    AUTH_VALIDITY_SECONDS must be between 1 and 60. Verify real provider matching,
    liveness, and replay resistance using the actual hardware before live use.
-5. Transfers and card charges must stay unavailable until server-side provider
-   verification, ownership checks, unique provider references, reconciled refunds,
-   and authoritative receipts exist. No new funding rail was implemented here.
+5. Apply migration 0017 and complete CARD_LINKING.md before enabling restored card
+   linking. Transfers and automatic card charging remain unavailable. Saved-card
+   verification/refunds do not credit wallets or change terminal settlement.
 6. The terminal recovery record survives reloads in the same tab. Closing the
    browser session, clearing its storage, or replacing the device can lose that
    local recovery context. Reconcile outstanding server transactions before
