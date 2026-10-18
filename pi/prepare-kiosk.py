@@ -16,7 +16,7 @@ def prepare(config, directory):
         raise ValueError('Extension directory must be private to the kiosk user')
     parsed = urlsplit(url)
     origin = f'{parsed.scheme}://{parsed.netloc}'
-    # No background worker, network access, web-accessible files, or messaging API.
+    # Device bootstrap stays usable without the optional local LED installation.
     manifest = {
         'manifest_version': 3, 'name': 'PayByPalm device bootstrap', 'version': '1.0.0',
         'content_scripts': [{
@@ -30,7 +30,17 @@ def prepare(config, directory):
   sessionStorage.setItem('paybypalm.terminalKey', KEY);
 })();
 '''.replace('ORIGIN', json.dumps(origin)).replace('KEY', json.dumps(key))
-    for name, content in [('manifest.json', json.dumps(manifest)), ('bootstrap.js', script)]:
+    files = [('bootstrap.js', script)]
+    if (config.parent / 'led-enabled').is_file():
+        assets = Path(__file__).resolve().parent
+        manifest['key'] = (assets / 'led-extension-key.txt').read_text().strip()
+        manifest['permissions'] = ['nativeMessaging']
+        manifest['background'] = {'service_worker': 'led-background.js'}
+        manifest['content_scripts'][0]['js'].append('led-content.js')
+        for name in ('led-content.js', 'led-background.js'):
+            files.append((name, (assets / name).read_text().replace('__PBP_ORIGIN__', json.dumps(origin))))
+    files.append(('manifest.json', json.dumps(manifest)))
+    for name, content in files:
         fd = os.open(directory / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, 'w') as handle:
             handle.write(content)

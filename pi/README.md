@@ -9,7 +9,7 @@ key only: never a Supabase service-role key, Tencent key, or customer login.
 - Use Raspberry Pi OS **with Desktop**, a working network, touchscreen and a camera
   Chromium can access. Run setup as the account that logs into the Pi desktop.
 - Deploy the updated wallet/backend and apply the pending Supabase migrations
-  through `0013`. Configure the backend's real Tencent provider for live matching.
+  through `0018`. Configure the backend's real Tencent provider for live matching.
 - The frontend's build must use the reachable HTTPS API URL in `VITE_API_BASE_URL`.
   `localhost:8080` would point at the Pi itself. Backend `WALLET_BASE_URL` must be
   the public wallet URL so phones can open enrolment QR links.
@@ -54,7 +54,16 @@ python3 ~/.local/share/paybypalm/pi/provision-terminal.py \
   --merchant-id YOUR_MERCHANT_UUID \
   --label 'Main counter'
 ```
+We should have an interface for this a proper interface different entirely from this main paybypalm repo and also an admin dashboard. but let's do this test run first.
 
+```bash 
+
+python3 provision-terminal.py \
+  --url https://pay-by-palm.vercel.app/terminal \
+  --merchant-id 4e087f88-0575-4b2e-a44d-2d7296809760 \
+  --label 'Ayo Stores — Counter 1'
+
+```
 Use your actual deployed wallet URL if different. The script saves a fresh random
 key in `~/.config/paybypalm/terminal.env`, owned by the desktop user with mode 0600.
 It prints an `INSERT` statement containing **only the SHA-256 hash**. Run that
@@ -101,9 +110,10 @@ The startup sequence is:
    for that terminal origin before the app's scripts run.
 6. The app authenticates with `X-Terminal-Key`; systemd restarts Chromium if it exits.
 
-The reusable key is absent from browser arguments and URLs. The generated extension
-has no web-accessible files, background worker or message endpoint; its content
-script only injects on the configured origin's `/terminal` path and subpaths.
+The reusable key is absent from browser arguments and URLs. The generated extension has no web-accessible files or external message endpoint.
+Its content scripts only inject on the configured origin's `/terminal` path and
+subpaths. The optional LED feature adds a native-messaging background worker;
+without LED opt-in the credential-only bootstrap has no background worker.
 Use **Chromium**: branded Google Chrome removed support for this command-line
 extension-loading workflow. No debug port or disabled browser security is needed.
 
@@ -118,12 +128,22 @@ starting new sales; automatic browser startup is not financial reconciliation.
 - **Enrol new user:** show QR, let the signed-in customer claim it on their phone,
   then capture their palm on the terminal.
 - **New sale:** enter amount, capture palm (optionally narrow with phone last four
-  digits), confirm, and enter the customer's wallet PIN if the backend requires it.
+  digits), confirm the linked-card debit. No terminal PIN/OTP is requested; weak palm
+  matches require another scan.
 - A scan alone does not debit money. Successful backend confirmation settles it.
 - An unknown payment outcome displays recovery. Retry/check that same sale; do not
   clear browser storage or reset the terminal to get around it.
 - Signup/PIN setup happens on customers' phones, not on the kiosk.
-- Real funding rails are still pending. Live sandbox top-ups are disabled.
+- Payments debit the default linked card through Paystack. Keep test keys enabled
+  until direct-card terminal acceptance testing has passed. Card balances are not
+  exposed by this integration.
+
+## Optional WS2812 camera ring
+
+For the 12-LED GPIO18 ring, installation commands, wiring, state mapping and
+hardware checks, follow [LEDS.md](LEDS.md). It extends the existing kiosk extension
+with a local native-messaging bridge only when opted in. No browser GPIO access or
+public hardware endpoint is added.
 
 ## Maintenance and troubleshooting
 
@@ -170,54 +190,3 @@ desktop auto-login and power-cycle behavior must still be verified on the Pi.
 References: [Chromium extension loading](https://groups.google.com/a/chromium.org/g/chromium-extensions/c/1-g8EFx2BBY/m/S0ET5wPjCAAJ),
 [content-script timing](https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts),
 [Raspberry Pi configuration](https://www.raspberrypi.com/documentation/computers/configuration.html).
-
-
-Implemented locally. The launcher now provisions the key without URL exposure, waits for connectivity, and restarts Chromium if it exits. Six tests and a real Chromium bootstrap check passed. **It hasn’t been installed on your Pi yet.**
-
-On the Pi:
-
-1. Copy the updated repository onto it, then run these commands **as the desktop user**:
-
-   ```bash
-   sudo apt update
-   sudo apt install -y chromium python3 util-linux curl
-
-   cd ~/PayByPalm/pi
-   sudo systemctl disable --now paybypalm-kiosk.service 2>/dev/null || true
-   bash install.sh
-   ```
-
-2. Find your merchant ID in Supabase SQL Editor:
-
-   ```sql
-   select id, name from public.merchants;
-   ```
-
-3. Generate the device credential, replacing the merchant UUID and wallet URL:
-
-   ```bash
-   python3 ~/.local/share/paybypalm/pi/provision-terminal.py \
-     --url https://pay-by-palm.vercel.app/terminal \
-     --merchant-id YOUR_MERCHANT_UUID \
-     --label 'Main counter'
-   ```
-
-   **Run the SQL statement it prints in Supabase.** The actual key stays privately on the Pi; the statement contains only its hash.
-
-4. Start the terminal from the Pi desktop:
-
-   ```bash
-   ~/.local/share/paybypalm/pi/start-kiosk-session.sh
-   ```
-
-5. Run `sudo raspi-config`, enable **Desktop Auto Login**, then reboot. The desktop will automatically start the kiosk service. [Raspberry Pi configuration](https://www.raspberrypi.com/documentation/computers/configuration.html).
-
-To inspect problems:
-
-```bash
-journalctl --user -u paybypalm-kiosk -f
-```
-
-The updated backend/wallet and Supabase migrations must also be deployed. The frontend’s API URL must point to your reachable backend—not `localhost` on the Pi.
-
-Full installation, camera checks, and interrupted-payment recovery guidance: [Pi setup guide](/home/dell/PayByPalm/pi/README.md).

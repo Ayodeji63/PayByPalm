@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { terminalApi, TerminalApiError, type EnrolSessionView } from '../api.js';
+import { beginLEDOperation,confirmedEnrollment,type LEDOperation } from '../leds.js';
 import { TIMINGS } from '../config.js';
 import { useAutoCapture, useCamera } from '../useCamera.js';
 import { CameraPane, Pane, PalmGlyph, TButton } from '../ui.js';
@@ -34,12 +35,21 @@ export function Enrol({ onExit }: { onExit: () => void }) {
   // The camera is only opened once there is someone to photograph. Holding the
   // device open through the whole QR wait would light the indicator at an idle
   // kiosk for no reason.
-  const { videoRef, status, retry, captureBest } = useCamera(phase === 'capturing');
+  const { videoRef, status, retry, captureBest, illuminationWarning } = useCamera(phase === 'capturing');
   const { state: autoCaptureState, landmarks } = useAutoCapture(
     videoRef,
     phase === 'capturing' && status === 'ready' && !busy,
   );
   const autoCaptureFired = useRef(false);
+  const captureInProgress=useRef(false);
+  const operation=useRef<LEDOperation|null>(null);
+  useEffect(()=>()=>operation.current?.close(),[]);
+  useEffect(()=>{
+    if(busy||captureInProgress.current||(error&&phase==='capturing'))return;
+    const leds=beginLEDOperation();operation.current=leds;
+    const state=phase==='done'?'SUCCESS':phase==='failed'||phase==='expired'?'ERROR':phase==='creating'?'LOADING':phase==='capturing'?(status!=='ready'?(status==='starting'?'LOADING':'ERROR'):autoCaptureState==='loading'?'LOADING':autoCaptureState==='error'?'ERROR':'OFF'):'OFF';
+    void leds.state(state);
+  },[phase,status,autoCaptureState,busy,error]);
 
   const newSession = useCallback(async () => {
     setPhase('creating');
@@ -114,19 +124,25 @@ export function Enrol({ onExit }: { onExit: () => void }) {
   }, [session, phase]);
 
   async function capture() {
-    if (!session || busy || status !== 'ready') return;
+    if (!session || captureInProgress.current || busy || status !== 'ready') return;
+    captureInProgress.current=true;
     setBusy(true);
     setError(null);
+    const leds=beginLEDOperation();operation.current=leds;
     try {
-      const frame = await captureBest();
-      const result = await terminalApi.registerPalm(session.sessionId, frame.imageB64);
+      const frame = await captureBest(leds);
+      const result = await confirmedEnrollment(leds,()=>terminalApi.registerPalm(session.sessionId, frame.imageB64));
+      if(!leds.active())return;
       setDisplayName(result.userDisplayName);
       setPhase('done');
     } catch (err) {
+      if(!leds.active())return;
+      await leds.state('ERROR');
       setError(
-        err instanceof TerminalApiError ? err.message : 'Could not read that palm. Try again.',
+        err instanceof TerminalApiError ? err.message : err instanceof Error?err.message:'Could not read that palm. Try again.',
       );
     } finally {
+      captureInProgress.current=false;
       setBusy(false);
     }
   }
@@ -231,7 +247,8 @@ export function Enrol({ onExit }: { onExit: () => void }) {
               Show one open palm to the camera. The live points confirm detection, then the
               terminal captures automatically when your hand is centred and steady.
             </p>
-            {error && <p className="t-sm mt-4 text-danger">{error}</p>}
+            {illuminationWarning&&<p role="status" className="t-sm mt-4 text-warning">{illuminationWarning}</p>}
+            {error && <p role="alert" className="t-sm mt-4 text-danger">{error}</p>}
 
             <TButton
               className="mt-8"

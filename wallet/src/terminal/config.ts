@@ -30,6 +30,8 @@ export function clearTerminalKey(): void {
 
 /** Timings, in one place so they can be tuned without hunting through screens. */
 export const TIMINGS = {
+  /** Exposure settles after the Pi acknowledges steady white illumination. */
+  ledExposureSettleMs: 300,
   /** Confirm screen auto-cancels — a customer who walked away must not stay chargeable. */
   confirmTimeoutMs: 30_000,
   /** Result screen returns to idle so the next customer finds a clean terminal. */

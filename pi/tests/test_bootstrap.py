@@ -39,6 +39,20 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual((extension / 'bootstrap.js').stat().st_mode & 0o777, 0o600)
         self.assertNotIn(self.key, json.dumps(manifest))
 
+    def test_led_bridge_is_opt_in_and_has_no_network_control_endpoint(self):
+        (self.root / 'led-enabled').touch()
+        extension = self.root / 'led-extension'
+        extension.mkdir(mode=0o700)
+        prepare.prepare(self.config, extension)
+        manifest = json.loads((extension / 'manifest.json').read_text())
+        self.assertEqual(manifest['permissions'], ['nativeMessaging'])
+        self.assertEqual(manifest['background'], {'service_worker': 'led-background.js'})
+        self.assertNotIn('externally_connectable', manifest)
+        self.assertNotIn('web_accessible_resources', manifest)
+        self.assertNotIn('host_permissions', manifest)
+        self.assertNotIn(self.key, (extension / 'led-background.js').read_text())
+        self.assertNotIn('__PBP_ORIGIN__', (extension / 'led-content.js').read_text())
+
     def test_rejects_unsafe_urls_without_printing_credentials(self):
         for url in ['http://wallet.example/terminal', 'https://wallet.example/terminal?k=secret',
                     'https://user:pass@wallet.example/terminal', 'https://*.example/terminal',

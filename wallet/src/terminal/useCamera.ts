@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { HandLandmarker, NormalizedLandmark } from '@mediapipe/tasks-vision';
 import { TIMINGS } from './config.js';
+import { captureWithLight, type LEDOperation } from './leds.js';
 
 export type CameraStatus = 'starting' | 'ready' | 'denied' | 'missing' | 'error';
 
@@ -134,6 +135,8 @@ export function useCamera(active: boolean) {
 
   const [status, setStatus] = useState<CameraStatus>('starting');
   const [attempt, setAttempt] = useState(0);
+  const [illuminationWarning,setIlluminationWarning]=useState<string|null>(null);
+  const capturingRef=useRef(false);
 
   useEffect(() => {
     if (!active) return;
@@ -235,16 +238,20 @@ export function useCamera(active: boolean) {
    * failed to grab — a terminal that silently sends nothing is worse than one
    * that says the camera is not ready.
    */
-  const captureBest = useCallback(async (): Promise<CapturedFrame> => {
-    const frames: CapturedFrame[] = [];
-
-    for (let i = 0; i < TIMINGS.burstFrames; i += 1) {
-      const frame = captureFrame();
-      if (frame) frames.push(frame);
-      if (i < TIMINGS.burstFrames - 1) {
-        await new Promise((resolve) => setTimeout(resolve, TIMINGS.burstIntervalMs));
+  const captureBest = useCallback(async (leds:LEDOperation): Promise<CapturedFrame> => {
+    if(capturingRef.current)throw new Error('Palm capture is already in progress.');
+    capturingRef.current=true;
+    setIlluminationWarning(null);
+    try {
+    const frames=await captureWithLight(leds,async()=>{
+      const captured:CapturedFrame[]=[];
+      for(let i=0;i<TIMINGS.burstFrames;i++){
+        if(!leds.active())throw new Error('Palm capture was cancelled.');
+        const frame=captureFrame();if(frame)captured.push(frame);
+        if(i<TIMINGS.burstFrames-1)await new Promise(resolve=>setTimeout(resolve,TIMINGS.burstIntervalMs));
       }
-    }
+      return captured;
+    },TIMINGS.ledExposureSettleMs,setIlluminationWarning);
 
     if (frames.length === 0) throw new Error('Camera did not produce a usable frame.');
 
@@ -256,9 +263,10 @@ export function useCamera(active: boolean) {
     return (usable.length ? usable : frames).reduce((best, frame) =>
       frame.sharpness > best.sharpness ? frame : best,
     );
+    }finally{capturingRef.current=false;}
   }, [captureFrame]);
 
-  return { videoRef, status, retry, captureBest };
+  return { videoRef, status, retry, captureBest, illuminationWarning };
 }
 
 /** Detects and validates one open palm using MediaPipe's 21 hand landmarks. */

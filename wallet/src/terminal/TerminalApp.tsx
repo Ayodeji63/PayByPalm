@@ -15,7 +15,7 @@
  *   thing in this app that debits anyone.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { terminalApi, TerminalApiError, type AuthenticateOutcome } from './api.js';
 import { loadPendingSale, savePendingSale, clearPendingSale } from './paymentRecovery.js';
 import { resolveTerminalKey, TIMINGS } from './config.js';
@@ -26,6 +26,7 @@ import { Capture } from './screens/Capture.js';
 import { Confirm } from './screens/Confirm.js';
 import { Result } from './screens/Result.js';
 import { Enrol } from './screens/Enrol.js';
+import { beginLEDOperation,type LEDOperation } from './leds.js';
 import { preloadPalmRecognition } from './useCamera.js';
 
 type Screen =
@@ -52,6 +53,14 @@ export default function TerminalApp() {
   const [online, setOnline] = useState(true);
   const [stepUpError, setStepUpError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const ledOperation=useRef<LEDOperation|null>(null);
+  useEffect(()=>()=>ledOperation.current?.close(),[]);
+  useEffect(()=>{
+    if(screen.name!=='result')return;
+    const leds=beginLEDOperation();ledOperation.current=leds;
+    void leds.state(screen.ok?'SUCCESS':'ERROR');
+    return ()=>leds.close();
+  },[screen]);
 
   const toIdle = useCallback(() => {
     setStepUpError(null);
@@ -62,13 +71,16 @@ export default function TerminalApp() {
   // --- identity ----------------------------------------------------------
   const loadIdentity = useCallback(async () => {
     if (!configured) return;
+    const leds=beginLEDOperation();ledOperation.current=leds;void leds.state('LOADING');
     try {
       const me = await terminalApi.identity();
       setIdentity({ merchantName: me.merchantName, terminalLabel: me.terminalLabel });
       setOnline(true);
     } catch (err) {
       if (err instanceof TerminalApiError && err.isOffline) setOnline(false);
+      void leds.state('ERROR');return;
     }
+    leds.close();
   }, [configured]);
 
   useEffect(() => {
@@ -115,14 +127,17 @@ export default function TerminalApp() {
       return;
     }
     setBusy(true);
+    const leds=beginLEDOperation();ledOperation.current=leds;void leds.state('LOADING');
     try {
       if (loadPendingSale()) { setScreen({ name: 'recovery' }); return; }
       const sale = { saleId: crypto.randomUUID(), amountMinor, description, confirming: false };
       savePendingSale(sale);
       const txn = await terminalApi.createTransaction(amountMinor, description, sale.saleId);
       savePendingSale({ ...sale, transactionId: txn.transactionId });
+      leds.close();
       setScreen({ name: 'capture', transactionId: txn.transactionId, amountMinor: txn.amountMinor });
     } catch {
+      void leds.state('ERROR');
       // Creation might have committed. Preserve the sale reference for recovery.
       setScreen({ name: 'recovery' });
     } finally { setBusy(false); }
@@ -133,8 +148,15 @@ export default function TerminalApp() {
     amountMinor: number,
     outcome: AuthenticateOutcome,
   ) {
-    if (outcome.decision === 'reject') {
-      void abandon(transactionId);
+    if (outcome.decision !== 'accept') {
+      void (async()=>{
+        try{
+          const result=await terminalApi.cancel(transactionId);
+          if(result.status!=='cancelled')throw new Error('Cancellation not confirmed.');
+          clearPendingSale();
+          setScreen({name:'result',ok:false,title:'Palm not verified',detail:outcome.message});
+        }catch{setScreen({name:'recovery'});}
+      })();
       return;
     }
     setScreen({ name: 'confirm', transactionId, amountMinor, outcome });
@@ -144,6 +166,7 @@ export default function TerminalApp() {
   async function settle(transactionId: string, _amountMinor: number) {
     setBusy(true);
     setStepUpError(null);
+    const leds=beginLEDOperation();ledOperation.current=leds;void leds.state('LOADING');
     try {
       const sale = loadPendingSale();
       if (!sale || sale.transactionId !== transactionId) throw new Error('Payment recovery required.');
@@ -163,6 +186,7 @@ export default function TerminalApp() {
     } catch (err) {
       const message = err instanceof TerminalApiError ? err.message : 'Payment failed.';
 
+      void leds.state('ERROR');
       setStepUpError(message);
       setScreen({ name: 'recovery' });
     } finally {
@@ -196,6 +220,7 @@ export default function TerminalApp() {
     if (busy) return;
     setBusy(true);
     setStepUpError(null);
+    const leds=beginLEDOperation();ledOperation.current=leds;void leds.state('LOADING');
     try {
       let sale = loadPendingSale();
       if (!sale) { toIdle(); return; }
@@ -210,6 +235,7 @@ export default function TerminalApp() {
         // A retry of a previous explicit confirmation, never a fresh sale.
         await settle(id, sale.amountMinor);
       } else if (state.status === 'pending' && !sale.confirming) {
+        leds.close();
         setScreen({ name: 'capture', transactionId: id, amountMinor: state.amountMinor });
       } else if (state.status === 'failed' || state.status === 'cancelled') {
         clearPendingSale();
@@ -219,6 +245,7 @@ export default function TerminalApp() {
         await abandon(id);
       }
     } catch {
+      void leds.state('ERROR');
       setStepUpError('Payment status is unknown. Keep this sale open and retry when connected.');
       setScreen({ name: 'recovery' });
     } finally { setBusy(false); }

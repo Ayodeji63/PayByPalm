@@ -238,7 +238,9 @@ export async function registerPalmForSession(
     throw new AppError(500, 'db_error', `Could not update profile: ${profileError.message}`);
   }
 
-  await db.from('enrol_sessions').update({ status: 'completed' }).eq('id', sessionId);
+  const {data:completed,error:completionError}=await db.from('enrol_sessions')
+    .update({status:'completed'}).eq('id',sessionId).eq('status','claimed').select('id').maybeSingle();
+  if(completionError||!completed)throw new AppError(500,'enrolment_completion_failed','Could not confirm the saved enrolment session. Check its status before trying again.');
 
   return {
     status: 'completed',

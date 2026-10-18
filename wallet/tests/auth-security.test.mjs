@@ -287,9 +287,10 @@ function terminalHarness(terminalApi, sessionStorage = storage()) {
         if (!(slot in states)) states[slot] = typeof initial === 'function' ? initial() : initial;
         return [states[slot], value => { states[slot] = typeof value === 'function' ? value(states[slot]) : value; }];
       },
-      useEffect: () => {}, useCallback: callback => callback,
+      useEffect: () => {}, useCallback: callback => callback, useRef:current=>({current}),
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
+    './leds.js': {beginLEDOperation:()=>({state:async()=>({available:false}),active:()=>true,close:()=>{}})},
     './api.js': { terminalApi, TerminalApiError: class extends Error {} },
     './paymentRecovery.js': recovery,
     './config.js': { resolveTerminalKey: () => 'device-key', TIMINGS: {} },

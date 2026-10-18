@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "guard:secrets": "node scripts/guard-secrets.mjs",
-    "test:security": "node --test tests/auth-security.test.mjs"
+    "test:security": "node --test tests/auth-security.test.mjs tests/leds.test.mjs"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^1.0.1",

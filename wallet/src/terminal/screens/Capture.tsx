@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from 'react';
 import { formatNaira } from '../../lib/money.js';
 import type { AuthenticateOutcome } from '../api.js';
 import { terminalApi, TerminalApiError } from '../api.js';
+import { beginLEDOperation,type LEDOperation } from '../leds.js';
 import { useAutoCapture, useCamera } from '../useCamera.js';
 import { CameraPane, DigitBoxes, Keypad, TButton } from '../ui.js';
 
@@ -31,7 +32,7 @@ export function Capture({
   onError: (message: string) => void;
   onCancel: () => void;
 }) {
-  const { videoRef, status, retry, captureBest } = useCamera(true);
+  const { videoRef, status, retry, captureBest, illuminationWarning } = useCamera(true);
   const [last4, setLast4] = useState('');
   const [busy, setBusy] = useState(false);
   const { state: autoCaptureState, landmarks } = useAutoCapture(
@@ -39,25 +40,40 @@ export function Capture({
     status === 'ready' && !busy,
   );
   const autoCaptureFired = useRef(false);
+  const captureInProgress=useRef(false);
+  const operation=useRef<LEDOperation|null>(null);
+  useEffect(()=>()=>operation.current?.close(),[]);
+  useEffect(()=>{
+    if(busy||captureInProgress.current)return;
+    const leds=beginLEDOperation();operation.current=leds;
+    void leds.state(status!=='ready'||autoCaptureState==='loading'?(status==='starting'||status==='ready'?'LOADING':'ERROR'):autoCaptureState==='error'?'ERROR':'OFF');
+  },[status,autoCaptureState,busy]);
 
   async function scan(useLast4: boolean) {
-    if (busy || status !== 'ready') return;
+    if (captureInProgress.current || busy || status !== 'ready') return;
+    captureInProgress.current=true;
     setBusy(true);
+    const leds=beginLEDOperation();operation.current=leds;
     try {
-      const frame = await captureBest();
+      const frame = await captureBest(leds);
       const outcome = await terminalApi.authenticate(
         transactionId,
         frame.imageB64,
         useLast4 ? last4 : undefined,
       );
+      if(!leds.active())return;
+      await leds.state(outcome.decision==='accept'?'OFF':'ERROR');
       onOutcome(outcome);
     } catch (err) {
+      if(!leds.active())return;
+      await leds.state('ERROR');
       onError(
         err instanceof TerminalApiError
           ? err.message
-          : 'The camera did not produce a usable image. Try again.',
+          : err instanceof Error?err.message:'The camera did not produce a usable image. Try again.',
       );
     } finally {
+      captureInProgress.current=false;
       setBusy(false);
     }
   }
@@ -111,6 +127,7 @@ export function Capture({
 
         {/* Controls — 40% */}
         <div className="flex min-w-0 flex-1 flex-col">
+          {illuminationWarning&&<p role="status" className="t-sm text-warning">{illuminationWarning}</p>}
           <p className="t-sm text-ink-muted">Last 4 digits (optional)</p>
           <div className="mt-2">
             <DigitBoxes value={last4} />
