@@ -16,13 +16,14 @@ import { useAuth } from '../lib/auth.js';
 import { type LinkedCard } from '../lib/cardStore.js';
 import { useServerCards } from '../lib/serverCards.js';
 import { findBank } from '../lib/banks.js';
-import { Button, PageHeader, StatusChip, PalmIcon } from '../components/ui.js';
+import { Button, PageHeader, StatusChip } from '../components/ui.js';
 import { PageTransition } from '../components/transitions.js';
 import { InstallWallet } from '../components/InstallWallet.js';
 import { useToast } from '../components/Toast.js';
+import { PalmLinkStatus } from '../components/PalmLinkStatus.js';
 
 export default function Profile() {
-  const { me, signOut } = useAuth();
+  const { me, signOut, refresh, consentGiven, setConsentGiven } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
   const cards = useServerCards();
@@ -109,67 +110,8 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* ── 2. BIOMETRIC STATUS CARD (Actionable & Informative) ── */}
-          <div className="rounded-3xl bg-white p-5 shadow-sm border border-slate-100">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-extrabold text-slate-900">Biometric Status</h3>
-              <StatusChip tone={me.palmEnrolled ? 'success' : 'warning'}>
-                {me.palmEnrolled ? 'Palm Active' : 'Not Linked'}
-              </StatusChip>
-            </div>
-
-            <div className="mt-3.5 flex items-center gap-3.5">
-              <div
-                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${
-                  me.palmEnrolled ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-[#1d4ed8]'
-                }`}
-              >
-                <PalmIcon className="h-6 w-6" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-900">
-                  {me.palmEnrolled ? 'Tencent PalmAI Vector Linked' : 'Palm Vein Vector Not Linked'}
-                </p>
-                <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-                  {me.palmEnrolled
-                    ? 'Your palm is linked to your PayByPalm wallet for terminal payments.'
-                    : 'Enroll your palm print to pay at campus cafeteria and store terminals with just your hand.'}
-                </p>
-              </div>
-            </div>
-
-            {/* Action CTA depending on biometric status */}
-            {!me.palmEnrolled ? (
-              <button
-                type="button"
-                onClick={() => navigate('/scan')}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1d4ed8] py-2.5 px-4 text-xs font-bold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700 active:scale-[0.99] transition-all"
-              >
-                <PalmIcon className="h-4 w-4 text-white" />
-                <span>Enroll Palm Print Now</span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              </button>
-            ) : (
-              <div className="mt-3.5 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                <button
-                  type="button"
-                  onClick={() => navigate('/scan')}
-                  className="font-bold text-[#1d4ed8] hover:underline"
-                >
-                  Test Palm Terminal
-                </button>
-                <button
-                  type="button"
-                  onClick={() => toast.show('Contact support to unlink biometric palm template.', 'info')}
-                  className="font-semibold text-rose-500 hover:text-rose-600"
-                >
-                  Unlink Palm
-                </button>
-              </div>
-            )}
-          </div>
+          <PalmLinkStatus linked={me.palmEnrolled} onEnroll={() => navigate(consentGiven ? '/scan' : '/consent')}
+            onUnlinked={async () => { setConsentGiven(false); await refresh(); }} />
 
           {/* ── 3. PAYMENT METHODS (Realistic Card Thumbnails) ── */}
           <div className="rounded-3xl bg-white p-5 shadow-sm border border-slate-100">

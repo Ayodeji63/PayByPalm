@@ -32,6 +32,7 @@ import { BankCard } from '../components/BankCard.js';
 import { TransactionSheet } from '../components/sheets.js';
 import { PageTransition } from '../components/transitions.js';
 import { useToast } from '../components/Toast.js';
+import { PalmLinkStatus } from '../components/PalmLinkStatus.js';
 
 // ---------------------------------------------------------------------------
 // Card Model
@@ -86,7 +87,7 @@ function mapCards(linked: LinkedCard[]): VirtualCard[] {
 }
 
 export default function Dashboard() {
-  const { me, refresh, consentGiven } = useAuth();
+  const { me, refresh, consentGiven, setConsentGiven } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -292,6 +293,7 @@ export default function Dashboard() {
                 <h2 className="text-lg font-black text-white tracking-tight mt-0.5">
                   {firstName}
                 </h2>
+                <p className="mt-1 text-xs text-blue-100">{me.palmEnrolled ? 'Palm linked' : 'Palm not linked'}</p>
               </div>
             </div>
 
@@ -313,16 +315,15 @@ export default function Dashboard() {
               {/* Palm Sensor Active Status Button */}
               <button
                 type="button"
-                onClick={() => navigate(consentGiven ? '/scan' : '/consent')}
+                onClick={() => document.getElementById('dashboard-palm-status')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                 className="relative flex h-10 w-10 items-center justify-center rounded-2xl bg-white/12 border border-white/20 text-white hover:bg-white/20 active:scale-95 transition-all shadow-sm backdrop-blur-md"
-                title="PayByPalm Terminal Status: Active"
-                aria-label="Palm Status"
+                title={me.palmEnrolled ? 'Palm linked' : 'Palm not linked'}
+                aria-label={me.palmEnrolled ? 'Palm linked — manage palm' : 'Palm not linked — link palm'}
               >
                 <PalmIcon className="h-5 w-5 text-white" />
-                <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center">
-                  <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+                {me.palmEnrolled && <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center">
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400 ring-2 ring-[#0f2468]" />
-                </span>
+                </span>}
               </button>
 
               {/* Three Dots Menu Button */}
@@ -596,30 +597,11 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ─── Biometric Palm Enrollment Banner (if not enrolled) ─── */}
-        {!me.palmEnrolled && (
-          <div className="mt-5 px-5">
-            <button
-              type="button"
-              onClick={() => navigate(consentGiven ? '/scan' : '/consent')}
-              className="flex w-full items-center gap-3.5 rounded-2xl bg-white p-4 text-left shadow-sm border border-blue-100 hover:shadow-md transition-all active:scale-[0.99]"
-            >
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#1d4ed8] text-white shadow-md shadow-blue-500/25">
-                <PalmIcon className="h-6 w-6" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-extrabold text-slate-900">Enroll Palm Biometrics</p>
-                <p className="text-xs text-slate-500 mt-0.5">Pay at campus terminals with just your hand</p>
-              </div>
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-[#1d4ed8]">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 18l6-6-6-6" />
-                </svg>
-              </div>
-            </button>
-          </div>
-        )}
-
+        {/* Enrollment status and real unlink/re-enroll actions. */}
+        <div id="dashboard-palm-status" className="mt-5 px-5">
+          <PalmLinkStatus linked={me.palmEnrolled} onEnroll={() => navigate(consentGiven ? '/scan' : '/consent')}
+            onUnlinked={async () => { setConsentGiven(false); await refresh(); }} />
+        </div>
         {/* ─── Transaction History (Tailored to active card) ─── */}
         <div className="mt-7 px-5">
           {/* Header Row with Clock Icon */}

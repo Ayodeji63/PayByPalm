@@ -237,14 +237,15 @@ test('card checkout rejects attacker-controlled redirect origins', () => {
   }
 });
 
-function renderDashboard(balanceMinor) {
+function renderDashboard(balanceMinor, palmEnrolled = false) {
   const React = nodeRequire('react');
+  const palmStatus = load('../src/components/PalmLinkStatus.tsx', {require: name => ({react:React,'react/jsx-runtime':nodeRequire('react/jsx-runtime'),'../lib/api.js':{api:{}},'./ui.js':{PalmIcon:()=>null,Button:({children,...props})=>React.createElement('button',props,children)}})[name]});
   const dependencies = {
     react: React,
     'react/jsx-runtime': nodeRequire('react/jsx-runtime'),
     'react-dom': { createPortal: children => children },
     'react-router-dom': { useNavigate: () => () => {} },
-    '../lib/auth.js': { useAuth: () => ({ me: { id: 'user', fullName: 'Test User', balanceMinor, phone: '08010001234', palmEnrolled: false }, refresh: async () => {}, consentGiven: false }) },
+    '../lib/auth.js': { useAuth: () => ({ me: { id: 'user', fullName: 'Test User', balanceMinor, phone: '08010001234', palmEnrolled }, refresh: async () => {}, consentGiven: false, setConsentGiven:()=>{} }) },
     '../lib/money.js': load('../src/lib/money.ts'),
     '../lib/serverCards.js': { useServerCards: () => [], editLinkedCard: async () => {} },
     '../components/ui.js': { PalmIcon: () => null, Skeleton: () => null },
@@ -252,6 +253,7 @@ function renderDashboard(balanceMinor) {
     '../components/sheets.js': { TransactionSheet: () => null },
     '../components/transitions.js': { PageTransition: ({ children }) => children },
     '../components/Toast.js': { useToast: () => ({ show: () => {} }) },
+    '../components/PalmLinkStatus.js': palmStatus,
   };
   const module = load('../src/routes/Dashboard.tsx', { require: name => {
     if (!(name in dependencies)) throw new Error('Unexpected dependency: ' + name);
@@ -273,6 +275,42 @@ test('dashboard never presents an old ledger balance as bank funds', () => {
   assert.match(text, /Card balance unavailable/);
   assert.match(text, /Payments debit your default linked card directly/);
   assert.equal(text.includes('125,000'), false);
+});
+
+test('dashboard always shows the actual palm enrollment status and its action', () => {
+  const linked = renderDashboard(0,true), unlinked = renderDashboard(0,false);
+  assert.match(linked,/Palm linked/); assert.match(linked,/Unlink palm/);
+  assert.match(unlinked,/Palm not linked/); assert.match(unlinked,/>Link palm</);
+  assert.equal(unlinked.includes('Terminal Status: Active'),false);
+});
+
+function palmStatusHarness(post) {
+  const states=[];let index=0, refreshed=0;
+  const jsx=(type,props)=>({type,props});
+  const dependencies={react:{useEffect:()=>{},useState:initial=>{const slot=index++;if(!(slot in states))states[slot]=initial;return[states[slot],v=>{states[slot]=v;}];},useRef:initial=>{const slot=index++;if(!(slot in states))states[slot]={current:initial};return states[slot];}},'react/jsx-runtime':{jsx,jsxs:jsx},'../lib/api.js':{api:{post}},'./ui.js':{Button:'Button',PalmIcon:'PalmIcon'}};
+  const component=load('../src/components/PalmLinkStatus.tsx',{require:name=>dependencies[name]});
+  function find(type,label) {
+    index=0;const tree=component.PalmLinkStatus({linked:true,onEnroll:()=>{},onUnlinked:async()=>{refreshed++;}});
+    function walk(n){if(Array.isArray(n)){for(const c of n){const r=walk(c);if(r)return r;}}else if(n&&typeof n==='object'){if(n.type===type&&(label===undefined||n.props.children===label))return n;return walk(n.props?.children);}return null;}
+    return walk(tree);
+  }
+  return {find,refreshCount:()=>refreshed};
+}
+
+test('unlink waits for backend confirmation before showing unlinked or refreshing',async()=>{
+  const pending=deferred(),calls=[];
+  const h=palmStatusHarness((...args)=>{calls.push(args);return pending.promise;});
+  h.find('Button','Unlink palm').props.onClick();
+  h.find('Button','Yes, unlink palm').props.onClick();
+  assert.ok(h.find('h3','Palm linked'));assert.equal(h.refreshCount(),0);
+  pending.resolve({revoked:true});await flushActions();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)),[['/palm/revoke',{}]]);assert.ok(h.find('h3','Palm not linked'));assert.equal(h.refreshCount(),1);
+});
+
+test('unlink failure keeps the palm linked and exposes a retry',async()=>{
+  const h=palmStatusHarness(async()=>{throw new Error('Could not confirm removal');});
+  h.find('Button','Unlink palm').props.onClick();h.find('Button','Yes, unlink palm').props.onClick();await flushActions();
+  assert.ok(h.find('h3','Palm linked'));assert.ok(h.find('p','Could not confirm removal'));assert.ok(h.find('Button','Yes, unlink palm'));assert.equal(h.refreshCount(),0);
 });
 
 function terminalHarness(terminalApi, sessionStorage = storage()) {

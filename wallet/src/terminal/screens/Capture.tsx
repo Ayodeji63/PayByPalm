@@ -70,7 +70,7 @@ export function Capture({
       await leds.state('ERROR');
       onError(
         err instanceof TerminalApiError
-          ? err.message
+          ? `${err.message}${err.requestId ? ` Support reference: ${err.requestId}.` : ''}`
           : err instanceof Error?err.message:'The camera did not produce a usable image. Try again.',
       );
     } finally {

@@ -1,5 +1,35 @@
 # Enrollment conflict and Pi preview responsiveness
 
+## Payment search: application missing
+
+A later read-only audit check found a successful registration at
+`2026-10-18T02:39:26Z` and an active local binding. Three subsequent `search`
+calls failed with code `2080023`; the latest provider request ID was
+`5d537512d9b520907ad8fcadd2bd3099`. The user clarified that the new key was
+used for both registration and search. Tencent documents `2080023` as
+`app does not exist`:
+https://api-docs.intl.palm.tencent.com/docs/kyc-api/
+
+This establishes a provider application error, not a failed identity match.
+There is no confirmed credential mismatch. The audit does not record which key
+was used; the reason registration works while search fails remains unconfirmed.
+
+Keep the registration key in Render and ask the credential issuer to check
+the associated application's RGB search configuration using the request ID.
+The documented URL is `/palm/openai/search_rgb_palm`; it returned an application
+error rather than an HTTP route-not-found error. Do not swap keys speculatively.
+If intentionally using a different application, coordinate
+enrollment migration with its administrator; do not delete local bindings or
+silently mark a palm verified to bypass the error. No enrollment/payment API was
+called during this investigation, and no provider or database records were changed.
+
+The backend now returns HTTP 503 with code `palm_application_unavailable` and a
+fixed application-configuration explanation. Capture errors include the backend
+request reference for log correlation. Deploy these backend/wallet changes for
+the improved message; they do not repair Tencent's application configuration.
+
+## Earlier registration conflict
+
 The supplied 18 October 2026 logs contain one failed registration call:
 `/palm/openai/register_rgb_palm`, provider code `2080007`, message `already bound`.
 The provider returned an application error, so this particular failure is not

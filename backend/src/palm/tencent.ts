@@ -14,7 +14,8 @@
  *   Type    application/json; charset=utf-8
  *   Envelope { code, message, requestId, data }, where code !== 0 means failure.
  *
- * Only three endpoints exist. There is no delete, no list, and no update.
+ * This adapter uses register, compare, search and per-user delete. It has no
+ * gallery-list or bulk-delete operation.
  */
 
 import { config } from '../config.js';
@@ -197,6 +198,19 @@ export function createTencentProvider(): PalmProvider {
         // either hand again without retaining an orphaned biometric template.
         PalmDirectionList: [1, 2],
       });
+
+      // An acknowledged delete is followed by a read-only check before the
+      // caller clears local state. A failed check keeps cleanup retryable.
+      try {
+        const { data, requestId: checkId } = await call<{LeftPalm?:{PalmState?:number;RegisterTime?:number};RightPalm?:{PalmState?:number;RegisterTime?:number}}>('/palm/openai/get_palm', { UserId: userId });
+        const absent = (p: {PalmState?:number;RegisterTime?:number}|undefined) => p == null || (typeof p === 'object' && !Array.isArray(p) && (!Object.keys(p).length || (p.PalmState === 0 && (p.RegisterTime ?? 0) === 0)));
+        if (!data || typeof data !== 'object' || Array.isArray(data) || !absent(data.LeftPalm) || !absent(data.RightPalm)) {
+          throw new PalmProviderError('Palm deletion could not be verified.', { requestId: checkId });
+        }
+      } catch (error) {
+        // Documented GetPalm result when the user has no registered palms.
+        if (!(error instanceof PalmProviderError && error.providerCode === 2080009)) throw error;
+      }
 
       return { meta: { requestId } };
     },

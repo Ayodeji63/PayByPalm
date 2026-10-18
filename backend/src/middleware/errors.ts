@@ -33,11 +33,25 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     res.status(409).json({error:{code:'palm_already_bound',message:'This palm is already registered with the palm service. Use its linked account or contact support to reconcile the previous registration.'},requestId:req.id});
     return;
   }
+  // Tencent documents 2080023 as "app does not exist". It must never be
+  // interpreted as a palm mismatch or resolved by deleting an enrollment.
+  if (err instanceof PalmProviderError && err.providerCode === 2080023) {
+    log.error({ providerCode: err.providerCode, providerRequestId: err.requestId }, 'palm application configuration rejected');
+    res.status(503).json({
+      error: {
+        code: 'palm_application_unavailable',
+        message: 'Palm payments are unavailable because the palm provider could not find the configured application. Contact the terminal administrator.',
+      },
+      requestId: req.id,
+    });
+    return;
+  }
   if (err instanceof AppError) {
     const level = err instanceof PalmProviderError || err.status >= 500 ? 'error' : 'warn';
     log[level]({ err, code: err.code, status: err.status }, 'request failed');
     const privateError = err.status >= 500 || err.code === 'signup_failed';
     const publicSignupErrors: Record<string, string> = {
+      palm_unlink_incomplete: 'Palm removal could not be fully confirmed. Retry unlinking before enrolling again.',
       payment_setup_required: 'Sales are unavailable until the administrator applies the terminal sale recovery database update.',
       card_link_not_configured: 'Card linking is not configured yet. Please contact support.',
       card_storage_unavailable: 'Card storage is unavailable. Please try again later.',

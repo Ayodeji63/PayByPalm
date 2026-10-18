@@ -163,6 +163,17 @@ describe('API security boundaries', () => {
     const result = await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/authenticate', { imageB64: 'AAAA' }, { 'X-Terminal-Key': 'test' });
     expect(result.status).toBe(502); expect(await result.text()).not.toContain('provider-secret-marker');
   });
+  it('reports the observed Tencent missing-application error without accepting a palm or leaking diagnostics', async () => {
+    mocks.authenticate.mockRejectedValue(new PalmProviderError('private-provider-diagnostic', {providerCode:2080023, requestId:'provider-request'}));
+    const result = await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/authenticate', {imageB64:'AAAA'}, {'X-Terminal-Key':'test'});
+    const body = await result.json() as {error:{code:string;message:string};requestId:string};
+    expect(result.status).toBe(503);
+    expect(body.error.code).toBe('palm_application_unavailable');
+    expect(body.error.message).toContain('configured application');
+    expect(body.requestId).toBeTruthy();
+    expect(JSON.stringify(body)).not.toContain('private-provider-diagnostic');
+    expect(mocks.confirm).not.toHaveBeenCalled();
+  });
   it('strips unknown login fields instead of assigning client privileges', async () => {
     const result = await post('/auth/login', { email: 'user@example.com', password: 'test', role: 'admin', user_id: 'other' });
     expect(result.status).toBe(200);

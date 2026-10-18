@@ -254,34 +254,35 @@ export async function registerPalmForSession(
 // ---------------------------------------------------------------------------
 
 /**
- * Delete the provider template, then soft-revoke the active local binding so
- * the user can enrol again at a terminal.
- *
- * The binding row is kept, with revoked_at set — the audit history of who was
- * enrolled and when must survive. The partial unique index in the schema is what
- * makes a subsequent re-enrolment possible.
+ * Delete and verify the provider template, then remove local palm binding rows
+ * and reset enrollment. Non-biometric provider-call audit metadata is retained.
  *
  * Provider deletion happens first. We must not tell the customer unlinking
  * succeeded while Tencent still retains a biometric template that blocks the
  * next enrolment.
  */
 export async function revokePalm(userId: string): Promise<{ revoked: boolean }> {
-  const profile = await getProfile(userId);
-
-  if (!profile.palm_enrolled) {
-    return { revoked: false };
-  }
+  await getProfile(userId);
 
   await palm.delete(userId);
 
+  await clearLocalPalmBinding(userId);
+  return { revoked: true };
+}
+
+/** Also used by the explicit administrator reset for historical/deleted users. */
+export async function clearLocalPalmBinding(userId: string): Promise<void> {
+  const { error: sessionError } = await db.from('enrol_sessions')
+    .update({ status: 'expired' }).eq('user_id', userId).in('status', ['claimed', 'captured']);
+  if (sessionError) throw new AppError(503, 'palm_unlink_incomplete', 'Palm cleanup is incomplete. Retry unlinking before enrolling again.');
+
   const { error: bindingError } = await db
     .from('palm_bindings')
-    .update({ revoked_at: new Date().toISOString() })
-    .eq('user_id', userId)
-    .is('revoked_at', null);
+    .delete()
+    .eq('user_id', userId);
 
   if (bindingError) {
-    throw new AppError(500, 'db_error', `Could not revoke binding: ${bindingError.message}`);
+    throw new AppError(503, 'palm_unlink_incomplete', 'The palm provider was cleared but local cleanup is incomplete. Retry unlinking.');
   }
 
   const { error: profileError } = await db
@@ -290,8 +291,6 @@ export async function revokePalm(userId: string): Promise<{ revoked: boolean }> 
     .eq('id', userId);
 
   if (profileError) {
-    throw new AppError(500, 'db_error', `Could not update profile: ${profileError.message}`);
+    throw new AppError(503, 'palm_unlink_incomplete', 'The palm provider was cleared but local cleanup is incomplete. Retry unlinking.');
   }
-
-  return { revoked: true };
 }
