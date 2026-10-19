@@ -55,7 +55,7 @@ const activity = [];
 let signedIn = false,
   failCreate = true,
   terminalHash = "",
-  merchantRequests = 0, payoutCreates=0, payoutChecks=0, payoutSetup=null;
+  merchantRequests = 0, paymentMode='test', payoutCreates=0, payoutChecks=0, payoutSetup=null;
 await context.route("**/api/**", async (route) => {
   const req = route.request(),
     path = new URL(req.url()).pathname;
@@ -80,17 +80,17 @@ await context.route("**/api/**", async (route) => {
       terminalUrl: "https://pay-by-palm.vercel.app/terminal",
       fixture: true,
     };
-  else if(path==='/api/payouts/banks')data={mode:'live',enabled:true,banks:[{code:'058',name:'Fixture Bank'}]};
+  else if(path==='/api/payouts/banks')data={mode:paymentMode,enabled:true,banks:[{code:'058',name:'Fixture Bank'}]};
   else if(path==='/api/payouts/verify'){
     const body=req.postDataJSON();assert.equal(body.bankCode,'058');assert.equal(body.accountNumber,'0123456789');
-    data={mode:'live',bankName:'Fixture Bank',accountName:'ASTER GROCERIES',accountLast4:'6789',verificationToken:'encrypted-fixture-token',expiresAt:new Date(Date.now()+300000).toISOString()};
+    data={mode:paymentMode,bankName:'Fixture Bank',accountName:'ASTER GROCERIES',accountLast4:'6789',verificationToken:'encrypted-fixture-token',expiresAt:new Date(Date.now()+300000).toISOString()};
   }
   else if(/^\/api\/merchants\/[^/]+\/payout$/.test(path)){
     const m=merchants.find(m=>m.id===path.split('/')[3]);assert.ok(m);
-    if(req.method()==='GET')data={mode:'live',enabled:true,setup:payoutSetup,subaccountCode:m.paystack_subaccount};
+    if(req.method()==='GET')data={mode:paymentMode,enabled:true,setup:payoutSetup,subaccountCode:m.paystack_subaccount};
     else {
       const body=req.postDataJSON();assert.deepEqual(Object.keys(body).sort(),['expected','percentageCharge','verificationToken']);assert.equal(body.percentageCharge,0);
-      payoutCreates++;payoutSetup={mode:'live',status:'needs_review',bankName:'Fixture Bank',accountName:'ASTER GROCERIES',accountLast4:'6789',percentageCharge:0,subaccountCode:null,verified:null,active:null};
+      payoutCreates++;payoutSetup={mode:paymentMode,status:'needs_review',bankName:'Fixture Bank',accountName:'ASTER GROCERIES',accountLast4:'6789',percentageCharge:0,subaccountCode:null,verified:null,active:null};
       status=502;data={error:{code:'paystack_unavailable',message:'Paystack could not confirm the result. Check status before trying again.'}};
     }
   }
@@ -240,6 +240,25 @@ try {
   await screenshot('payout-verified-desktop');
   await page.setViewportSize({width:390,height:844});await screenshot('payout-verified-mobile');
   await page.setViewportSize({width:1440,height:1000});
+  // Switch the backend while the verified form is open. Focus refresh must
+  // invalidate the old token and consent without reloading/rebuilding the app.
+  paymentMode='live';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+  await page.getByText('Live mode',{exact:true}).waitFor();
+  assert.equal(await page.getByText('Account name confirmed',{exact:true}).count(),0);
+  assert.equal(await payoutCreate.isDisabled(),true);assert.equal(payoutCreates,0);
+  await page.getByLabel('Settlement bank',{exact:true}).selectOption('058');
+  await page.getByRole('button',{name:'Verify bank account',exact:true}).click();
+  await page.getByText('Account name confirmed',{exact:true}).waitFor();await consent.check();
+  // A flip immediately before Create is caught by the preflight, even without focus.
+  paymentMode='test';await payoutCreate.click();
+  await page.getByText('Test mode',{exact:true}).waitFor();
+  await page.getByText('Payment mode or configuration changed. Verify the bank account again.',{exact:true}).waitFor();
+  assert.equal(payoutCreates,0);assert.equal(await payoutCreate.isDisabled(),true);
+  paymentMode='live';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+  await page.getByText('Live mode',{exact:true}).waitFor();
+  await page.getByLabel('Settlement bank',{exact:true}).selectOption('058');
+  await page.getByRole('button',{name:'Verify bank account',exact:true}).click();
+  await page.getByText('Account name confirmed',{exact:true}).waitFor();await consent.check();
   await payoutCreate.click();
   await page.getByRole('button',{name:'Check status',exact:true}).waitFor();
   assert.equal(payoutCreates,1);assert.equal(await payoutCreate.count(),0);
@@ -368,7 +387,7 @@ try {
   await screenshot("login-mobile");
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: bank resolution/confirmed fee/ambiguous creation/status recovery with no duplicate/Paystack approval status; login, desktop/mobile inventory, merchant failure/retry, preserved draft conflict baselines, skip navigation, terminal binding, private config download/hash, no stored credentials, confirmed disable and logout. Test-only API fixtures.",
+    "PASS: runtime test/live/test mode refresh, stale consent invalidation and pre-create mode recheck; bank resolution/confirmed fee/ambiguous creation/status recovery with no duplicate/Paystack approval status; login, desktop/mobile inventory, merchant failure/retry, preserved draft conflict baselines, skip navigation, terminal binding, private config download/hash, no stored credentials, confirmed disable and logout. Test-only API fixtures.",
   );
 } catch (e) {
   await page

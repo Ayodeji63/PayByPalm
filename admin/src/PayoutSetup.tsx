@@ -21,14 +21,21 @@ export function PayoutSetup({merchant,onSaved}:{merchant:Merchant;onSaved:(m:Mer
  }
  async function load(){
   const request=++loading.current;
+  try{
   const next=await api<Info>(`/merchants/${merchant.id}/payout`);
   if(!mounted.current||request!==loading.current)return null;
   acceptInfo(next);setError('');
   if(next.enabled&&!next.subaccountCode&&!['submitting','needs_review'].includes(next.setup?.status||'')){
    const list=await api<{mode:Info['mode'];banks:Array<{code:string;name:string}>}>('/payouts/banks');
+   if(!mounted.current||request!==loading.current)return null;
+   if(list.mode!==next.mode)throw new Error('Payment mode changed. Reload payout setup and verify the bank account again.');
    if(mounted.current&&request===loading.current&&list.mode===next.mode)setBanks(list.banks);
   }
   return next;
+  }catch(e){
+   if(!mounted.current||request!==loading.current)return null;
+   throw e;
+  }
  }
  function unavailable(e:unknown){
   if(!mounted.current)return;
@@ -73,7 +80,10 @@ export function PayoutSetup({merchant,onSaved}:{merchant:Merchant;onSaved:(m:Mer
  }
  async function check(){
   if(busyRef.current)return;++loading.current;markBusy(true);setError('');setNotice('');
+  const previousMode=currentInfo.current?.mode;
   try{
+   const latest=await load();
+   if(!latest||latest.mode!==previousMode){setError('Payment mode changed. Check the payout setup for the current mode.');return;}
    const result=await api<{merchant:Merchant;setup:Setup}>(`/merchants/${merchant.id}/payout/check`,{});
    if(!mounted.current)return;
    if(currentInfo.current?.mode===result.setup.mode)acceptInfo({...currentInfo.current,setup:result.setup,subaccountCode:result.setup.subaccountCode});
