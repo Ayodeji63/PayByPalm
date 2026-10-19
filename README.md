@@ -80,6 +80,7 @@ placement guidance do not establish biometric liveness.
 ## 🧱 Repository Structure
 
 ```text
+admin/        Merchant onboarding, Paystack payout setup and terminal administration
 backend/      Express API, transaction services, PalmAI integration and tests
 wallet/       Customer wallet and merchant-terminal React application
 supabase/     Database migrations, row-level security and schema tests
@@ -264,3 +265,38 @@ tests verify ledger balance, replay protection, overdraft prevention and RLS.
 
 These limitations are explicit so the prototype can be evaluated honestly and
 extended safely.
+
+
+## Admin app and Git workflow
+
+The merchant admin app is in [admin/](admin/README.md). It is part of this Git
+repository and deploys as the existing Vercel project `paybypalm-admin` at
+`admin.paybypalm.app`, with **Root Directory = admin**. The wallet keeps its own
+Vercel project with **Root Directory = wallet**; Render keeps **rootDir = backend**.
+
+```bash
+cd admin
+pnpm install --frozen-lockfile
+pnpm run dev
+```
+
+Local private configuration and the admin's existing Vercel binding are ignored.
+For a fresh checkout, copy `admin/.env.example` to `admin/.env` and configure its
+values privately. Follow the admin README for the one-time migrations and hosted
+server environment. Deployments do not require credentials in Git.
+
+Commit and push changes from the PayByPalm repository:
+
+```bash
+git status
+git add admin/                 # or name the other files changed
+git commit -m "Describe the change"
+git push origin main
+```
+
+The primary remote is `origin` (`Ayodeji63/PayByPalm`). The hackathon remote stays
+available as `submission`; push there explicitly when intended. The admin source
+is ordinary tracked files, so GitHub shows its directory without a separate
+repository checkout. The guarded admin CLI deployment is
+`pnpm --dir admin run deploy:vercel`; Git deployments use the configured `admin`
+Root Directory automatically.

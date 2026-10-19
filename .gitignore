@@ -27,3 +27,7 @@ coverage/
 
 # Temporary user screenshot
 image.png
+
+# Local deployment links and browser test artifacts
+.vercel/
+test-results/

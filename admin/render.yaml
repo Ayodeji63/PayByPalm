@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: paybypalm-admin
+    runtime: node
+    plan: free
+    rootDir: admin
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "24.14.1"
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+      - key: APP_ORIGIN
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ADMIN_USER_IDS
+        sync: false
+      - key: SESSION_ENCRYPTION_KEY
+        sync: false
+      - key: TERMINAL_URL
+        value: https://pay-by-palm.vercel.app/terminal
+      - key: PAYSTACK_MODE
+        sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
