@@ -4,11 +4,9 @@
  * Left 60%: live preview with the fixed hand guide.
  * Right 40%: the amount, the prompt, and the OPTIONAL last-4 digits.
  *
- * Both match paths are reachable from this one screen, on purpose:
- *   "Scan & match"  sends last4 — the backend narrows to a handful of
- *                   candidates and runs 1:1 comparisons. The production path.
- *   "Scan only"     sends no last4 — the backend runs a 1:N search. Palm alone,
- *                   nothing typed. The demo path.
+ * Tencent uses the H5 acquisition component below. The legacy camera UI is
+ * retained for the local mock provider only. Both use backend-coordinated 1:1
+ * comparisons; no terminal payment requests native provider 1:N search.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -18,20 +16,33 @@ import { terminalApi, TerminalApiError } from '../api.js';
 import { beginLEDOperation,type LEDOperation } from '../leds.js';
 import { useAutoCapture, useCamera } from '../useCamera.js';
 import { CameraPane, DigitBoxes, Keypad, TButton } from '../ui.js';
+import { H5PalmCapture } from '../H5PalmCapture.js';
 
-export function Capture({
-  transactionId,
-  amountMinor,
-  onOutcome,
-  onError,
-  onCancel,
-}: {
+type CaptureProps = {
   transactionId: string;
   amountMinor: number;
   onOutcome: (outcome: AuthenticateOutcome) => void;
   onError: (message: string) => void;
   onCancel: () => void;
-}) {
+};
+
+export function Capture(props: CaptureProps) {
+  const [legacy, setLegacy] = useState(false);
+  if (legacy) return <LegacyCapture {...props} />;
+  return <H5PalmCapture scopeId={props.transactionId}
+    title={`Pay ${formatNaira(props.amountMinor)} with your palm`}
+    begin={() => terminalApi.beginPaymentCapture(props.transactionId)}
+    complete={async (captureId, payload) => { props.onOutcome(await terminalApi.authenticateCapture(props.transactionId, captureId, payload)); }}
+    onLegacy={() => setLegacy(true)} onCancel={props.onCancel} />;
+}
+
+function LegacyCapture({
+  transactionId,
+  amountMinor,
+  onOutcome,
+  onError,
+  onCancel,
+}: CaptureProps) {
   const { videoRef, status, retry, captureBest, illuminationWarning } = useCamera(true);
   const [last4, setLast4] = useState('');
   const [busy, setBusy] = useState(false);

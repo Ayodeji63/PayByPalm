@@ -1,11 +1,7 @@
 /**
  * Biometric Security & Consent Screen.
  *
- * Provides cryptographic guarantees and privacy safeguards before the user
- * proceeds to palm scanning:
- *   1. Zero photo storage (raw camera frames deleted after vector extraction)
- *   2. One-way AES-256 hash encryption
- *   3. Right to revoke or unlink anytime
+ * Explains the actual Tencent capture, processing and unlinking boundaries.
  */
 
 import { useState } from 'react';
@@ -17,8 +13,8 @@ import { PageTransition } from '../components/transitions.js';
 const GUARANTEES = [
   {
     number: 1,
-    title: 'Zero Photo Storage',
-    description: 'Raw camera images are discarded immediately after cryptographic vector extraction. No photos stored.',
+    title: 'Encrypted Palm Capture',
+    description: 'Tencent’s reader captures encrypted palm and liveness images. PayByPalm forwards them for processing without saving the images.',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -30,8 +26,8 @@ const GUARANTEES = [
   },
   {
     number: 2,
-    title: 'One-Way Cryptographic Vectors',
-    description: 'Palm templates are irreversible mathematical hashes (AES-256). They cannot be reconstructed into your physical hand.',
+    title: 'Your Palm Registration',
+    description: 'Tencent stores and matches your palm template. PayByPalm stores the registration ID linked to your account.',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="11" width="18" height="11" rx="2" />
@@ -42,7 +38,7 @@ const GUARANTEES = [
   {
     number: 3,
     title: 'Right to Revoke Anytime',
-    description: 'Unlink your biometric profile or change your default payment card with one tap in wallet settings.',
+    description: 'Use Unlink palm in your profile to delete the Tencent registration and remove its link from PayByPalm.',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M18 6L6 18M6 6l12 12" />
@@ -84,10 +80,10 @@ export default function Consent() {
           {/* Headline */}
           <div className="text-center px-2">
             <h2 className="text-xl font-black text-slate-900 tracking-tight">
-              Your Privacy Is Protected
+              Before You Link Your Palm
             </h2>
             <p className="mt-1 text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
-              How PayByPalm protects your biometric palm data with bank-grade encryption:
+              Review how your palm capture is processed and how to remove your registration.
             </p>
           </div>
 
@@ -118,8 +114,8 @@ export default function Consent() {
               onChange={(e) => setAgreed(e.target.checked)}
               className="h-5 w-5 rounded-md border-slate-300 text-[#1d4ed8] focus:ring-[#1d4ed8]"
             />
-            <span className="text-xs font-bold text-slate-800">
-              I consent to biometric template creation and contactless payment authorization
+            <span className="text-sm font-bold text-slate-800">
+              I consent to Tencent processing my palm images and creating a template for palm verification and confirmed card payments.
             </span>
           </label>
 
@@ -133,8 +129,8 @@ export default function Consent() {
             >
               Agree & Continue to Link Palm
             </Button>
-            <p className="mt-2 text-center text-[10px] text-slate-400">
-              Protected by Nigeria Data Protection Act (NDPA) compliance
+            <p className="mt-3 text-sm text-slate-500 leading-relaxed">
+              Tencent also receives session diagnostics and a browser device identifier. Additional diagnostic image and video uploads are disabled.
             </p>
           </div>
         </div>

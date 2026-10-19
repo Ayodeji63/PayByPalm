@@ -1,8 +1,13 @@
 # PayByPalm
 
-PayByPalm is a closed-loop biometric wallet that lets a customer enrol once and
+PayByPalm links a customer's payment card and palm so they can enrol once and
 pay at a merchant terminal using their palm—without presenting a phone, card,
 or QR code at checkout.
+
+The updated Tencent H5 pilot uses backend-coordinated 1:1 comparisons across
+active palm bindings. Native 1:N is currently unavailable. See
+[H5 setup and test instructions](backend/PALM_H5_INTEGRATION.md), including
+database migration 0021 and the remaining real-device compatibility checks.
 
 ## Team Members
 
@@ -35,13 +40,14 @@ PayByPalm connects a customer wallet to a palm biometric through a secure,
 single-use QR enrolment session. After enrolment, a customer places an open palm
 in front of a Raspberry Pi merchant terminal. The terminal captures the palm,
 the backend asks Tencent PalmAI to identify it, and the customer explicitly
-confirms the payment before the ledger is updated.
+confirms the payment before their linked card is charged.
 
 The biometric provider receives only an internal user identifier and the
-temporary capture. Provider credentials never enter the browser or Raspberry
-Pi, palm images are not stored by PayByPalm, and every provider request is
-audited. A phone and four-digit wallet PIN remain available for enrolment and
-step-up verification.
+temporary capture. Application provider secrets stay on the backend; the reader
+receives only a short-lived capture token. Palm images are not stored by
+PayByPalm, and provider operations are audited. A phone establishes identity
+during enrolment. Payment requires a strong palm match and explicit card-payment
+confirmation; a PIN does not override a failed match.
 
 ### Payment flow
 

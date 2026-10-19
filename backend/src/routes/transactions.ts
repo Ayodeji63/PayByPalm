@@ -21,10 +21,12 @@ import { AppError, forbidden, notFound } from '../errors.js';
 import { requireTerminal, terminalAuth } from '../middleware/terminalAuth.js';
 import { requireUser, userAuth } from '../middleware/userAuth.js';
 import { userRateLimit, terminalRateLimit, rateLimit } from '../middleware/abuseLimits.js';
-import { imageJson, imageSchema } from '../middleware/requestBody.js';
+import { palmJson, imageSchema, sdkPayloadSchema } from '../middleware/requestBody.js';
 import { validate } from '../middleware/validate.js';
 import {
   authenticateTransaction,
+  authenticateSdkTransaction,
+  beginPaymentCapture,
   cancelTransaction,
   confirmTransaction,
   getTerminalTransaction,
@@ -85,36 +87,35 @@ transactionsRouter.post(
  *
  * WRITES NO LEDGER ENTRY. This step names a person and nothing more.
  *
- * With `last4`, the production path: narrow to candidates sharing those digits,
- * then run 1:1 comparisons. Without it, the demo path: a single 1:N search, palm
- * only, nothing typed.
+ * Tencent requires an encrypted SDK capture. The backend coordinates 1:1 checks
+ * across every active binding. Raw images are accepted only by the local mock.
  */
+transactionsRouter.post(
+  '/transactions/:id/palm-capture', terminalAuth, terminalRateLimit('palm-token', 6, 60),
+  validate({ params: idParam }),
+  async (req, res) => { res.json(await beginPaymentCapture(req.params.id as string, requireTerminal(req))); },
+);
+
 transactionsRouter.post(
   '/transactions/:id/authenticate',
   terminalAuth,
   terminalRateLimit('palm-authenticate', 30, 60),
-  imageJson,
+  palmJson,
   validate({
     params: idParam,
-    body: z.object({
+    body: z.union([sdkPayloadSchema, z.object({
       imageB64: imageSchema,
       last4: z
         .string()
         .regex(/^\d{4}$/, 'Enter the last 4 digits of the phone number')
         .optional(),
-    }),
+    }).strict()]),
   }),
   async (req, res) => {
     const terminal = requireTerminal(req);
-    const { imageB64, last4 } = req.body as { imageB64: string; last4?: string };
-
-    const outcome = await authenticateTransaction(
-      req.params.id as string,
-      terminal,
-      imageB64,
-      last4,
-      req.log,
-    );
+    const outcome = 'captureId' in req.body
+      ? await authenticateSdkTransaction(req.params.id as string, terminal, req.body, req.log)
+      : await authenticateTransaction(req.params.id as string, terminal, req.body.imageB64, req.body.last4, req.log);
 
     res.json(outcome);
   },

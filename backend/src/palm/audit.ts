@@ -109,6 +109,16 @@ export function withAudit(inner: PalmProvider): PalmProvider {
   return {
     name: inner.name,
 
+    ...(inner.createSdkToken ? { createSdkToken: (userId: string) => audited(
+      'sdk_token', userId, () => inner.createSdkToken!(userId), () => ({ score: null, isMatch: null }),
+    ) } : {}),
+    ...(inner.registerCapture ? { registerCapture: (userId: string, capture: import('./sdkCapture.js').SdkCapture) => audited(
+      'register', userId, () => inner.registerCapture!(userId, capture), () => ({ score: null, isMatch: true }),
+    ) } : {}),
+    ...(inner.compareCapture ? { compareCapture: (userId: string, capture: import('./sdkCapture.js').SdkCapture) => audited(
+      'compare', userId, () => inner.compareCapture!(userId, capture), r => ({ score: r.score, isMatch: r.isMatch }),
+    ) } : {}),
+
     register: (userId, imageB64) =>
       audited<RegisterResult>(
         'register',

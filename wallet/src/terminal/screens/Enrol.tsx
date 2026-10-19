@@ -21,12 +21,13 @@ import { beginLEDOperation,confirmedEnrollment,type LEDOperation } from '../leds
 import { TIMINGS } from '../config.js';
 import { useAutoCapture, useCamera } from '../useCamera.js';
 import { CameraPane, Pane, PalmGlyph, TButton } from '../ui.js';
+import { H5PalmCapture } from '../H5PalmCapture.js';
 
 type Phase = 'creating' | 'waiting' | 'capturing' | 'done' | 'expired' | 'failed';
 
 export function Enrol({ onExit }: { onExit: () => void }) {
   const [phase, setPhase] = useState<Phase>('creating');
-  const [session, setSession] = useState<{ sessionId: string; linkUrl: string; expiresAt: string } | null>(null);
+  const [session, setSession] = useState<{ sessionId: string; linkUrl: string; expiresAt: string; captureMode: 'h5' | 'legacy' } | null>(null);
   const [displayName, setDisplayName] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
@@ -35,10 +36,11 @@ export function Enrol({ onExit }: { onExit: () => void }) {
   // The camera is only opened once there is someone to photograph. Holding the
   // device open through the whole QR wait would light the indicator at an idle
   // kiosk for no reason.
-  const { videoRef, status, retry, captureBest, illuminationWarning } = useCamera(phase === 'capturing');
+  const legacyCapture = phase === 'capturing' && session?.captureMode === 'legacy';
+  const { videoRef, status, retry, captureBest, illuminationWarning } = useCamera(legacyCapture);
   const { state: autoCaptureState, landmarks } = useAutoCapture(
     videoRef,
-    phase === 'capturing' && status === 'ready' && !busy,
+    legacyCapture && status === 'ready' && !busy,
   );
   const autoCaptureFired = useRef(false);
   const captureInProgress=useRef(false);
@@ -46,11 +48,12 @@ export function Enrol({ onExit }: { onExit: () => void }) {
   useEffect(()=>()=>operation.current?.close(),[]);
   useEffect(()=>{
     if(busy||captureInProgress.current)return;
+    if(phase==='capturing'&&session?.captureMode==='h5')return; // H5 owns the camera light.
     const leds=beginLEDOperation();operation.current=leds;
     const state=phase==='done'?'SUCCESS':phase==='failed'||phase==='expired'?'ERROR':phase==='creating'?'LOADING':phase==='capturing'?(status==='ready'?'CAPTURING':status==='starting'?'LOADING':'ERROR'):'OFF';
     void leds.state(state);
     if(state==='CAPTURING'){const timer=window.setInterval(()=>void leds.state('CAPTURING'),5000);return ()=>window.clearInterval(timer);}
-  },[phase,status,busy]);
+  },[phase,status,busy,session?.captureMode]);
 
   const newSession = useCallback(async () => {
     setPhase('creating');
@@ -218,6 +221,15 @@ export function Enrol({ onExit }: { onExit: () => void }) {
 
   // --- capturing ----------------------------------------------------------
   if (phase === 'capturing') {
+    if (session?.captureMode === 'h5') return <H5PalmCapture
+      scopeId={session.sessionId}
+      title={`Link your palm${displayName ? `, ${displayName}` : ''}`}
+      begin={() => terminalApi.beginEnrolCapture(session.sessionId)}
+      complete={async (captureId, payload) => {
+        const result = await terminalApi.registerPalmCapture(session.sessionId, captureId, payload);
+        if (result.status !== 'completed') throw new Error('Palm linking was not confirmed. Please check its status.');
+        setDisplayName(result.userDisplayName); setPhase('done');
+      }} onCancel={onExit} />;
     return (
       <div className="flex h-full w-full flex-col p-5">
         <header className="flex h-[52px] shrink-0 items-center justify-between">

@@ -53,6 +53,12 @@ export interface DeleteResult {
   meta?: ProviderMeta;
 }
 
+export interface SdkToken {
+  token: string;
+  expiresAt: number;
+  meta?: ProviderMeta;
+}
+
 export interface PalmProvider {
   /** Identifies the implementation in logs and audit rows: 'tencent' | 'mock'. */
   readonly name: string;
@@ -71,7 +77,12 @@ export interface PalmProvider {
 
   /** Remove every enrolled palm direction for this user from the provider. */
   delete(userId: string): Promise<DeleteResult>;
+
+  /** Server-issued user token. Never expose the application API key. */
+  createSdkToken?(userId: string): Promise<SdkToken>;
+  registerCapture?(userId: string, capture: import('./sdkCapture.js').SdkCapture): Promise<RegisterResult>;
+  compareCapture?(userId: string, capture: import('./sdkCapture.js').SdkCapture): Promise<CompareResult>;
 }
 
 /** Provider operations, as recorded in palm_audit.endpoint. */
-export type PalmOperation = 'register' | 'compare' | 'search' | 'delete';
+export type PalmOperation = 'register' | 'compare' | 'search' | 'delete' | 'sdk_token';

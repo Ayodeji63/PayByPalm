@@ -3,7 +3,6 @@
 import { config } from '../config.js';
 import { db } from '../db/client.js';
 import {
-  getCandidatesByLast4,
   getProfile,
   maskName,
   type Profile,
@@ -15,6 +14,8 @@ import { decide, explain, rejectWithout, thresholds, type PolicyOutcome } from '
 import type { AuthedTerminal } from '../middleware/terminalAuth.js';
 import type { Logger } from '../logger.js';
 import { chargeCardPayment } from './cardPaymentService.js';
+import { consumePalmCapture, getActivePalmCandidates, issuePalmCapture, type CaptureSubmission, type PalmCandidate } from './palmCaptureService.js';
+import type { CompareResult } from '../palm/provider.js';
 
 export interface TransactionRow {
   id: string;
@@ -106,91 +107,88 @@ export async function createTransaction(
 // Authenticate
 // ---------------------------------------------------------------------------
 
-interface Candidate {
-  profile: Profile;
-  score: number;
+/** Compare every active binding. Never select a payer from a partial sweep. */
+export async function matchPalmCandidates(
+  candidates: PalmCandidate[],
+  compare: (userId: string) => Promise<CompareResult>,
+): Promise<{ outcome: PolicyOutcome; userId: string | null }> {
+  if (!candidates.length) return { outcome: rejectWithout('no_candidates'), userId: null };
+  const deadline = Date.now() + 45_000;
+  const matches: { userId: string; score: number }[] = [];
+  for (const candidate of candidates) {
+    if (Date.now() >= deadline) throw new AppError(503, 'palm_comparison_incomplete', 'The palm check took too long. No payment was authorized. Please try again.');
+    const result = await compare(candidate.user_id);
+    if (typeof result.isMatch !== 'boolean' || !Number.isFinite(result.score) || result.score < 0 || result.score > 100) {
+      throw new AppError(502, 'palm_comparison_invalid', 'The palm service returned an invalid comparison. Please scan again.');
+    }
+    if (Date.now() >= deadline) throw new AppError(503, 'palm_comparison_incomplete', 'The palm check took too long. Please scan again.');
+    if (result.isMatch) matches.push({ userId: candidate.user_id, score: result.score });
+  }
+  if (matches.length !== 1) return { outcome: rejectWithout(matches.length ? 'ambiguous_match' : 'no_match'), userId: null };
+  return { outcome: decide(matches[0]!.score), userId: matches[0]!.userId };
 }
 
-/**
- * Production path: narrow by the last four digits of the phone, then run a small
- * number of 1:1 comparisons.
- *
- * A 1:N search over a whole campus gallery has a false-match rate that grows with
- * the gallery. Binning on four typed digits collapses it to a handful of
- * candidates, which is why this is the path a real deployment uses.
- */
-async function authenticateByLast4(
-  last4: string,
-  imageB64: string,
-  log: Logger,
-): Promise<{ outcome: PolicyOutcome; profile: Profile | null }> {
-  const candidates = await getCandidatesByLast4(last4);
-
-  if (candidates.length === 0) {
-    return { outcome: rejectWithout('no_candidates'), profile: null };
-  }
-
-  if (candidates.length > thresholds.maxCandidates) {
-    // Comparing an arbitrary subset would silently make the answer depend on row
-    // order. Ask for more digits instead.
-    log.warn({ last4, count: candidates.length }, 'last4 bin too wide');
-    return { outcome: rejectWithout('ambiguous_bin'), profile: null };
-  }
-
-  const scored: Candidate[] = [];
-  for (const profile of candidates) {
-    const result = await palm.compare(profile.id, imageB64);
-    scored.push({ profile, score: result.score });
-  }
-
-  // Highest score wins, then policy decides whether it is good enough.
-  scored.sort((a, b) => b.score - a.score);
-  const best = scored[0]!;
-
-  log.info(
-    { candidates: candidates.length, bestScore: best.score },
-    'last4 comparison complete',
-  );
-
-  return { outcome: decide(best.score), profile: best.profile };
-}
-
-/** Demo path: pure 1:N. Nothing typed, palm only. */
-async function authenticateBySearch(
-  imageB64: string,
-): Promise<{ outcome: PolicyOutcome; profile: Profile | null }> {
-  const result = await palm.search(imageB64);
-  if (!result) return { outcome: decide(null), profile: null };
-
-  const profile = await getProfile(result.userId);
-  return { outcome: decide(result.score), profile };
-}
-
-export async function authenticateTransaction(
-  transactionId: string,
-  terminal: AuthedTerminal,
-  rawImage: string,
-  last4: string | undefined,
-  log: Logger,
-): Promise<AuthenticateOutcome> {
+async function pendingTransaction(transactionId: string, terminal: AuthedTerminal): Promise<TransactionRow> {
   const txn = await loadForTerminal(transactionId, terminal);
+  if (txn.status !== 'pending') throw conflict('invalid_transaction_state', `This transaction is ${txn.status} and can no longer be authenticated.`);
+  return txn;
+}
 
-  if (txn.status !== 'pending') {
-    throw conflict(
-      'invalid_transaction_state',
-      `This transaction is ${txn.status} and can no longer be authenticated.`,
-    );
+export async function beginPaymentCapture(transactionId: string, terminal: AuthedTerminal) {
+  await pendingTransaction(transactionId, terminal);
+  if (config.PALM_PROVIDER === 'mock') return { captureMode: 'legacy' as const };
+  requireApprovedCaptureMode();
+  const candidates = await getActivePalmCandidates();
+  if (!candidates.length) throw conflict('no_enrolled_palms', 'No palms are linked yet. Enrol a palm before starting a payment.');
+  const grant = await issuePalmCapture(terminal.id, transactionId, 'payment', candidates[0]!.user_id);
+  return { ...grant, candidateCount: candidates.length };
+}
+
+/** Tencent H5 ciphertext is checked at Tencent; our DB only selects identities. */
+export async function authenticateSdkTransaction(
+  transactionId: string, terminal: AuthedTerminal, submission: CaptureSubmission, log: Logger,
+): Promise<AuthenticateOutcome> {
+  const txn = await pendingTransaction(transactionId, terminal);
+  requireApprovedCaptureMode();
+  const { capture, userId } = await consumePalmCapture(terminal.id, transactionId, 'payment', submission);
+  const candidates = await getActivePalmCandidates();
+  if (!candidates.some(c => c.user_id === userId)) throw conflict('palm_binding_changed', 'An enrolled palm changed. Please scan again.');
+  if (!palm.compareCapture) throw new AppError(503, 'palm_sdk_unavailable', 'The palm reader is not configured.');
+  const matched = await matchPalmCandidates(candidates, candidateId => palm.compareCapture!(candidateId, capture));
+  // Detect revocation, re-enrolment or an added candidate during the sweep.
+  const current = await getActivePalmCandidates();
+  if (JSON.stringify(candidates.map(c => [c.id, c.tencent_palm_id])) !== JSON.stringify(current.map(c => [c.id, c.tencent_palm_id]))) {
+    throw conflict('palm_binding_changed', 'The enrolled palms changed during verification. Please scan again.');
   }
+  log.info({ candidates: candidates.length, decision: matched.outcome.decision }, 'H5 1:1 palm sweep complete');
+  const profile = matched.userId ? await getProfile(matched.userId) : null;
+  return finaliseAuthentication(txn, profile, matched.outcome, log);
+}
 
-  // Held in memory for this request only. Never logged, never stored.
+function requireApprovedCaptureMode(): void {
+  if (config.PAYSTACK_MODE === 'live' && !config.TENCENT_H5_IMAGE_ONLY_APPROVED) {
+    throw new AppError(503, 'palm_liveness_confirmation_required', 'Tencent must confirm the capture-only liveness and multi-user comparison contract before live card payments are enabled.');
+  }
+}
+
+/** Raw-image transport remains available only for the local mock provider. */
+export async function authenticateTransaction(
+  transactionId: string, terminal: AuthedTerminal, rawImage: string,
+  _last4: string | undefined, log: Logger,
+): Promise<AuthenticateOutcome> {
+  const txn = await pendingTransaction(transactionId, terminal);
+  if (config.PALM_PROVIDER === 'tencent') throw conflict('palm_sdk_required', 'Update the terminal to use the Tencent palm reader.');
   const image = normaliseImage(rawImage);
-  const mode: 'compare' | 'search' = last4 ? 'compare' : 'search';
+  const candidates = await getActivePalmCandidates();
+  const matched = await matchPalmCandidates(candidates, userId => palm.compare(userId, image.data));
+  const profile = matched.userId ? await getProfile(matched.userId) : null;
+  return finaliseAuthentication(txn, profile, matched.outcome, log);
+}
 
-  const { outcome, profile } =
-    mode === 'compare'
-      ? await authenticateByLast4(last4!, image.data, log)
-      : await authenticateBySearch(image.data);
-
+async function finaliseAuthentication(
+  txn: TransactionRow, profile: Profile | null, outcome: PolicyOutcome, log: Logger,
+): Promise<AuthenticateOutcome> {
+  const mode = 'compare' as const;
   if(profile && !profile.palm_enrolled)return {decision:'reject',mode,score:outcome.score,reason:'no_active_palm',message:'Enrol your palm in PayByPalm before making a payment.'};
 
   // --- rejected -----------------------------------------------------------
@@ -203,7 +201,7 @@ export async function authenticateTransaction(
       mode,
       score: outcome.score,
       reason: outcome.reason ?? 'no_match',
-      message: explain(outcome),
+      message: outcome.reason === 'ambiguous_match' ? 'More than one enrolled palm matched. No payment was authorized. Please contact support.' : outcome.reason === 'no_candidates' ? 'No active palms are enrolled. Link your palm before paying.' : explain(outcome),
     };
   }
 

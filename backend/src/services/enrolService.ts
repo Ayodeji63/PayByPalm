@@ -18,6 +18,7 @@ import { AppError, conflict, notFound } from '../errors.js';
 import { normaliseImage } from '../lib/image.js';
 import { palm } from '../palm/index.js';
 import type { AuthedTerminal } from '../middleware/terminalAuth.js';
+import { consumePalmCapture, issuePalmCapture, type CaptureSubmission } from './palmCaptureService.js';
 
 export type SessionStatus = 'pending' | 'claimed' | 'captured' | 'completed' | 'expired';
 
@@ -75,7 +76,7 @@ async function expireIfStale(session: EnrolSessionRow, signal?: AbortSignal): Pr
 
 export async function createSession(
   terminal: AuthedTerminal,
-): Promise<{ sessionId: string; expiresAt: string; linkUrl: string }> {
+): Promise<{ sessionId: string; expiresAt: string; linkUrl: string; captureMode: 'h5' | 'legacy' }> {
   const expiresAt = new Date(Date.now() + config.ENROL_SESSION_TTL_SECONDS * 1000).toISOString();
 
   const { data, error } = await db
@@ -89,6 +90,7 @@ export async function createSession(
 
   return {
     sessionId: session.id,
+    captureMode: config.PALM_PROVIDER === 'tencent' ? 'h5' : 'legacy',
     expiresAt: session.expires_at,
     // This is what goes into the QR code the terminal renders.
     linkUrl: `${config.WALLET_BASE_URL}/scan/${session.id}`,
@@ -175,10 +177,19 @@ export interface RegisterOutcome {
   alreadyCompleted: boolean;
 }
 
+export async function beginEnrolCapture(sessionId: string, terminal: AuthedTerminal) {
+  const session = await expireIfStale(await load(sessionId));
+  if (session.terminal_id !== terminal.id) throw notFound('This enrolment session does not exist.');
+  if (session.status !== 'claimed' || !session.user_id) throw conflict('session_not_claimed', 'Claim an active enrolment QR code before scanning a palm.');
+  const profile = await getProfile(session.user_id);
+  if (profile.palm_enrolled) throw conflict('already_enrolled', 'Unlink your existing palm before enrolling again.');
+  return issuePalmCapture(terminal.id, session.id, 'enrol', profile.id, session.expires_at);
+}
+
 export async function registerPalmForSession(
   sessionId: string,
   terminal: AuthedTerminal,
-  rawImage: string,
+  rawImage: string | CaptureSubmission,
 ): Promise<RegisterOutcome> {
   const session = await expireIfStale(await load(sessionId));
 
@@ -215,8 +226,22 @@ export async function registerPalmForSession(
     throw conflict('already_enrolled', 'This account already has a palm linked.');
   }
 
-  const image = normaliseImage(rawImage);
-  const { palmId } = await palm.register(profile.id, image.data);
+  let palmId: string;
+  if (typeof rawImage === 'string') {
+    if (config.PALM_PROVIDER === 'tencent') throw conflict('palm_sdk_required', 'Update the terminal to use the Tencent palm reader.');
+    const image = normaliseImage(rawImage);
+    ({ palmId } = await palm.register(profile.id, image.data));
+  } else {
+    const verified = await consumePalmCapture(terminal.id, session.id, 'enrol', rawImage);
+    if (verified.userId !== profile.id) throw conflict('palm_capture_wrong_user', 'The palm capture belongs to a different enrolment. Please scan again.');
+    if (!palm.registerCapture) throw new AppError(503, 'palm_sdk_unavailable', 'The palm reader is not configured.');
+    ({ palmId } = await palm.registerCapture(profile.id, verified.capture));
+    const {error} = await db.rpc('complete_h5_palm_enrolment', {
+      p_session: sessionId, p_terminal: terminal.id, p_user: profile.id, p_palm_id: palmId,
+    });
+    if (error) throw conflict('enrolment_completion_failed', 'Tencent registered the palm, but local linking could not finish. Check your palm status or unlink before enrolling again.');
+    return {status: 'completed', userDisplayName: maskName(profile.full_name), alreadyCompleted: false};
+  }
 
   // Binding first. If the profile flag update below were to fail, the binding row
   // still exists and the partial unique index prevents a duplicate — whereas a

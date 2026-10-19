@@ -16,11 +16,12 @@ import { AppError, forbidden, notFound } from '../errors.js';
 import { requireTerminal, terminalAuth } from '../middleware/terminalAuth.js';
 import { requireUser, userAuth } from '../middleware/userAuth.js';
 import { userRateLimit, terminalRateLimit } from '../middleware/abuseLimits.js';
-import { imageJson, imageSchema } from '../middleware/requestBody.js';
+import { palmJson, imageSchema, sdkPayloadSchema } from '../middleware/requestBody.js';
 import { enrolStream } from '../lib/enrolStream.js';
 import { validate } from '../middleware/validate.js';
 import {
   claimSession,
+  beginEnrolCapture,
   createSession,
   getSessionView,
   registerPalmForSession,
@@ -134,19 +135,23 @@ enrolRouter.get(
 // ---------------------------------------------------------------------------
 
 enrolRouter.post(
+  '/enrol/sessions/:id/palm-capture', terminalAuth, terminalRateLimit('palm-token', 6, 60),
+  validate({ params: idParam }),
+  async (req, res) => { res.json(await beginEnrolCapture(req.params.id as string, requireTerminal(req))); },
+);
+
+enrolRouter.post(
   '/enrol/sessions/:id/palm',
   terminalAuth,
   terminalRateLimit('palm-register', 6, 60),
-  imageJson,
+  palmJson,
   validate({
     params: idParam,
-    body: z.object({ imageB64: imageSchema }),
+    body: z.union([sdkPayloadSchema, z.object({ imageB64: imageSchema }).strict()]),
   }),
   async (req, res) => {
     const terminal = requireTerminal(req);
-    const { imageB64 } = req.body as { imageB64: string };
-
-    const outcome = await registerPalmForSession(req.params.id as string, terminal, imageB64);
+    const outcome = await registerPalmForSession(req.params.id as string, terminal, 'captureId' in req.body ? req.body : req.body.imageB64);
     res.json(outcome);
   },
 );

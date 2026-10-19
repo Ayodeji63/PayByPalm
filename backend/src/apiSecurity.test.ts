@@ -7,7 +7,7 @@ import { AppError, PalmProviderError } from './errors.js';
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(), rpc: vi.fn(), login: vi.fn(), refresh: vi.fn(), profile: vi.fn(),
   sendLink: vi.fn(), signup: vi.fn(), verifyOtp: vi.fn(), resend: vi.fn(), adminUpdate: vi.fn(), adminSignOut: vi.fn(), adminCreate: vi.fn(), pinUpdate: vi.fn(), pinEq: vi.fn(), pinNull: vi.fn(), pinSelect: vi.fn(),
-  confirm: vi.fn(), authenticate: vi.fn(),
+  confirm: vi.fn(), authenticate: vi.fn(), authenticateSdk: vi.fn(), beginCapture: vi.fn(),
   warn: vi.fn(), error: vi.fn(), info: vi.fn(),
 }));
 vi.mock('./logger.js', () => {
@@ -36,6 +36,7 @@ vi.mock('./middleware/terminalAuth.js', () => ({
 vi.mock('./db/queries.js', () => ({ getProfile: mocks.profile, getWalletAccountId: vi.fn(), getBalanceMinor: vi.fn() }));
 vi.mock('./services/paymentService.js', () => ({
   confirmTransaction: mocks.confirm, authenticateTransaction: mocks.authenticate,
+  authenticateSdkTransaction: mocks.authenticateSdk, beginPaymentCapture: mocks.beginCapture,
   createTransaction: vi.fn(), cancelTransaction: vi.fn(), getTerminalTransaction: vi.fn(), topUp: vi.fn(),
 }));
 vi.mock('./services/enrolService.js', () => ({
@@ -159,6 +160,19 @@ describe('API security boundaries', () => {
   it('rejects terminal PIN fields instead of accepting them as palm authorization',async()=>{
     expect((await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/confirm',{pin:'2468'},{'X-Terminal-Key':'test'})).status).toBe(400);
     expect(mocks.confirm).not.toHaveBeenCalled();
+  });
+  it('requires a terminal credential before issuing an SDK user token',async()=>{
+    const result=await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/palm-capture',{});
+    expect(result.status).toBe(401);expect(mocks.beginCapture).not.toHaveBeenCalled();
+  });
+  it('passes an opaque SDK capture to the server verifier rather than trusting a client match',async()=>{
+    mocks.authenticateSdk.mockResolvedValue({decision:'reject',mode:'compare',score:null});
+    const result=await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/authenticate',{captureId:'dddddddd-dddd-4ddd-dddd-dddddddddddd',payload:'opaque-capture'},{'X-Terminal-Key':'test'});
+    expect(result.status).toBe(200);expect(mocks.authenticateSdk).toHaveBeenCalledOnce();expect(mocks.authenticate).not.toHaveBeenCalled();
+  });
+  it('rejects caller match/target injection alongside an SDK capture',async()=>{
+    const result=await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/authenticate',{captureId:'dddddddd-dddd-4ddd-dddd-dddddddddddd',payload:'opaque-capture',isMatch:true,userId:'chosen-payer'},{'X-Terminal-Key':'test'});
+    expect(result.status).toBe(400);expect(mocks.authenticateSdk).not.toHaveBeenCalled();
   });
   it('only returns transaction-specific receipt fields', async () => {
     const result = await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/confirm', {}, { 'X-Terminal-Key': 'test' });

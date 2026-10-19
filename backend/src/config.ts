@@ -31,6 +31,9 @@ export const configSchema = z
     PALM_PROVIDER: z.enum(['tencent', 'mock']).default('mock'),
     TENCENT_BASE_URL: z.string().url().default('https://open.intl.palm.tencent.com'),
     TENCENT_PALM_API_KEY: z.string().optional(),
+    // Capture-only skips SDK video upload. Enable for live payments only after
+    // Tencent confirms this application's encrypted image/liveness contract.
+    TENCENT_H5_IMAGE_ONLY_APPROVED: z.enum(['true', 'false']).default('false').transform(v => v === 'true'),
     MOCK_PALM_SCORE: intFromEnv(92),
 
     PALM_ACCEPT_SCORE: intFromEnv(85),

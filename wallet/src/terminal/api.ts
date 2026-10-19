@@ -5,12 +5,13 @@
  * Authorization header, because a terminal is a device — it is not a user, and
  * the backend's two authentication planes are deliberately disjoint.
  *
- * THIS CLIENT HOLDS NO TENCENT KEY AND NO SUPABASE SERVICE KEY. The Pi posts an
- * image to our backend; our backend calls the palm provider. There is no code
- * path from here to Tencent.
+ * This client holds no Tencent application key or Supabase service key. The H5
+ * iframe receives a short-lived capture token. Encrypted images go to our
+ * backend, which performs the authoritative provider comparisons.
  */
 
 import { resolveTerminalKey } from './config.js';
+import type { PalmCaptureGrant } from './palmSdk.js';
 
 const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:8080';
@@ -98,6 +99,12 @@ export const terminalApi = {
       ...(last4 ? { last4 } : {}),
     }),
 
+  beginPaymentCapture: (transactionId: string) =>
+    send<PalmCaptureGrant | {captureMode: 'legacy'}>(`/transactions/${transactionId}/palm-capture`, 'POST', {}),
+
+  authenticateCapture: (transactionId: string, captureId: string, payload: string) =>
+    send<AuthenticateOutcome>(`/transactions/${transactionId}/authenticate`, 'POST', {captureId, payload}),
+
   status: (transactionId: string) =>
     send<{ transactionId: string; status: string; amountMinor: number }>(`/terminal/transactions/${transactionId}`, 'GET'),
 
@@ -111,7 +118,7 @@ export const terminalApi = {
     ),
 
   createEnrolSession: () =>
-    send<{ sessionId: string; expiresAt: string; linkUrl: string; merchantName: string }>(
+    send<{ sessionId: string; expiresAt: string; linkUrl: string; merchantName: string; captureMode: 'h5' | 'legacy' }>(
       '/enrol/sessions',
       'POST',
     ),
@@ -125,6 +132,12 @@ export const terminalApi = {
       'POST',
       { imageB64 },
     ),
+
+  beginEnrolCapture: (sessionId: string) =>
+    send<PalmCaptureGrant>(`/enrol/sessions/${sessionId}/palm-capture`, 'POST', {}),
+
+  registerPalmCapture: (sessionId: string, captureId: string, payload: string) =>
+    send<{status: string; userDisplayName: string; alreadyCompleted: boolean}>(`/enrol/sessions/${sessionId}/palm`, 'POST', {captureId, payload}),
 };
 
 // ---------------------------------------------------------------------------

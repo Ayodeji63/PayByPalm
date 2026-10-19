@@ -46,6 +46,12 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     log[level]({ err, code: err.code, status: err.status }, 'request failed');
     const privateError = err.status >= 500 || err.code === 'signup_failed';
     const publicSignupErrors: Record<string, string> = {
+      palm_sdk_setup_required: 'The palm reader requires database migration 0021. Ask the administrator to check setup.',
+      palm_liveness_confirmation_required: 'Live palm payments require Tencent confirmation of the new capture and liveness integration. Contact the administrator.',
+      palm_sdk_unavailable: 'The Tencent palm reader is not configured. Please contact the administrator.',
+      palm_candidates_unavailable: 'Could not load enrolled palms. Please try again.',
+      palm_comparison_incomplete: 'The palm check could not finish. No payment was authorized. Please scan again.',
+      palm_comparison_invalid: 'The palm service returned an invalid comparison. Please scan again.',
       palm_unlink_incomplete: 'Palm removal could not be fully confirmed. Retry unlinking before enrolling again.',
       payment_setup_required: 'Sales are unavailable until the administrator applies the terminal sale recovery database update.',
       card_link_not_configured: 'Card linking is not configured yet. Please contact support.',

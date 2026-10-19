@@ -27,7 +27,6 @@ import { Confirm } from './screens/Confirm.js';
 import { Result } from './screens/Result.js';
 import { Enrol } from './screens/Enrol.js';
 import { beginLEDOperation,type LEDOperation } from './leds.js';
-import { preloadPalmRecognition } from './useCamera.js';
 
 type Screen =
   | { name: 'idle' }
@@ -95,12 +94,8 @@ export default function TerminalApp() {
     void loadIdentity();
   }, [loadIdentity]);
 
-  // MediaPipe's runtime and hand model are the largest first-use assets in the
-  // kiosk. Warm them while the home screen is idle instead of after a customer
-  // has already entered a sale.
-  useEffect(() => {
-    preloadPalmRecognition();
-  }, []);
+  // Tencent H5 owns its detector and camera. Avoid warming the legacy MediaPipe
+  // worker as well: two WASM pipelines waste memory/CPU on the Pi.
 
   // --- reachability ------------------------------------------------------
   // A terminal that has quietly lost the backend looks identical to one that is

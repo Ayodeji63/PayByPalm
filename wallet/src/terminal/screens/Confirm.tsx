@@ -69,7 +69,7 @@ export function Confirm({
           <p className="t-lg truncate">{name}</p>
           <p className="t-sm mt-2 text-ink-muted">
             Match {outcome.score ?? '—'}
-            {outcome.mode === 'compare' ? ' · verified by number' : ' · palm search'}
+            {' · palm verified'}
           </p>
           {outcome.cardLast4 && <p className="t-sm mt-2 text-ink-muted">Pay from {outcome.cardBrand} •••• {outcome.cardLast4}</p>}
         </div>

@@ -4,7 +4,7 @@
  * These are OUR thresholds. They are deliberately independent of the provider's
  * own boolean verdict: a provider tuned for convenience will happily call a
  * marginal match a match, and we are deciding whether to move someone's money.
- * Both numbers are recorded in palm_audit so the two can be compared.
+ * Payment matching also requires the provider's positive boolean verdict.
  *
  * No other module may branch on a raw score. If you find yourself writing
  * `if (score > 80)` somewhere else, the logic belongs here instead.
@@ -23,6 +23,7 @@ export type RejectReason =
   | 'no_match'
   | 'low_score'
   | 'no_candidates'
+  | 'ambiguous_match'
   | 'ambiguous_bin';
 
 export interface PolicyOutcome {
@@ -51,8 +52,7 @@ export function decide(score: number | null): PolicyOutcome {
     return { decision: 'accept', score };
   }
   if (score >= thresholds.stepUp) {
-    // Confident enough to name a user, not confident enough to move their money
-    // unaided. The terminal asks for the wallet PIN.
+    // Payment callers require another scan; a PIN cannot override this outcome.
     return { decision: 'step_up', score };
   }
   return { decision: 'reject', score, reason: 'low_score' };
@@ -67,7 +67,9 @@ export function rejectWithout(reason: RejectReason): PolicyOutcome {
 export function explain(outcome: PolicyOutcome): string {
   switch (outcome.reason) {
     case 'no_candidates':
-      return 'No enrolled account matches those phone digits. Use the last 4 digits of the phone number in your wallet profile.';
+      return 'No active palms are enrolled. Link your palm before paying.';
+    case 'ambiguous_match':
+      return 'More than one enrolled palm matched. Please contact support.';
     case 'ambiguous_bin':
       return 'Too many accounts share those digits. Ask for more digits of the phone number.';
     case 'low_score':
@@ -75,7 +77,7 @@ export function explain(outcome: PolicyOutcome): string {
       return 'Palm not recognised. Please reposition your hand and try again.';
     default:
       return outcome.decision === 'step_up'
-        ? 'Please enter your wallet PIN to confirm.'
+        ? 'Please reposition your hand and scan again.'
         : 'Palm recognised.';
   }
 }

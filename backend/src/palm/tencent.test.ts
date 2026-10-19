@@ -77,3 +77,54 @@ describe('HTTP status and Tencent business errors',()=>{
   await expect(createTencentProvider().compare('user','image')).rejects.toThrow('malformed response');
  });
 });
+
+describe('PalmX H5 server-mediated acquisition',()=>{
+ const image={Data:'encrypted-capture',DataDigest:'a'.repeat(32),ImageType:'RGB' as const};
+ const capture={RgbImage:image,LivenessRgbImage:image,UserToken:'sut_transient',SdkVersion:'1.3.0',SdkTimestamps:'{}',VideoPath:'NO_VIDEO_UPLOAD' as const};
+ it('issues a short-lived user token with the server-only credential',async()=>{
+  const ExpiresAt=Math.floor(Date.now()/1000)+180;
+  const fetch=vi.fn().mockResolvedValue(response(0,{Token:'sut_transient',ExpiresAt}));vi.stubGlobal('fetch',fetch);
+  expect(await createTencentProvider().createSdkToken!('user')).toMatchObject({token:'sut_transient',expiresAt:ExpiresAt});
+  expect(fetch.mock.calls[0]![0]).toBe('https://palm.example.test/palm/openai/x/oauth/sdk/usertoken/create');
+  expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({UserId:'user',TtlSeconds:180});
+ });
+ it.each(['seconds','iso'])('accepts the gateway string expiry format (%s)',async format=>{
+  const seconds=Math.floor(Date.now()/1000)+180;
+  const ExpiresAt=format==='seconds'?String(seconds):new Date(seconds*1000).toISOString();
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(0,{Token:'sut_transient',ExpiresAt})));
+  expect(await createTencentProvider().createSdkToken!('capture-user')).toMatchObject({expiresAt:seconds});
+ });
+ it.each(['bad-expiry',0,Date.now()+999999999])('rejects invalid or unbounded SDK token expiry %s',async ExpiresAt=>{
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(0,{Token:'sut_transient',ExpiresAt})));
+  await expect(createTencentProvider().createSdkToken!('capture-user')).rejects.toThrow('invalid SDK credential');
+ });
+ it('redacts a provider diagnostic that echoes a token, key or encrypted image',async()=>{
+  vi.mocked(logger.warn).mockClear();
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue({...response(1001005),json:async()=>({code:1001005,message:'bad sut_transient test-credential encrypted-capture',data:{}})}));
+  await expect(createTencentProvider().compareCapture!('user',capture)).rejects.toThrow('[redacted]');
+  const logged=JSON.stringify(vi.mocked(logger.warn).mock.calls);
+  expect(logged).not.toContain('sut_transient');expect(logged).not.toContain('test-credential');expect(logged).not.toContain('encrypted-capture');
+ });
+ it('sends the encrypted capture, explicit target and mandatory application quality check',async()=>{
+  const fetch=vi.fn().mockResolvedValue(response(0,{IsMatch:true,Score:93}));vi.stubGlobal('fetch',fetch);
+  expect(await createTencentProvider().compareCapture!('candidate',capture)).toMatchObject({isMatch:true,score:93});
+  const body=JSON.parse(fetch.mock.calls[0]![1].body);
+  expect(body).toEqual({CompareUserId:'candidate',RgbImage:image,LivenessRgbImage:image,UserToken:'sut_transient',CheckAppQuality:true});
+  expect(body.ActionLiveness).toBeUndefined(); // Never invent successful video liveness.
+  expect(fetch.mock.calls[0]![1].headers.Authorization).toBe('Bearer test-credential');
+ });
+ it('registers without force-rebinding and resolves the authoritative PalmId',async()=>{
+  const fetch=vi.fn().mockResolvedValueOnce(response(0,{UserId:'user'})).mockResolvedValueOnce(response(0,{RightPalm:{PalmState:1,PalmId:'palm-id'}}));vi.stubGlobal('fetch',fetch);
+  expect(await createTencentProvider().registerCapture!('user',capture)).toMatchObject({palmId:'palm-id'});
+  expect(JSON.parse(fetch.mock.calls[0]![1].body)).toMatchObject({UserId:'user',IsForce:false,CheckAppQuality:true});
+  expect(fetch.mock.calls[1]![0]).toBe('https://palm.example.test/palm/openai/get_palm');
+ });
+ it('does not bind a different returned user',async()=>{
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(0,{UserId:'other',PalmId:'palm-id'})));
+  await expect(createTencentProvider().registerCapture!('user',capture)).rejects.toThrow('different user');
+ });
+ it.each([{IsMatch:'true',Score:99},{IsMatch:true,Score:101},{IsMatch:true,Score:null},{}])('rejects malformed comparison success %j',async data=>{
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(0,data)));
+  await expect(createTencentProvider().compareCapture!('user',capture)).rejects.toThrow('invalid comparison');
+ });
+});

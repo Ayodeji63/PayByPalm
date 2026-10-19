@@ -82,8 +82,9 @@ describe('match policy', () => {
       expect(explain(rejectWithout('ambiguous_bin'))).toMatch(/more digits/i);
     });
 
-    it('asks for a PIN on step-up', () => {
-      expect(explain(decide(78))).toMatch(/PIN/i);
+    it('requires another scan on step-up', () => {
+      expect(explain(decide(78))).toMatch(/scan again/i);
+      expect(explain(decide(78))).not.toMatch(/PIN/i);
     });
   });
 });

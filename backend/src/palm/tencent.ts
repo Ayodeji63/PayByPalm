@@ -30,7 +30,9 @@ import type {
   PalmProvider,
   RegisterResult,
   SearchResult,
+  SdkToken,
 } from './provider.js';
+import type { SdkCapture } from './sdkCapture.js';
 
 /** Documented limit is 20 req/s; leave headroom so a burst does not trip it. */
 const limiter = createTokenBucket(18);
@@ -109,7 +111,12 @@ async function call<T>(path: string, body: unknown): Promise<{ data: T; requestI
     const envelope = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Partial<Envelope<T>> : null;
     if (typeof envelope?.code === 'number' && Number.isSafeInteger(envelope.code) && envelope.code > 0) {
       const requestId = typeof envelope.requestId === 'string' ? envelope.requestId : undefined;
-      const diagnostic = typeof envelope.message === 'string' ? envelope.message : 'Palm service rejected the request.';
+      let diagnostic = typeof envelope.message === 'string' ? envelope.message : 'Palm service rejected the request.';
+      const submitted = body as {UserToken?: string; RgbImage?: {Data?: string}; LivenessRgbImage?: {Data?: string}};
+      for (const sensitive of [credential, submitted?.UserToken, submitted?.RgbImage?.Data, submitted?.LivenessRgbImage?.Data]) {
+        if (sensitive) diagnostic = diagnostic.replaceAll(sensitive, '[redacted]');
+      }
+      diagnostic = diagnostic.slice(0, 1000);
       logger.warn(
         { path, traceId, status: response.status, code: envelope.code, requestId,
           providerDescription: classifyTencentError(envelope.code, diagnostic).description, message: diagnostic },
@@ -140,9 +147,66 @@ async function call<T>(path: string, body: unknown): Promise<{ data: T; requestI
 
 const rgbImage = (imageB64: string) => ({ Data: imageB64, ImageType: IMAGE_TYPE_RGB });
 
+function verifiedCompare(data: CompareData, requestId?: string): CompareResult {
+  if (typeof data?.IsMatch !== 'boolean' || !Number.isFinite(data.Score) || data.Score < 0 || data.Score > 100) {
+    throw new PalmProviderError('Palm service returned an invalid comparison result.', { requestId });
+  }
+  return { isMatch: data.IsMatch, score: data.Score, meta: { requestId, providerIsMatch: data.IsMatch } };
+}
+
+// The SDK image-only contract contains no uploaded video. Never invent a video
+// ID or assert server video-liveness success. Tencent must accept its encrypted
+// image/liveness pair with application quality enabled, or this call fails.
+const captureBody = (capture: SdkCapture) => ({
+  RgbImage: capture.RgbImage,
+  LivenessRgbImage: capture.LivenessRgbImage,
+  UserToken: capture.UserToken,
+});
+
 export function createTencentProvider(): PalmProvider {
   return {
     name: 'tencent',
+
+    async createSdkToken(userId: string): Promise<SdkToken> {
+      const { data, requestId } = await call<{Token: string; ExpiresAt: number | string}>(
+        '/palm/openai/x/oauth/sdk/usertoken/create', { UserId: userId, TtlSeconds: 180 },
+      );
+      // The live gateway serializes ExpiresAt as a string; the supplied guide
+      // describes Unix seconds. Accept explicit numeric seconds or ISO UTC.
+      const expiry = typeof data?.ExpiresAt === 'string'
+        ? (/^\d+$/.test(data.ExpiresAt) ? Number(data.ExpiresAt) : /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(data.ExpiresAt) ? Date.parse(data.ExpiresAt) / 1000 : NaN)
+        : data?.ExpiresAt;
+      if (typeof data?.Token !== 'string' || !data.Token.startsWith('sut_') || !Number.isFinite(expiry) || expiry <= Date.now() / 1000 || expiry > Date.now() / 1000 + 86400) {
+        throw new PalmProviderError('Palm service returned an invalid SDK credential.', { requestId });
+      }
+      return { token: data.Token, expiresAt: expiry, meta: { requestId } };
+    },
+
+    async registerCapture(userId, capture) {
+      const { data, requestId } = await call<Partial<RegisterData> & {UserId?: string}>(
+        '/palm/openai/register_rgb_palm', { ...captureBody(capture), UserId: userId, IsForce: false, CheckAppQuality: true },
+      );
+      if (!data || typeof data !== 'object' || Array.isArray(data) || (data.UserId === undefined && !(typeof data.PalmId === 'string' && data.PalmId.length > 0))) {
+        throw new PalmProviderError('Palm service returned an invalid registration result.', { requestId });
+      }
+      if (data?.UserId !== undefined && data.UserId !== userId) throw new PalmProviderError('Palm registration returned a different user.', { requestId });
+      if (typeof data?.PalmId === 'string' && data.PalmId.length > 0) return { palmId: data.PalmId, meta: { requestId } };
+      // New SDK registration responses can contain UserId instead of PalmId.
+      // Resolve the actual identifier from an authoritative registration read.
+      const check = await call<{LeftPalm?: {PalmId?: string; PalmState?: number}; RightPalm?: {PalmId?: string; PalmState?: number}}>(
+        '/palm/openai/get_palm', { UserId: userId },
+      );
+      const active = [check.data?.LeftPalm, check.data?.RightPalm].find(p => p?.PalmState === 1 && typeof p.PalmId === 'string' && p.PalmId.length > 0);
+      if (!active?.PalmId) throw new PalmProviderError('Palm registration could not be confirmed.', { requestId: check.requestId });
+      return { palmId: active.PalmId, meta: { requestId } };
+    },
+
+    async compareCapture(userId, capture) {
+      const { data, requestId } = await call<CompareData>('/palm/openai/compare_rgb_palm', {
+        ...captureBody(capture), CompareUserId: userId, CheckAppQuality: true,
+      });
+      return verifiedCompare(data, requestId);
+    },
 
     async register(userId: string, imageB64: string): Promise<RegisterResult> {
       const { data, requestId } = await call<RegisterData>('/palm/openai/register_rgb_palm', {
@@ -162,11 +226,7 @@ export function createTencentProvider(): PalmProvider {
         CompareUserId: userId,
       });
 
-      return {
-        isMatch: data.IsMatch,
-        score: data.Score,
-        meta: { requestId, providerIsMatch: data.IsMatch },
-      };
+      return verifiedCompare(data, requestId);
     },
 
     async search(imageB64: string): Promise<SearchResult | null> {
