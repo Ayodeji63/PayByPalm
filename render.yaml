@@ -7,7 +7,9 @@ services:
     # TypeScript and its declaration packages are devDependencies, so they must
     # be present during compilation even though the service runs in production.
     buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm build
-    startCommand: pnpm start
+    # Dependencies and compilation are complete at build time. Launch Node
+    # directly so runtime startup does not depend on a package-manager shim.
+    startCommand: node dist/index.js
     healthCheckPath: /health
     autoDeploy: true
     envVars:

@@ -70,6 +70,17 @@ apply the Supabase migrations and seed data described in the database README. A 
 response means the service started but cannot query Supabase—usually because the database
 migrations or one of the Supabase environment values is missing.
 
+Production startup runs `node dist/index.js` directly after the build, and the
+API binds to `0.0.0.0` using Render's `PORT`. For an existing service, check
+**Settings → Build & Deploy**: Root Directory must be `backend`, Start Command
+must be `node dist/index.js`, and Health Check Path must be `/health`. Updating
+the Blueprint file alone does not guarantee a manually configured service's
+settings have changed. If logs stop at `Running 'pnpm start'` without the package
+script banner or application output, update the Start Command and redeploy.
+After building, `pnpm test:startup` launches the compiled production entrypoint
+against a local database fixture, checks port binding and health, and verifies
+graceful shutdown. It does not load private `.env` values or contact providers.
+
 ### Running with no Tencent access
 
 `PALM_PROVIDER=mock` is the default, and the entire application works end to end on it: enrol
@@ -342,8 +353,9 @@ and walk the enrolment and payment curl sequences above with `PALM_PROVIDER=mock
 
 ## Deployment (Render)
 
-- Build: `pnpm install && pnpm build`
-- Start: `pnpm start`
+- Root Directory: `backend`
+- Build: `pnpm install --frozen-lockfile --prod=false && pnpm build`
+- Start: `node dist/index.js`
 - Health check path: `/health`
 
 Set every variable from `.env.example`. `WALLET_BASE_URL` must be the deployed wallet origin —

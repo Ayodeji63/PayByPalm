@@ -100,10 +100,11 @@ if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
       : 'API could not start.');
     process.exit(1);
   });
-  server.listen(config.PORT, () => {
+  server.listen(config.PORT, '0.0.0.0', () => {
     logger.info(
       {
         port: config.PORT,
+        host: '0.0.0.0',
         env: config.NODE_ENV,
         palmProvider: config.PALM_PROVIDER,
         palmCaptureMode: config.PALM_PROVIDER === 'tencent' ? config.TENCENT_CAPTURE_MODE : 'legacy',
