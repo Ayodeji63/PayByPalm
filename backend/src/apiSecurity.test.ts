@@ -104,6 +104,30 @@ describe('API security boundaries', () => {
     expect(result.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
     expect(result.headers.get('cache-control')).toBe('no-store');
   });
+  it.each(['https://www.paybypalm.app', 'https://paybypalm.app'])('allows signup preflight for configured custom domain %s without Auth or database calls', async origin => {
+    const result = await fetch(base + '/auth/signup', {
+      method: 'OPTIONS',
+      headers: { Origin: origin, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' },
+    });
+    expect(result.status).toBe(204);
+    expect(result.headers.get('access-control-allow-origin')).toBe(origin);
+    expect(result.headers.get('access-control-allow-credentials')).toBe('true');
+    expect(result.headers.get('access-control-allow-methods')).toContain('POST');
+    expect(result.headers.get('access-control-allow-headers')?.toLowerCase()).toContain('content-type');
+    expect(result.headers.get('vary')).toContain('Origin');
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.signup).not.toHaveBeenCalled();
+  });
+  it.each(['https://www.paybypalm.app.attacker.example', 'http://www.paybypalm.app', 'https://untrusted.paybypalm.app'])('rejects unlisted or lookalike signup origin %s', async origin => {
+    const result = await fetch(base + '/auth/signup', {
+      method: 'OPTIONS',
+      headers: { Origin: origin, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' },
+    });
+    expect(result.status).toBe(403);
+    expect(result.headers.get('access-control-allow-origin')).toBeNull();
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.signup).not.toHaveBeenCalled();
+  });
   it('rejects oversized ordinary JSON before invoking Auth', async () => {
     const result = await post('/auth/login', { email: 'user@example.com', password: 'x'.repeat(17000) });
     expect(result.status).toBe(413); expect(mocks.login).not.toHaveBeenCalled();

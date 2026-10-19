@@ -1,0 +1,382 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-18T21:33:36.163078+00:00",
+  "title": "Design System: PayByPalm",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "Accent",
+        "tonalRamp": [
+          "oklch(15% 0.2003 265.57)",
+          "oklch(27% 0.2003 265.57)",
+          "oklch(39% 0.2003 265.57)",
+          "oklch(51% 0.2003 265.57)",
+          "oklch(63% 0.2003 265.57)",
+          "oklch(75% 0.2003 265.57)",
+          "oklch(87% 0.2003 265.57)",
+          "oklch(95% 0.2003 265.57)"
+        ]
+      },
+      "accent-strong": {
+        "role": "primary",
+        "displayName": "Accent Strong",
+        "tonalRamp": [
+          "oklch(15% 0.1912 266.12)",
+          "oklch(27% 0.1912 266.12)",
+          "oklch(39% 0.1912 266.12)",
+          "oklch(51% 0.1912 266.12)",
+          "oklch(63% 0.1912 266.12)",
+          "oklch(75% 0.1912 266.12)",
+          "oklch(87% 0.1912 266.12)",
+          "oklch(95% 0.1912 266.12)"
+        ]
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "Accent Soft",
+        "tonalRamp": [
+          "oklch(15% 0.1509 267.42)",
+          "oklch(27% 0.1509 267.42)",
+          "oklch(39% 0.1509 267.42)",
+          "oklch(51% 0.1509 267.42)",
+          "oklch(63% 0.1509 267.42)",
+          "oklch(75% 0.1509 267.42)",
+          "oklch(87% 0.1509 267.42)",
+          "oklch(95% 0.1509 267.42)"
+        ]
+      },
+      "accent-tint": {
+        "role": "primary",
+        "displayName": "Accent Tint",
+        "tonalRamp": [
+          "oklch(15% 0.0199 267.29)",
+          "oklch(27% 0.0199 267.29)",
+          "oklch(39% 0.0199 267.29)",
+          "oklch(51% 0.0199 267.29)",
+          "oklch(63% 0.0199 267.29)",
+          "oklch(75% 0.0199 267.29)",
+          "oklch(87% 0.0199 267.29)",
+          "oklch(95% 0.0199 267.29)"
+        ]
+      },
+      "accent-deep": {
+        "role": "primary",
+        "displayName": "Accent Deep",
+        "tonalRamp": [
+          "oklch(15% 0.1378 265.52)",
+          "oklch(27% 0.1378 265.52)",
+          "oklch(39% 0.1378 265.52)",
+          "oklch(51% 0.1378 265.52)",
+          "oklch(63% 0.1378 265.52)",
+          "oklch(75% 0.1378 265.52)",
+          "oklch(87% 0.1378 265.52)",
+          "oklch(95% 0.1378 265.52)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "tonalRamp": [
+          "oklch(15% 0.0380 265.07)",
+          "oklch(27% 0.0380 265.07)",
+          "oklch(39% 0.0380 265.07)",
+          "oklch(51% 0.0380 265.07)",
+          "oklch(63% 0.0380 265.07)",
+          "oklch(75% 0.0380 265.07)",
+          "oklch(87% 0.0380 265.07)",
+          "oklch(95% 0.0380 265.07)"
+        ]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Ink Muted",
+        "tonalRamp": [
+          "oklch(15% 0.0424 267.03)",
+          "oklch(27% 0.0424 267.03)",
+          "oklch(39% 0.0424 267.03)",
+          "oklch(51% 0.0424 267.03)",
+          "oklch(63% 0.0424 267.03)",
+          "oklch(75% 0.0424 267.03)",
+          "oklch(87% 0.0424 267.03)",
+          "oklch(95% 0.0424 267.03)"
+        ]
+      },
+      "ink-faint": {
+        "role": "neutral",
+        "displayName": "Ink Faint",
+        "tonalRamp": [
+          "oklch(15% 0.0322 267.10)",
+          "oklch(27% 0.0322 267.10)",
+          "oklch(39% 0.0322 267.10)",
+          "oklch(51% 0.0322 267.10)",
+          "oklch(63% 0.0322 267.10)",
+          "oklch(75% 0.0322 267.10)",
+          "oklch(87% 0.0322 267.10)",
+          "oklch(95% 0.0322 267.10)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "tonalRamp": [
+          "oklch(15% 0.0000 0.00)",
+          "oklch(27% 0.0000 0.00)",
+          "oklch(39% 0.0000 0.00)",
+          "oklch(51% 0.0000 0.00)",
+          "oklch(63% 0.0000 0.00)",
+          "oklch(75% 0.0000 0.00)",
+          "oklch(87% 0.0000 0.00)",
+          "oklch(95% 0.0000 0.00)"
+        ]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Canvas",
+        "tonalRamp": [
+          "oklch(15% 0.0034 247.86)",
+          "oklch(27% 0.0034 247.86)",
+          "oklch(39% 0.0034 247.86)",
+          "oklch(51% 0.0034 247.86)",
+          "oklch(63% 0.0034 247.86)",
+          "oklch(75% 0.0034 247.86)",
+          "oklch(87% 0.0034 247.86)",
+          "oklch(95% 0.0034 247.86)"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "tonalRamp": [
+          "oklch(15% 0.0154 269.98)",
+          "oklch(27% 0.0154 269.98)",
+          "oklch(39% 0.0154 269.98)",
+          "oklch(51% 0.0154 269.98)",
+          "oklch(63% 0.0154 269.98)",
+          "oklch(75% 0.0154 269.98)",
+          "oklch(87% 0.0154 269.98)",
+          "oklch(95% 0.0154 269.98)"
+        ]
+      },
+      "danger": {
+        "role": "semantic",
+        "displayName": "Danger",
+        "tonalRamp": [
+          "oklch(15% 0.2088 29.48)",
+          "oklch(27% 0.2088 29.48)",
+          "oklch(39% 0.2088 29.48)",
+          "oklch(51% 0.2088 29.48)",
+          "oklch(63% 0.2088 29.48)",
+          "oklch(75% 0.2088 29.48)",
+          "oklch(87% 0.2088 29.48)",
+          "oklch(95% 0.2088 29.48)"
+        ]
+      },
+      "danger-tint": {
+        "role": "semantic",
+        "displayName": "Danger Tint",
+        "tonalRamp": [
+          "oklch(15% 0.0187 25.60)",
+          "oklch(27% 0.0187 25.60)",
+          "oklch(39% 0.0187 25.60)",
+          "oklch(51% 0.0187 25.60)",
+          "oklch(63% 0.0187 25.60)",
+          "oklch(75% 0.0187 25.60)",
+          "oklch(87% 0.0187 25.60)",
+          "oklch(95% 0.0187 25.60)"
+        ]
+      },
+      "warning": {
+        "role": "semantic",
+        "displayName": "Warning",
+        "tonalRamp": [
+          "oklch(15% 0.1375 56.85)",
+          "oklch(27% 0.1375 56.85)",
+          "oklch(39% 0.1375 56.85)",
+          "oklch(51% 0.1375 56.85)",
+          "oklch(63% 0.1375 56.85)",
+          "oklch(75% 0.1375 56.85)",
+          "oklch(87% 0.1375 56.85)",
+          "oklch(95% 0.1375 56.85)"
+        ]
+      },
+      "warning-tint": {
+        "role": "semantic",
+        "displayName": "Warning Tint",
+        "tonalRamp": [
+          "oklch(15% 0.0214 76.54)",
+          "oklch(27% 0.0214 76.54)",
+          "oklch(39% 0.0214 76.54)",
+          "oklch(51% 0.0214 76.54)",
+          "oklch(63% 0.0214 76.54)",
+          "oklch(75% 0.0214 76.54)",
+          "oklch(87% 0.0214 76.54)",
+          "oklch(95% 0.0214 76.54)"
+        ]
+      },
+      "success": {
+        "role": "semantic",
+        "displayName": "Success",
+        "tonalRamp": [
+          "oklch(15% 0.1507 154.10)",
+          "oklch(27% 0.1507 154.10)",
+          "oklch(39% 0.1507 154.10)",
+          "oklch(51% 0.1507 154.10)",
+          "oklch(63% 0.1507 154.10)",
+          "oklch(75% 0.1507 154.10)",
+          "oklch(87% 0.1507 154.10)",
+          "oklch(95% 0.1507 154.10)"
+        ]
+      },
+      "success-tint": {
+        "role": "semantic",
+        "displayName": "Success Tint",
+        "tonalRamp": [
+          "oklch(15% 0.0232 165.87)",
+          "oklch(27% 0.0232 165.87)",
+          "oklch(39% 0.0232 165.87)",
+          "oklch(51% 0.0232 165.87)",
+          "oklch(63% 0.0232 165.87)",
+          "oklch(75% 0.0232 165.87)",
+          "oklch(87% 0.0232 165.87)",
+          "oklch(95% 0.0232 165.87)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "balance": {
+        "displayName": "Wallet balance",
+        "purpose": "Stable financial figures in WalletCard."
+      },
+      "title": {
+        "displayName": "Page title",
+        "purpose": "Shared PageHeader title."
+      },
+      "body": {
+        "displayName": "Body and control",
+        "purpose": "Main reading and input text."
+      },
+      "label": {
+        "displayName": "Field label",
+        "purpose": "Persistent field labels."
+      }
+    },
+    "shadows": [
+      {
+        "name": "bottom-navigation",
+        "value": "0 -4px 16px rgba(0,0,0,0.05)",
+        "purpose": "Existing BottomNav elevation."
+      }
+    ],
+    "motion": [
+      {
+        "name": "entrance-easing",
+        "value": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "purpose": "Shared entrance and press easing; reduced motion shortens animations."
+      },
+      {
+        "name": "button-press",
+        "value": "0.2s",
+        "purpose": "Shared btn-bounce active animation."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      }
+    ],
+    "sources": [
+      "wallet/src/index.css",
+      "wallet/src/components/ui.tsx"
+    ],
+    "tonalRampNote": "Synthesized OKLCH inspection ramps are metadata, not new implementation tokens.",
+    "scopeNote": "Global incumbent wallet system. Landing composition stays in surfaces/landing.md; its local colors and terminal radius are not global tokens."
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "description": "Shared primary action and interactive states.",
+      "html": "<button type=\"button\" class=\"ds-primary\">Continue</button>",
+      "css": ".ds-primary{font-family:var(--font-sans,Inter,ui-sans-serif,system-ui,sans-serif);display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border-radius:16px;font-size:16px;line-height:24px;font-weight:600;cursor:pointer;transition:background-color .15s;border:0;background:var(--color-accent,#3b68e8);color:#fff}.ds-primary:hover{background:var(--color-accent-strong,#2c51c9)}.ds-primary:focus-visible{outline:2px solid var(--color-accent,#3b68e8);outline-offset:2px;}.ds-primary:active{animation:ds-press .2s cubic-bezier(.32,.72,0,1)}.ds-primary:disabled{background:var(--color-ink-faint,#9aa3b8);opacity:.6;cursor:not-allowed}@keyframes ds-press{0%,100%{transform:scale(1)}50%{transform:scale(.96)}}@media(prefers-reduced-motion:reduce){.ds-primary,.ds-secondary,.ds-field-input,.ds-pill,.ds-nav a{animation-duration:.01ms!important;transition-duration:.01ms!important}}",
+      "refersTo": "button-primary"
+    },
+    {
+      "name": "Secondary button",
+      "kind": "button",
+      "description": "Supporting action with hairline border.",
+      "html": "<button type=\"button\" class=\"ds-secondary\">View details</button>",
+      "css": ".ds-secondary{font-family:var(--font-sans,Inter,ui-sans-serif,system-ui,sans-serif);display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border-radius:16px;font-size:16px;line-height:24px;font-weight:600;cursor:pointer;transition:background-color .15s;border:1px solid var(--color-hairline,#e6eaf5);background:var(--color-surface,#fff);color:var(--color-ink,#0f1729)}.ds-secondary:hover{background:var(--color-canvas,#f8fafc)}.ds-secondary:focus-visible{outline:2px solid var(--color-accent,#3b68e8);outline-offset:2px;}.ds-secondary:active{animation:ds-press .2s cubic-bezier(.32,.72,0,1)}.ds-secondary:disabled{opacity:.6;cursor:not-allowed}@keyframes ds-press{0%,100%{transform:scale(1)}50%{transform:scale(.96)}}@media(prefers-reduced-motion:reduce){.ds-primary,.ds-secondary,.ds-field-input,.ds-pill,.ds-nav a{animation-duration:.01ms!important;transition-duration:.01ms!important}}",
+      "refersTo": "button-secondary"
+    },
+    {
+      "name": "Labelled field",
+      "kind": "input",
+      "description": "Persistent label and textual hint.",
+      "html": "<div class=\"ds-field\"><label class=\"ds-field-label\" for=\"ds-phone\">Phone number</label><input class=\"ds-field-input\" id=\"ds-phone\" type=\"tel\" autocomplete=\"tel\" placeholder=\"Enter phone number\" aria-describedby=\"ds-phone-hint\"><p class=\"ds-field-hint\" id=\"ds-phone-hint\">Use the number linked to your account.</p></div>",
+      "css": ".ds-field{font-family:var(--font-sans,Inter,ui-sans-serif,system-ui,sans-serif);width:min(100%,320px)}.ds-field-label{display:block;margin-bottom:6px;font-size:14px;line-height:20px;font-weight:500;color:var(--color-ink-muted,#6b7690)}.ds-field-input{font-family:var(--font-sans,Inter,ui-sans-serif,system-ui,sans-serif);width:100%;min-height:48px;padding:0 16px;border:1px solid var(--color-hairline,#e6eaf5);border-radius:16px;background:var(--color-surface,#fff);color:var(--color-ink,#0f1729);font-size:16px;transition:border-color .15s}.ds-field-input:hover{border-color:var(--color-ink-faint,#9aa3b8)}.ds-field-input:focus-visible{outline:2px solid var(--color-accent,#3b68e8);outline-offset:2px;border-color:var(--color-accent,#3b68e8)}.ds-field-input[aria-invalid=true]{border-color:var(--color-danger,#d92d20)}.ds-field-hint{margin:6px 0 0;font-size:14px;line-height:20px;color:var(--color-ink-faint,#9aa3b8)}@media(prefers-reduced-motion:reduce){.ds-primary,.ds-secondary,.ds-field-input,.ds-pill,.ds-nav a{animation-duration:.01ms!important;transition-duration:.01ms!important}}",
+      "refersTo": "field"
+    },
+    {
+      "name": "Selection pills",
+      "kind": "chip",
+      "description": "Selected and unselected Pill treatments.",
+      "html": "<div class=\"ds-pills\"><button class=\"ds-pill\" type=\"button\" aria-pressed=\"true\">All</button><button class=\"ds-pill\" type=\"button\" aria-pressed=\"false\">Payments</button></div>",
+      "css": ".ds-pills{display:flex;gap:8px}.ds-pill{font-family:var(--font-sans,Inter,ui-sans-serif,system-ui,sans-serif);padding:6px 16px;border:1px solid var(--color-hairline,#e6eaf5);border-radius:9999px;background:var(--color-surface,#fff);color:var(--color-ink-muted,#6b7690);font-size:14px;line-height:20px;font-weight:600;cursor:pointer;transition:background-color .15s}.ds-pill[aria-pressed=true]{background:var(--color-accent,#3b68e8);border-color:transparent;color:#fff}.ds-pill[aria-pressed=false]:hover{background:var(--color-canvas,#f8fafc)}.ds-pill:focus-visible{outline:2px solid var(--color-accent,#3b68e8);outline-offset:2px;}@media(prefers-reduced-motion:reduce){.ds-primary,.ds-secondary,.ds-field-input,.ds-pill,.ds-nav a{animation-duration:.01ms!important;transition-duration:.01ms!important}}",
+      "refersTo": "pill-active"
+    },
+    {
+      "name": "Shared card",
+      "kind": "card",
+      "description": "Default Card: white, bordered, padded, without shadow.",
+      "html": "<article class=\"ds-card\"><h3 class=\"ds-card-title\">Recent activity</h3><p class=\"ds-card-body\">Your transactions appear here.</p></article>",
+      "css": ".ds-card{font-family:var(--font-sans,Inter,ui-sans-serif,system-ui,sans-serif);max-width:320px;padding:20px;border:1px solid var(--color-hairline,#e6eaf5);border-radius:var(--radius-card,24px);background:var(--color-surface,#fff);color:var(--color-ink,#0f1729)}.ds-card-title{margin:0;font-size:16px;line-height:24px;font-weight:600}.ds-card-body{margin:8px 0 0;font-size:14px;line-height:20px;color:var(--color-ink-muted,#6b7690)}",
+      "refersTo": "card"
+    },
+    {
+      "name": "Wallet navigation",
+      "kind": "nav",
+      "description": "Existing five-destination BottomNav; its darker-blue detail remains a local override.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Wallet\"><a class=\"ds-nav-item\" href=\"/dashboard\" aria-label=\"Home\" aria-current=\"page\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\"><path d=\"M3 10.5 12 3.5l9 7V20a1.5 1.5 0 0 1-1.5 1.5h-4.5v-6h-6v6H4.5A1.5 1.5 0 0 1 3 20z\" fill=\"currentColor\"/></svg><span>Home</span></a><a class=\"ds-nav-item\" href=\"/cards\" aria-label=\"Cards\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\"><rect x=\"2.5\" y=\"5.5\" width=\"19\" height=\"13\" rx=\"2.5\" stroke=\"currentColor\" stroke-width=\"1.8\"/><path d=\"M6 10h4M6 14h7\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"/></svg><span>Cards</span></a><a class=\"ds-nav-scan\" href=\"/scan\" aria-label=\"Scan palm\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\"><path d=\"M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M9 12h6M9 9.5h6M10 14.5h4\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></a><a class=\"ds-nav-item\" href=\"/activity\" aria-label=\"History\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" rx=\"3.5\" stroke=\"currentColor\" stroke-width=\"1.8\"/><path d=\"m7 14 3.2-3.2 2.6 2.6L17 9M14 9h3v3\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg><span>History</span></a><a class=\"ds-nav-item\" href=\"/profile\" aria-label=\"Profile\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"8\" r=\"3.8\" stroke=\"currentColor\" stroke-width=\"1.8\"/><path d=\"M5.5 19.5a6.5 6.5 0 0 1 13 0\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"/></svg><span>Profile</span></a></nav>",
+      "css": ".ds-nav{font-family:var(--font-sans,Inter,ui-sans-serif,system-ui,sans-serif);display:flex;align-items:center;justify-content:space-around;gap:8px;width:min(400px,100%);margin-top:24px;padding:10px 12px;background:#fff;border-top:1px solid #f1f5f9;border-radius:26px 26px 0 0;box-shadow:0 -4px 16px rgba(0,0,0,.05)}.ds-nav a{text-decoration:none;transition:color .15s,transform .15s}.ds-nav-item{display:flex;flex-direction:column;align-items:center;gap:4px;width:56px;color:#94a3b8;font-size:11px;line-height:16.5px;font-weight:600}.ds-nav-item[aria-current=page]{color:#2851c5}.ds-nav-item:hover{color:#475569}.ds-nav-scan{position:relative;top:-20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;width:52px;height:52px;border-radius:9999px;background:#2851c5;color:#fff;box-shadow:0 4px 6px -1px rgba(15,23,42,.2);outline:4px solid #fff}.ds-nav-scan:hover{background:#2851c5}.ds-nav-scan:active{transform:scale(.95)}.ds-nav a:focus-visible{outline:2px solid var(--color-accent,#3b68e8);outline-offset:2px;}@media(prefers-reduced-motion:reduce){.ds-primary,.ds-secondary,.ds-field-input,.ds-pill,.ds-nav a{animation-duration:.01ms!important;transition-duration:.01ms!important}}"
+    },
+    {
+      "name": "PayByPalm logo",
+      "kind": "custom",
+      "description": "Existing PalmIcon and Wordmark with quieter By.",
+      "html": "<div class=\"ds-logo\"><span class=\"ds-logo-tile\"><svg class=\"ds-logo-palm\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\"><path d=\"M12 21c-3.9 0-6-2.6-6-6v-3.5M6 11.5V8a1.2 1.2 0 1 1 2.4 0v2M8.4 10V5.2a1.2 1.2 0 1 1 2.4 0V10M10.8 10V4.7a1.2 1.2 0 1 1 2.4 0V10M13.2 10V6a1.2 1.2 0 1 1 2.4 0v6.5c0 4.2-1.4 5.5-3.6 5.5\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></span><span class=\"ds-logo-wordmark\">Pay<span class=\"ds-logo-by\">By</span>Palm</span></div>",
+      "css": ".ds-logo{font-family:var(--font-sans,Inter,ui-sans-serif,system-ui,sans-serif);display:flex;align-items:center;gap:8px;color:var(--color-ink,#0f1729)}.ds-logo-tile{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:12px;background:var(--color-accent,#3b68e8);color:#fff}.ds-logo-palm{width:20px;height:20px}.ds-logo-wordmark{font-size:18px;line-height:28px;font-weight:700;letter-spacing:-.025em}.ds-logo-by{opacity:.7}"
+    }
+  ],
+  "narrative": {
+    "overview": "PayByPalm's incumbent identity combines royal blue, Inter typography, white cards, and a pale cool canvas. Clear amounts, familiar controls, and generous rounding give the customer wallet a calm, approachable financial interface.\n\nThis document records the implemented system in `wallet/src/index.css` and `wallet/src/components/ui.tsx`; it does not establish a replacement identity. Product constraints live in `PRODUCT.md`. Landing composition and illustration decisions live in `.impeccable/surfaces/landing.md`.",
+    "keyCharacteristics": [
+      "Royal blue actions and clear ink text.",
+      "Softly rounded white surfaces on a cool canvas.",
+      "Stable financial figures and visible keyboard focus."
+    ],
+    "rules": [
+      {
+        "name": "The Source Rule",
+        "body": "Reuse the global CSS variables rather than sampling a route illustration. The welcome route scopes its own blue (`#2851c5`) and deep blue (`#1a3a9e`); these do not replace the global accent. Some existing navigation details also use the darker blue locally.",
+        "section": "colors"
+      },
+      {
+        "name": "The Stable Figures Rule",
+        "body": "Use tabular numerals (`font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1`) for naira amounts and other changing figures. Preserve the shared bold Wordmark, including its quieter \u201cBy\u201d, and the existing PalmIcon SVG.",
+        "section": "typography"
+      }
+    ],
+    "dos": [
+      "Do reuse global color variables and shared UI primitives.",
+      "Do preserve visible keyboard focus, readable labels, and comfortable touch targets.",
+      "Do keep financial figures stable with tabular numerals."
+    ],
+    "donts": [
+      "Don't promote route-specific illustration colors, radii, or composition into global rules.",
+      "Don't communicate financial or biometric status through color alone.",
+      "Don't replace the existing PalmIcon or Wordmark during a surface refinement."
+    ]
+  }
+}

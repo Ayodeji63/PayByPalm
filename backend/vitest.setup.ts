@@ -18,6 +18,7 @@ const TEST_ENV: Record<string, string> = {
   SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key',
   SUPABASE_ANON_KEY: 'test-anon-key',
   WALLET_BASE_URL: 'http://localhost:5173',
+  EXTRA_CORS_ORIGINS: 'https://www.paybypalm.app,https://paybypalm.app',
   PALM_PROVIDER: 'mock',
   PALM_ACCEPT_SCORE: '85',
   PALM_STEP_UP_SCORE: '70',

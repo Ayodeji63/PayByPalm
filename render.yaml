@@ -40,7 +40,7 @@ services:
       - key: WALLET_BASE_URL
         value: https://pay-by-palm.vercel.app
       - key: EXTRA_CORS_ORIGINS
-        value: ""
+        value: "https://www.paybypalm.app,https://paybypalm.app"
 
       # Production biometric provider. The corresponding credential is stored
       # only in Render as TENCENT_PALM_API_KEY.

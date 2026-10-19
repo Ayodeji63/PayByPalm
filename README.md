@@ -172,6 +172,43 @@ in [pi/README.md](pi/README.md).
 
 Never commit a real terminal key, Supabase service-role key, or Tencent API key.
 
+## Custom domain CORS on Render
+
+The API allows the exact `WALLET_BASE_URL` origin plus the comma-separated
+`EXTRA_CORS_ORIGINS`. `https://www.paybypalm.app` and `https://paybypalm.app`
+are separate browser origins. Configure both on the **backend Render service →
+Environment**:
+
+```dotenv
+EXTRA_CORS_ORIGINS=https://www.paybypalm.app,https://paybypalm.app
+```
+
+Append these to any existing extra origins you still need. Use exact origins
+with the scheme and no path or trailing slash. Select **Save and deploy** so the
+backend reloads its configuration. Editing a local `.env` or Vercel's environment
+does not update Render. The Blueprint includes these public origins for deployments
+managed through `render.yaml`.
+
+This CORS change leaves `WALLET_BASE_URL` and existing redirect destinations intact.
+When moving email verification, Paystack callbacks and enrolment QR links to the
+custom domain, first allow `https://www.paybypalm.app/auth/confirm` in Supabase
+Auth's redirect URLs, then set Render's `WALLET_BASE_URL` to
+`https://www.paybypalm.app`. Keep the old Vercel origin in `EXTRA_CORS_ORIGINS` if
+existing clients or Pi configurations still use it.
+
+Verify the browser's preflight without creating an account:
+
+```bash
+curl -i -X OPTIONS https://paybypalm-backend.onrender.com/auth/signup \
+  -H 'Origin: https://www.paybypalm.app' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: content-type'
+```
+
+Expected: HTTP 204 and `Access-Control-Allow-Origin: https://www.paybypalm.app`.
+An `origin_not_allowed` response means that origin is still absent from the
+running service's configuration.
+
 ## ✅ Verification
 
 ```bash
