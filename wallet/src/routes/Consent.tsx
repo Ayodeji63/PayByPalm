@@ -13,8 +13,8 @@ import { PageTransition } from '../components/transitions.js';
 const GUARANTEES = [
   {
     number: 1,
-    title: 'Encrypted Palm Capture',
-    description: 'Tencent’s reader captures encrypted palm and liveness images. PayByPalm forwards them for processing without saving the images.',
+    title: 'Palm Image Processing',
+    description: 'The terminal sends your palm image over HTTPS to PayByPalm, which forwards it to Tencent for processing without saving the image.',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -130,7 +130,7 @@ export default function Consent() {
               Agree & Continue to Link Palm
             </Button>
             <p className="mt-3 text-sm text-slate-500 leading-relaxed">
-              Tencent also receives session diagnostics and a browser device identifier. Additional diagnostic image and video uploads are disabled.
+              When the Tencent reader is used, Tencent also receives session diagnostics and a browser device identifier. Additional diagnostic image and video uploads are disabled.
             </p>
           </div>
         </div>

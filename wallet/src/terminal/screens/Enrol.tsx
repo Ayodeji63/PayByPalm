@@ -162,7 +162,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
 
   const captureCaption =
     autoCaptureState === 'loading'
-      ? 'Loading palm recognition…'
+      ? 'Loading hand guidance…'
       : autoCaptureState === 'place'
         ? 'Show one open palm to the camera'
         : autoCaptureState === 'position'
@@ -172,8 +172,8 @@ export function Enrol({ onExit }: { onExit: () => void }) {
         : autoCaptureState === 'moving'
           ? 'Hold still — capturing automatically'
           : autoCaptureState === 'ready'
-            ? 'Palm recognised — capturing now'
-            : 'Palm recognition could not load';
+            ? 'Hand positioned — capturing now'
+            : 'Hand guidance unavailable — use Capture';
 
   // --- done ---------------------------------------------------------------
   if (phase === 'done') {

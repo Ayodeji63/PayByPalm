@@ -136,7 +136,7 @@ async function pendingTransaction(transactionId: string, terminal: AuthedTermina
 
 export async function beginPaymentCapture(transactionId: string, terminal: AuthedTerminal) {
   await pendingTransaction(transactionId, terminal);
-  if (config.PALM_PROVIDER === 'mock') return { captureMode: 'legacy' as const };
+  if (config.PALM_PROVIDER === 'mock' || config.TENCENT_CAPTURE_MODE !== 'h5') return { captureMode: 'legacy' as const };
   requireApprovedCaptureMode();
   const candidates = await getActivePalmCandidates();
   if (!candidates.length) throw conflict('no_enrolled_palms', 'No palms are linked yet. Enrol a palm before starting a payment.');
@@ -149,6 +149,7 @@ export async function authenticateSdkTransaction(
   transactionId: string, terminal: AuthedTerminal, submission: CaptureSubmission, log: Logger,
 ): Promise<AuthenticateOutcome> {
   const txn = await pendingTransaction(transactionId, terminal);
+  if (config.TENCENT_CAPTURE_MODE !== 'h5') throw conflict('palm_capture_mode_changed', 'The reader configuration changed. Start a new scan.');
   requireApprovedCaptureMode();
   const { capture, userId } = await consumePalmCapture(terminal.id, transactionId, 'payment', submission);
   const candidates = await getActivePalmCandidates();
@@ -171,16 +172,24 @@ function requireApprovedCaptureMode(): void {
   }
 }
 
-/** Raw-image transport remains available only for the local mock provider. */
+/** Original camera capture; the server still performs every 1:1 comparison. */
 export async function authenticateTransaction(
   transactionId: string, terminal: AuthedTerminal, rawImage: string,
   _last4: string | undefined, log: Logger,
 ): Promise<AuthenticateOutcome> {
   const txn = await pendingTransaction(transactionId, terminal);
-  if (config.PALM_PROVIDER === 'tencent') throw conflict('palm_sdk_required', 'Update the terminal to use the Tencent palm reader.');
+  if (config.PALM_PROVIDER === 'tencent' && config.TENCENT_CAPTURE_MODE === 'h5') throw conflict('palm_sdk_required', 'This terminal is configured to use the Tencent palm reader. Start a new scan.');
+  if (config.PALM_PROVIDER === 'tencent' && config.PAYSTACK_MODE === 'live') {
+    throw new AppError(503, 'palm_liveness_confirmation_required', 'The original camera flow supports test-card payments. Validated liveness is required before live card payments.');
+  }
   const image = normaliseImage(rawImage);
   const candidates = await getActivePalmCandidates();
   const matched = await matchPalmCandidates(candidates, userId => palm.compare(userId, image.data));
+  const current = await getActivePalmCandidates();
+  if (JSON.stringify(candidates.map(c => [c.id, c.tencent_palm_id])) !== JSON.stringify(current.map(c => [c.id, c.tencent_palm_id]))) {
+    throw conflict('palm_binding_changed', 'The enrolled palms changed during verification. Please scan again.');
+  }
+  log.info({ candidates: candidates.length, decision: matched.outcome.decision }, 'Camera 1:1 palm sweep complete');
   const profile = matched.userId ? await getProfile(matched.userId) : null;
   return finaliseAuthentication(txn, profile, matched.outcome, log);
 }

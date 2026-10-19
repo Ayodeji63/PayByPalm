@@ -2,10 +2,10 @@
  * C. Capture (payment).
  *
  * Left 60%: live preview with the fixed hand guide.
- * Right 40%: the amount, the prompt, and the OPTIONAL last-4 digits.
+ * Right 40%: the amount, positioning prompt and capture action.
  *
- * Tencent uses the H5 acquisition component below. The legacy camera UI is
- * retained for the local mock provider only. Both use backend-coordinated 1:1
+ * The original camera UI is the default; H5 remains a backend opt-in.
+ * Both use backend-coordinated 1:1
  * comparisons; no terminal payment requests native provider 1:N search.
  */
 
@@ -15,10 +15,11 @@ import type { AuthenticateOutcome } from '../api.js';
 import { terminalApi, TerminalApiError } from '../api.js';
 import { beginLEDOperation,type LEDOperation } from '../leds.js';
 import { useAutoCapture, useCamera } from '../useCamera.js';
-import { CameraPane, DigitBoxes, Keypad, TButton } from '../ui.js';
+import { CameraPane, TButton } from '../ui.js';
 import { H5PalmCapture } from '../H5PalmCapture.js';
 
 type CaptureProps = {
+  captureMode?: 'legacy' | 'h5';
   transactionId: string;
   amountMinor: number;
   onOutcome: (outcome: AuthenticateOutcome) => void;
@@ -27,7 +28,10 @@ type CaptureProps = {
 };
 
 export function Capture(props: CaptureProps) {
-  const [legacy, setLegacy] = useState(false);
+  // Identity already selected the reader: open the original camera immediately,
+  // without another network round trip or H5 preparation screen. Older API
+  // responses still fall back to the capture-mode negotiation below.
+  const [legacy, setLegacy] = useState(props.captureMode === 'legacy');
   if (legacy) return <LegacyCapture {...props} />;
   return <H5PalmCapture scopeId={props.transactionId}
     title={`Pay ${formatNaira(props.amountMinor)} with your palm`}
@@ -44,7 +48,6 @@ function LegacyCapture({
   onCancel,
 }: CaptureProps) {
   const { videoRef, status, retry, captureBest, illuminationWarning } = useCamera(true);
-  const [last4, setLast4] = useState('');
   const [busy, setBusy] = useState(false);
   const { state: autoCaptureState, landmarks } = useAutoCapture(
     videoRef,
@@ -61,7 +64,7 @@ function LegacyCapture({
     if(status==='ready'){const timer=window.setInterval(()=>void leds.state('CAPTURING'),5000);return ()=>window.clearInterval(timer);}
   },[status,busy]);
 
-  async function scan(useLast4: boolean) {
+  async function scan() {
     if (captureInProgress.current || busy || status !== 'ready') return;
     captureInProgress.current=true;
     setBusy(true);
@@ -71,7 +74,6 @@ function LegacyCapture({
       const outcome = await terminalApi.authenticate(
         transactionId,
         frame.imageB64,
-        useLast4 ? last4 : undefined,
       );
       if(!leds.active())return;
       await leds.state(outcome.decision==='accept'?'OFF':'ERROR');
@@ -96,12 +98,12 @@ function LegacyCapture({
     }
     if (autoCaptureState !== 'ready' || autoCaptureFired.current || busy) return;
     autoCaptureFired.current = true;
-    void scan(last4.length === 4);
-  }, [autoCaptureState, busy, last4]);
+    void scan();
+  }, [autoCaptureState, busy]);
 
   const captureCaption =
     autoCaptureState === 'loading'
-      ? 'Loading palm recognition…'
+      ? 'Loading hand guidance…'
       : autoCaptureState === 'place'
         ? 'Show one open palm to the camera'
         : autoCaptureState === 'position'
@@ -111,8 +113,8 @@ function LegacyCapture({
         : autoCaptureState === 'moving'
           ? 'Hold still — capturing automatically'
           : autoCaptureState === 'ready'
-            ? 'Palm recognised — capturing now'
-            : 'Palm recognition could not load';
+            ? 'Hand positioned — capturing now'
+            : 'Hand guidance unavailable — use Capture';
 
   return (
     <div className="flex h-full w-full flex-col p-5">
@@ -138,40 +140,13 @@ function LegacyCapture({
         </div>
 
         {/* Controls — 40% */}
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col justify-center">
           {illuminationWarning&&<p role="status" className="t-sm text-warning">{illuminationWarning}</p>}
-          <p className="t-sm text-ink-muted">Last 4 phone digits (optional)</p>
-          <div className="mt-2">
-            <DigitBoxes value={last4} />
-          </div>
-
-          <div className="mt-2">
-            <Keypad
-              compact
-              onDigit={(digit) => setLast4((current) => (current + digit).slice(0, 4))}
-              onBackspace={() => setLast4((current) => current.slice(0, -1))}
-            />
-          </div>
-
-          <div className="mt-auto flex gap-2 pt-2">
-            <TButton
-              size="sm"
-              tone="secondary"
-              className="flex-1"
-              disabled={busy || status !== 'ready'}
-              onClick={() => void scan(false)}
-            >
-              Capture
-            </TButton>
-            <TButton
-              size="sm"
-              className="flex-1"
-              disabled={busy || status !== 'ready' || last4.length !== 4}
-              onClick={() => void scan(true)}
-            >
-              Use digits
-            </TButton>
-          </div>
+          <p className="t-lg">Place your palm</p>
+          <p className="t-sm mt-3 text-ink-muted">Use the hand you enrolled. Keep your whole hand visible and hold it steady inside the guide.</p>
+          <TButton className="mt-8" disabled={busy || status !== 'ready'} onClick={() => void scan()}>
+            {busy ? 'Checking palm…' : 'Capture'}
+          </TButton>
         </div>
       </div>
     </div>

@@ -87,8 +87,8 @@ transactionsRouter.post(
  *
  * WRITES NO LEDGER ENTRY. This step names a person and nothing more.
  *
- * Tencent requires an encrypted SDK capture. The backend coordinates 1:1 checks
- * across every active binding. Raw images are accepted only by the local mock.
+ * The selected camera mode supplies a JPEG or encrypted SDK capture. The backend
+ * coordinates 1:1 checks across every active binding. Neither path uses native search.
  */
 transactionsRouter.post(
   '/transactions/:id/palm-capture', terminalAuth, terminalRateLimit('palm-token', 6, 60),

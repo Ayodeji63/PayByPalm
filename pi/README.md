@@ -9,7 +9,9 @@ key only: never a Supabase service-role key, Tencent key, or customer login.
 - Use Raspberry Pi OS **with Desktop**, a working network, touchscreen and a camera
   Chromium can access. Run setup as the account that logs into the Pi desktop.
 - Deploy the updated wallet/backend and apply the pending Supabase migrations
-  through `0018`. Configure the backend's real Tencent provider for live matching.
+  through `0021`. Configure the backend's real Tencent provider for matching.
+  The original camera is the default (`TENCENT_CAPTURE_MODE=legacy` in Render).
+  H5 remains an explicit backend opt-in. Keep Paystack in test mode for this pilot.
 - The frontend's build must use the reachable HTTPS API URL in `VITE_API_BASE_URL`.
   `localhost:8080` would point at the Pi itself. Backend `WALLET_BASE_URL` must be
   the public wallet URL so phones can open enrolment QR links.
@@ -127,8 +129,8 @@ starting new sales; automatic browser startup is not financial reconciliation.
 
 - **Enrol new user:** show QR, let the signed-in customer claim it on their phone,
   then capture their palm on the terminal.
-- **New sale:** enter amount, capture palm (optionally narrow with phone last four
-  digits), confirm the linked-card debit. No terminal PIN/OTP is requested; weak palm
+- **New sale:** enter amount, capture palm, confirm the linked-card debit. The backend
+  uses 1:1 calls across all active bindings. No terminal PIN/OTP is requested; weak palm
   matches require another scan.
 - A scan alone does not debit money. Successful backend confirmation settles it.
 - An unknown payment outcome displays recovery. Retry/check that same sale; do not
@@ -169,6 +171,53 @@ curl https://YOUR-API.onrender.com/health
 
 For SSH management, run commands as the same desktop user. To stop automatic launch,
 remove `~/.config/autostart/paybypalm-kiosk.desktop` and stop the user service.
+
+### CSI camera and slow reader checks
+
+Test the camera independently before debugging Tencent. From the Pi desktop:
+
+```bash
+systemctl --user stop paybypalm-kiosk
+rpicam-hello --list-cameras
+timeout --signal=INT --kill-after=3s 15s rpicam-hello \
+  --nopreview --timeout 5000 --width 1280 --height 720 --framerate 15
+```
+
+The last command streams without a preview, so VNC/DRM preview limitations cannot
+hide the result. Its outer deadline also stops repeated camera restart loops.
+Listing `imx708` confirms sensor detection, not successful streaming. For example,
+`dw9807 ... Connection timed out`, Unicam `Failed to queue buffer ... Input/output
+error`, and repeated `Device timeout detected` are failures below Chromium and
+Tencent. A standalone test cannot be repaired by changing an API key or SDK token.
+The exact hardware/driver cause still needs diagnosis.
+
+If these errors occur, shut down with `sudo poweroff`, disconnect power, and
+reseat the CSI ribbon at both ends, straight and securely latched. Use the CAMERA
+connector and a known-good cable/power supply. Reconnect power and repeat the test.
+Follow Raspberry Pi's [camera installation instructions](https://www.raspberrypi.com/documentation/accessories/camera.html#install-a-raspberry-pi-camera).
+If streaming still fails, inspect kernel logs and test another cable/camera before
+changing Chromium. Do not reseat the ribbon while powered.
+
+After the standalone test passes, check camera access in Chromium. CSI detection
+in libcamera does not itself prove the browser exposes a usable video input. Check
+`chrome://settings/content/camera` and the actual SDK camera error; do not install
+a loopback bridge until that browser compatibility gap has been confirmed.
+
+The default camera uses PayByPalm's existing preview and off-thread hand guidance.
+No Tencent H5 resources are loaded. If H5 is explicitly selected on the backend,
+it loads its own camera, animation and WASM on Tencent's origin; its iframe is
+presented in portrait on landscape touchscreens. Switching capture modes requires
+a backend/wallet deployment and reload, not a new Pi key. Actual Pi startup
+time/FPS remain hardware acceptance checks. Keep automatic startup disabled
+during testing; start manually:
+
+```bash
+~/.local/share/paybypalm/pi/start-kiosk-session.sh
+```
+
+See [the H5 integration notes](../backend/PALM_H5_INTEGRATION.md) for capture and
+test limitations. Do not lower security checks or bypass capture validation to
+work around a slow or unavailable camera.
 
 ## Verification
 

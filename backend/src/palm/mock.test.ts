@@ -55,35 +55,12 @@ describe('mock palm provider', () => {
     });
   });
 
-  describe('search', () => {
-    it('finds an enrolled user', async () => {
-      await palm.register(ADA, imageFor(ADA));
-      const result = await palm.search(imageFor(ADA));
-      expect(result?.userId).toBe(ADA);
-      expect(result?.score).toBe(92);
-    });
-
-    it('returns null for an unknown palm rather than guessing', async () => {
-      await palm.register(ADA, imageFor(ADA));
-      expect(await palm.search(imageFor(BOLA))).toBeNull();
-    });
-
-    it('returns null when the image carries no identity at all', async () => {
-      await palm.register(ADA, imageFor(ADA));
-      expect(await palm.search(NOT_A_PALM)).toBeNull();
-    });
-
-    it('returns null on an empty gallery', async () => {
-      expect(await palm.search(imageFor(ADA))).toBeNull();
-    });
-  });
-
   describe('delete', () => {
     it('removes the user from the provider gallery', async () => {
       await palm.register(ADA, imageFor(ADA));
       await palm.delete(ADA);
 
-      expect(await palm.search(imageFor(ADA))).toBeNull();
+      expect((await palm.compare(ADA, imageFor(ADA))).isMatch).toBe(false);
     });
   });
 
@@ -94,25 +71,25 @@ describe('mock palm provider', () => {
       // The image says Ada, the header says Bola. The header wins, which is what
       // lets a real JPEG from a webcam stand in for any user during a demo.
       const result = await runWithMockContext({ mockUserId: BOLA }, () =>
-        palm.search(imageFor(ADA)),
+        palm.compare(BOLA, imageFor(ADA)),
       );
 
-      expect(result?.userId).toBe(BOLA);
+      expect(result.isMatch).toBe(true);
     });
 
     it('lets a real (non-text) image resolve to a chosen user', async () => {
       await palm.register(ADA, imageFor(ADA));
       const result = await runWithMockContext({ mockUserId: ADA }, () =>
-        palm.search(NOT_A_PALM),
+        palm.compare(ADA, NOT_A_PALM),
       );
-      expect(result?.userId).toBe(ADA);
+      expect(result.isMatch).toBe(true);
     });
 
     it('does not leak between calls outside the context', async () => {
       await palm.register(ADA, imageFor(ADA));
-      await runWithMockContext({ mockUserId: ADA }, () => palm.search(NOT_A_PALM));
+      await runWithMockContext({ mockUserId: ADA }, () => palm.compare(ADA, NOT_A_PALM));
       // Outside the context the hint is gone, so an anonymous image matches nobody.
-      expect(await palm.search(NOT_A_PALM)).toBeNull();
+      expect((await palm.compare(ADA, NOT_A_PALM)).isMatch).toBe(false);
     });
   });
 });

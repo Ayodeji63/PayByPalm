@@ -5,9 +5,9 @@
  * Authorization header, because a terminal is a device — it is not a user, and
  * the backend's two authentication planes are deliberately disjoint.
  *
- * This client holds no Tencent application key or Supabase service key. The H5
- * iframe receives a short-lived capture token. Encrypted images go to our
- * backend, which performs the authoritative provider comparisons.
+ * This client holds no Tencent application key or Supabase service key. Images
+ * go over HTTPS to our backend for authoritative comparisons. Only the optional
+ * H5 reader receives a short-lived SDK token and submits its encrypted payload.
  */
 
 import { resolveTerminalKey } from './config.js';
@@ -79,7 +79,7 @@ async function send<T>(path: string, method: 'GET' | 'POST', body?: unknown): Pr
 
 export const terminalApi = {
   identity: () =>
-    send<{ terminalId: string; terminalLabel: string; merchantName: string }>(
+    send<{ terminalId: string; terminalLabel: string; merchantName: string; captureMode?: 'legacy' | 'h5' }>(
       '/terminal/me',
       'GET',
     ),

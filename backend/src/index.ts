@@ -106,6 +106,7 @@ if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
         port: config.PORT,
         env: config.NODE_ENV,
         palmProvider: config.PALM_PROVIDER,
+        palmCaptureMode: config.PALM_PROVIDER === 'tencent' ? config.TENCENT_CAPTURE_MODE : 'legacy',
         acceptScore: config.PALM_ACCEPT_SCORE,
         stepUpScore: config.PALM_STEP_UP_SCORE,
       },

@@ -1,8 +1,27 @@
 # PalmX H5 integration and pilot testing
 
-The terminal uses Tencent's H5 v1.3 acquisition iframe. The backend performs
-authoritative server-to-server registration and 1:1 comparison. Native 1:N search
-is no longer called by either terminal payment path.
+The terminal defaults to the original PayByPalm camera interface, configured on
+the backend with `TENCENT_CAPTURE_MODE=legacy` (also the default when unset). It
+uses the existing 1280x720 camera request, white illumination, off-thread hand
+placement guidance and three-frame sharpness selection. JPEG images are posted
+over HTTPS to the backend for Tencent registration and 1:1 comparison against
+every active palm binding. Native 1:N search is removed from the provider contract,
+Tencent adapter, mock and audit decorator. Historical search audit rows are kept.
+
+H5 v1.3 remains implemented and tested behind `TENCENT_CAPTURE_MODE=h5`. In the
+default mode, the terminal does not load Tencent's H5 script, iframe or WASM or
+request an SDK token. The following H5 flow describes that opt-in only.
+
+Both modes require exactly one provider-confirmed match, reject ambiguous or
+incomplete sweeps, recheck bindings for changes, and keep card charging behind
+explicit confirmation. Raw-image capture is restricted to Paystack test mode:
+local placement guidance is not biometric liveness. Restoring the interface does
+not confirm Tencent supports this application's legacy RGB request format; verify
+it with a real test enrolment and comparison. Existing provider codes remain intact.
+
+Enrolment uses the atomic `complete_h5_palm_enrolment` RPC from migration 0021 in
+both modes, despite its historical name. That already-applied migration and all
+existing registrations/cards/payment history are preserved.
 
 ## Capture and payment flow
 
@@ -96,8 +115,12 @@ acquisition with code 10002; test the actual Pi touchscreen/orientation.
    project's SQL Editor. It is additive and safe to rerun. It preserves existing
    users, registrations, cards and payments. The project owner applied it to the
    current hosted project, and the follow-up preflight verified both RPCs.
-2. Deploy the backend and wallet together. Existing Tencent raw-JPEG requests now
-   receive `palm_sdk_required`; an old cached terminal must reload the new app.
+2. Deploy the backend and wallet together. For the restored camera, set
+   `TENCENT_CAPTURE_MODE=legacy` in Render (or leave it unset), and reload the Pi
+   terminal. No Pi package, browser-profile reset or new device key is required.
+   Only set `TENCENT_CAPTURE_MODE=h5` when deliberately testing the retained H5
+   implementation; raw-JPEG requests are rejected in that mode. A mode change
+   requires a fresh enrolment session/scan, not reuse of an old SDK grant.
 3. Keep the existing backend-only `TENCENT_PALM_API_KEY`, `TENCENT_BASE_URL` and
    test Paystack configuration. No API key goes into Vercel frontend variables or
    Pi files. The H5 iframe API origin is controlled by Tencent's SDK deployment,
@@ -138,6 +161,35 @@ acquisition with code 10002; test the actual Pi touchscreen/orientation.
 - `wallet/tests/palm-h5-browser.mjs` against a local Vite server, with Playwright
   available. Set `PLAYWRIGHT_MODULE` / `PLAYWRIGHT_CHROMIUM_EXECUTABLE` if using an
   external test installation. Browser tests use SDK/API fixtures only.
+- `wallet/tests/palm-legacy-browser.mjs` against the same server: original payment
+  and enrolment screens, synthetic 1280x720 camera, JPEG submission, white
+  illumination and explicit card confirmation; asserts there are no H5 requests.
+  Hand guidance and APIs are fixtures; no real Tencent or Paystack requests.
+- Optional `cd wallet && node tests/palm-sdk-camera-browser.mjs`, with the same
+  Playwright environment variables: uses the real deployed Tencent reader and a
+  synthetic Chromium camera, an invalid token, and blocks external writes. It
+  checks camera startup and iframe sizing, not licence validation or matching.
+
+## Landscape touch terminals and CSI cameras
+
+Tencent v1.3 cancels acquisition with SDK 10002 before `getUserMedia` when its
+iframe reports both landscape orientation and a coarse pointer. The wrapper
+temporarily gives only the approved reader iframe a centered 3:4 portrait viewport
+on these screens. A CSS rule applies before the iframe initializes and responds
+to viewport changes. Desktop and portrait readers keep their full viewport. The
+rule/backdrop are removed on completion, failure or cancellation. No SDK code,
+origin validation, camera resolution or biometric checks are modified.
+
+A real-SDK browser reproduction at 800x480 with touch input confirmed zero camera
+requests and cancellation without the adapter; a 360x480 iframe opened the
+synthetic camera and played video. This does not establish Pi frame rates or CSI
+camera compatibility. The supplied SDK has no documented resolution/frame-rate
+setting; do not substitute raw frames or disable liveness to improve performance.
+
+For CSI diagnosis independent of Tencent/Chromium, follow the
+[Pi camera checks](../pi/README.md#csi-camera-and-slow-reader-checks). A detected
+sensor that subsequently reports Unicam buffer I/O errors or device timeouts is
+not a working stream. Repair that problem before testing browser acquisition.
 
 Hosted preflight during implementation confirmed one active candidate, a
 reachable H5 loader, and issuance of an isolated user token. It also found that

@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { configSchema } from './config.js';
 
 describe('production payment configuration', () => {
+  it('defaults to the original camera and requires an explicit H5 opt-in', () => {
+    const env = {...process.env, TENCENT_CAPTURE_MODE: undefined};
+    const original = configSchema.safeParse(env);
+    expect(original.success).toBe(true);
+    if (original.success) expect(original.data.TENCENT_CAPTURE_MODE).toBe('legacy');
+    const h5 = configSchema.safeParse({...env, TENCENT_CAPTURE_MODE: 'h5'});
+    expect(h5.success).toBe(true);
+    if (h5.success) expect(h5.data.TENCENT_CAPTURE_MODE).toBe('h5');
+    expect(configSchema.safeParse({...env, TENCENT_CAPTURE_MODE: 'typo'}).success).toBe(false);
+  });
   it('refuses mock authorization in production', () => {
     const result = configSchema.safeParse({ ...process.env, NODE_ENV: 'production', PALM_PROVIDER: 'mock' });
     expect(result.success).toBe(false);

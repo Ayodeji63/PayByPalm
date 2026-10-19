@@ -22,7 +22,7 @@
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { currentMockContext } from './mockContext.js';
-import type { CompareResult, PalmProvider, RegisterResult, SearchResult } from './provider.js';
+import type { CompareResult, PalmProvider, RegisterResult } from './provider.js';
 
 /** userId -> palmId. Process-local; resets on restart, which is fine for a mock. */
 const gallery = new Map<string, string>();
@@ -73,20 +73,6 @@ export function createMockProvider(): PalmProvider {
         isMatch: isSamePerson,
         score,
         meta: { requestId: `mock-${Date.now().toString(36)}`, providerIsMatch: isSamePerson },
-      };
-    },
-
-    async search(imageB64: string): Promise<SearchResult | null> {
-      const seen = resolveIdentity(imageB64);
-
-      // Unknown palm, or a known person who never enrolled: no match. This is a
-      // legitimate answer, not a failure.
-      if (seen === null || !gallery.has(seen)) return null;
-
-      return {
-        userId: seen,
-        score: config.MOCK_PALM_SCORE,
-        meta: { requestId: `mock-${Date.now().toString(36)}`, providerIsMatch: true },
       };
     },
 

@@ -90,7 +90,7 @@ export async function createSession(
 
   return {
     sessionId: session.id,
-    captureMode: config.PALM_PROVIDER === 'tencent' ? 'h5' : 'legacy',
+    captureMode: config.PALM_PROVIDER === 'tencent' && config.TENCENT_CAPTURE_MODE === 'h5' ? 'h5' : 'legacy',
     expiresAt: session.expires_at,
     // This is what goes into the QR code the terminal renders.
     linkUrl: `${config.WALLET_BASE_URL}/scan/${session.id}`,
@@ -183,6 +183,9 @@ export async function beginEnrolCapture(sessionId: string, terminal: AuthedTermi
   if (session.status !== 'claimed' || !session.user_id) throw conflict('session_not_claimed', 'Claim an active enrolment QR code before scanning a palm.');
   const profile = await getProfile(session.user_id);
   if (profile.palm_enrolled) throw conflict('already_enrolled', 'Unlink your existing palm before enrolling again.');
+  if (config.PALM_PROVIDER !== 'tencent' || config.TENCENT_CAPTURE_MODE !== 'h5') {
+    throw conflict('palm_capture_mode_changed', 'The terminal uses the original camera. Start a new enrolment scan.');
+  }
   return issuePalmCapture(terminal.id, session.id, 'enrol', profile.id, session.expires_at);
 }
 
@@ -228,44 +231,23 @@ export async function registerPalmForSession(
 
   let palmId: string;
   if (typeof rawImage === 'string') {
-    if (config.PALM_PROVIDER === 'tencent') throw conflict('palm_sdk_required', 'Update the terminal to use the Tencent palm reader.');
+    if (config.PALM_PROVIDER === 'tencent' && config.TENCENT_CAPTURE_MODE === 'h5') throw conflict('palm_sdk_required', 'This terminal is configured to use the Tencent palm reader. Start a new scan.');
     const image = normaliseImage(rawImage);
     ({ palmId } = await palm.register(profile.id, image.data));
   } else {
+    if (config.TENCENT_CAPTURE_MODE !== 'h5') throw conflict('palm_capture_mode_changed', 'The reader configuration changed. Start a new enrolment scan.');
     const verified = await consumePalmCapture(terminal.id, session.id, 'enrol', rawImage);
     if (verified.userId !== profile.id) throw conflict('palm_capture_wrong_user', 'The palm capture belongs to a different enrolment. Please scan again.');
     if (!palm.registerCapture) throw new AppError(503, 'palm_sdk_unavailable', 'The palm reader is not configured.');
     ({ palmId } = await palm.registerCapture(profile.id, verified.capture));
-    const {error} = await db.rpc('complete_h5_palm_enrolment', {
-      p_session: sessionId, p_terminal: terminal.id, p_user: profile.id, p_palm_id: palmId,
-    });
-    if (error) throw conflict('enrolment_completion_failed', 'Tencent registered the palm, but local linking could not finish. Check your palm status or unlink before enrolling again.');
-    return {status: 'completed', userDisplayName: maskName(profile.full_name), alreadyCompleted: false};
   }
 
-  // Binding first. If the profile flag update below were to fail, the binding row
-  // still exists and the partial unique index prevents a duplicate — whereas a
-  // flag set with no binding would claim an enrolment that does not exist.
-  const { error: bindingError } = await db
-    .from('palm_bindings')
-    .insert({ user_id: profile.id, tencent_palm_id: palmId });
-
-  if (bindingError) {
-    throw new AppError(500, 'binding_failed', `Could not save palm binding: ${bindingError.message}`);
-  }
-
-  const { error: profileError } = await db
-    .from('profiles')
-    .update({ palm_enrolled: true })
-    .eq('id', profile.id);
-
-  if (profileError) {
-    throw new AppError(500, 'db_error', `Could not update profile: ${profileError.message}`);
-  }
-
-  const {data:completed,error:completionError}=await db.from('enrol_sessions')
-    .update({status:'completed'}).eq('id',sessionId).eq('status','claimed').select('id').maybeSingle();
-  if(completionError||!completed)throw new AppError(500,'enrolment_completion_failed','Could not confirm the saved enrolment session. Check its status before trying again.');
+  // Despite its historical name, this RPC validates/saves either camera mode.
+  // Keep binding, profile flag and session completion in one database transaction.
+  const {error} = await db.rpc('complete_h5_palm_enrolment', {
+    p_session: sessionId, p_terminal: terminal.id, p_user: profile.id, p_palm_id: palmId,
+  });
+  if (error) throw conflict('enrolment_completion_failed', 'The provider registered the palm, but local linking could not finish. Check your palm status or unlink before enrolling again.');
 
   return {
     status: 'completed',

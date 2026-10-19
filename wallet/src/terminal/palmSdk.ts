@@ -20,6 +20,36 @@ type SdkWindow = Window & {PalmMobileManager?: {PalmMobileManager: SdkManager}};
 let loading: Promise<SdkManager> | undefined;
 let active = false;
 
+/**
+ * Tencent v1.3 cancels before getUserMedia on landscape/coarse-pointer frames.
+ * Give its existing UI a portrait viewport on a landscape touch terminal. CSS
+ * applies before the iframe boots; no camera constraints or SDK internals change.
+ */
+function fitReaderToTouchscreen(): () => void {
+  const style = document.createElement('style');
+  style.textContent = `
+    @media (orientation: landscape) and (pointer: coarse) {
+      iframe[src="https://open.palmoa.youtu.qq.com/palm/x/jssdk/embed/"] {
+        inset: 0 !important;
+        width: 75vh !important;
+        max-width: 100vw !important;
+        margin: 0 auto !important;
+      }
+      [data-palm-reader-backdrop] { display: block !important; }
+    }
+  `;
+  const backdrop = document.createElement('div');
+  backdrop.setAttribute('data-palm-reader-backdrop', '');
+  backdrop.setAttribute('aria-hidden', 'true');
+  Object.assign(backdrop.style, {
+    display: 'none', position: 'fixed', inset: '0',
+    zIndex: '2147483645', background: 'var(--color-canvas, #f7f9fc)',
+  });
+  document.head.appendChild(style);
+  document.body.appendChild(backdrop);
+  return () => { style.remove(); backdrop.remove(); };
+}
+
 const messages: Record<number, string> = {
   10001: 'The palm reader configuration is invalid. Contact the administrator.',
   10002: 'Palm capture cancelled. Start again when you are ready. On a touchscreen, try portrait orientation.',
@@ -86,7 +116,9 @@ export async function capturePalmSdk(grant: PalmCaptureGrant, signal: AbortSigna
   active = true;
   let timer: number | undefined;
   let cancel: () => void = () => {};
+  let restoreViewport: (() => void) | undefined;
   try {
+    restoreViewport = fitReaderToTouchscreen();
     const interrupted = new Promise<never>((_resolve, reject) => {
       cancel = () => { sdk.back(); reject(new Error('Palm capture cancelled.')); };
       signal.addEventListener('abort', cancel, {once: true});
@@ -105,6 +137,7 @@ export async function capturePalmSdk(grant: PalmCaptureGrant, signal: AbortSigna
     }
     return result.data.payload;
   } finally {
+    restoreViewport?.();
     active = false;
     if (timer !== undefined) window.clearTimeout(timer);
     signal.removeEventListener('abort', cancel);

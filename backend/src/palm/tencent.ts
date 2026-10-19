@@ -14,7 +14,7 @@
  *   Type    application/json; charset=utf-8
  *   Envelope { code, message, requestId, data }, where code !== 0 means failure.
  *
- * This adapter uses register, compare, search and per-user delete. It has no
+ * This adapter uses register, 1:1 compare and per-user delete. It has no
  * gallery-list or bulk-delete operation.
  */
 
@@ -23,13 +23,12 @@ import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { PalmProviderError } from '../errors.js';
 import { createTokenBucket } from '../lib/rateLimiter.js';
-import { classifyTencentError, isTencentPalmAbsent, isTencentSearchMiss } from './tencentErrors.js';
+import { classifyTencentError, isTencentPalmAbsent } from './tencentErrors.js';
 import type {
   CompareResult,
   DeleteResult,
   PalmProvider,
   RegisterResult,
-  SearchResult,
   SdkToken,
 } from './provider.js';
 import type { SdkCapture } from './sdkCapture.js';
@@ -55,13 +54,6 @@ interface RegisterData {
 
 interface CompareData {
   IsMatch: boolean;
-  Score: number;
-  AlgorithmVersion?: string;
-  PalmDirection?: number;
-}
-
-interface SearchData {
-  UserId: string;
   Score: number;
   AlgorithmVersion?: string;
   PalmDirection?: number;
@@ -227,29 +219,6 @@ export function createTencentProvider(): PalmProvider {
       });
 
       return verifiedCompare(data, requestId);
-    },
-
-    async search(imageB64: string): Promise<SearchResult | null> {
-      let response: { data: SearchData; requestId?: string };
-      try {
-        response = await call<SearchData>('/palm/openai/search_rgb_palm', {
-          RgbImage: rgbImage(imageB64),
-        });
-      } catch (error) {
-        // Both published code tables define a normal search miss. Neither is
-        // a verified identity.
-        // Other application, image, credential and transport failures propagate.
-        if (error instanceof PalmProviderError && isTencentSearchMiss(error.providerCode)) return null;
-        throw error;
-      }
-      const { data, requestId } = response;
-      if (!data?.UserId) return null;
-
-      return {
-        userId: data.UserId,
-        score: data.Score,
-        meta: { requestId, providerIsMatch: true },
-      };
     },
 
     async delete(userId: string): Promise<DeleteResult> {

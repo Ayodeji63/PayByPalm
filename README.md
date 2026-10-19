@@ -4,10 +4,10 @@ PayByPalm links a customer's payment card and palm so they can enrol once and
 pay at a merchant terminal using their palm—without presenting a phone, card,
 or QR code at checkout.
 
-The updated Tencent H5 pilot uses backend-coordinated 1:1 comparisons across
-active palm bindings. Native 1:N is currently unavailable. See
-[H5 setup and test instructions](backend/PALM_H5_INTEGRATION.md), including
-database migration 0021 and the remaining real-device compatibility checks.
+The original terminal camera is the default (`TENCENT_CAPTURE_MODE=legacy`).
+The backend uses 1:1 comparisons across all active palm bindings; native 1:N
+search is removed. H5 code remains available behind `TENCENT_CAPTURE_MODE=h5`.
+See [capture setup and H5 test instructions](backend/PALM_H5_INTEGRATION.md).
 
 ## Team Members
 
@@ -44,7 +44,7 @@ confirms the payment before their linked card is charged.
 
 The biometric provider receives only an internal user identifier and the
 temporary capture. Application provider secrets stay on the backend; the reader
-receives only a short-lived capture token. Palm images are not stored by
+receives a short-lived capture token only when H5 is selected. Palm images are not stored by
 PayByPalm, and provider operations are audited. A phone establishes identity
 during enrolment. Payment requires a strong palm match and explicit card-payment
 confirmation; a PIN does not override a failed match.
@@ -54,9 +54,14 @@ confirmation; a PIN does not override a failed match.
 1. The merchant enters the sale amount.
 2. The customer presents an enrolled palm.
 3. MediaPipe checks hand placement and steadiness on the terminal.
-4. The backend submits the selected frame to Tencent PalmAI.
+4. The backend compares the selected frame against every active registration
+   through Tencent's 1:1 API and accepts exactly one strong match.
 5. The customer reviews and confirms the payment.
-6. A PostgreSQL double-entry ledger settles the transaction atomically.
+6. Paystack charges the linked card; the backend records the verified outcome.
+
+The restored camera flow is for test-card acceptance testing. Live card payments
+remain blocked until liveness is validated. A camera image and hand-placement
+guidance do not establish biometric liveness.
 
 ## 🛠️ Tech Stack
 

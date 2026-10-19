@@ -232,47 +232,48 @@ curl -X POST $API/transactions -H "X-Terminal-Key: $TERMINAL_KEY" \
 
 TXN=<transactionId>
 
-# 2a. PRODUCTION PATH — last4 narrows the gallery, then 1:1 comparisons
-curl -X POST $API/transactions/$TXN/authenticate -H "X-Terminal-Key: $TERMINAL_KEY" \
-  -H 'Content-Type: application/json' \
-  -d "{\"imageB64\":\"$IMG\",\"last4\":\"1001\"}"
-
-# 2b. DEMO PATH — pure 1:N search, nothing typed
+# 2. Compare the camera image against every active binding through 1:1 calls.
+# Native 1:N search is unavailable and is not called.
 curl -X POST $API/transactions/$TXN/authenticate -H "X-Terminal-Key: $TERMINAL_KEY" \
   -H 'Content-Type: application/json' -d "{\"imageB64\":\"$IMG\"}"
 
-# -> { "decision":"accept", "mode":"search", "score":92,
-#      "maskedName":"Ada O.", "maskedBalanceMinor":2000000, "pinRequired":false }
-#    NO LEDGER ENTRY HAS BEEN WRITTEN AT THIS POINT.
+# -> { "decision":"accept", "mode":"compare", "score":92,
+#      "maskedName":"Ada O.", "cardLast4":"4081", "pinRequired":false }
+# No card charge has been initiated at this point.
 
-# 3. The Confirm tap. This is the only call that moves money.
+# 3. Explicit card-payment confirmation. This is the only call that moves money.
 curl -X POST $API/transactions/$TXN/confirm -H "X-Terminal-Key: $TERMINAL_KEY" \
   -H 'Content-Type: application/json' -d '{}'
-
-#    When decision was step_up, the PIN is required:
-curl -X POST $API/transactions/$TXN/confirm -H "X-Terminal-Key: $TERMINAL_KEY" \
-  -H 'Content-Type: application/json' -d '{"pin":"2468"}'
 
 # Or abandon it
 curl -X POST $API/transactions/$TXN/cancel -H "X-Terminal-Key: $TERMINAL_KEY"
 ```
 
-Whether a PIN is required is re-derived at confirm from the stored match score, never trusted
-from the client — a terminal cannot skip step-up by omitting a flag.
+A full-accept palm match and an active default linked card are required. A PIN does
+not override a weak or failed biometric match. Paystack charges the card; no internal
+wallet balance is debited.
 
 Confirming more than `AUTH_VALIDITY_SECONDS` (60s) after the scan fails with
 `stale_authentication`. A palm match left sitting on a screen is not a statement about who is
 standing there now.
 
-### The last4 path, and why it exists
+### Original camera and 1:1 matching
 
-A 1:N search across a whole campus gallery has a false-match rate that grows with the gallery.
-Typing four digits collapses the candidate set to a handful, and each is then checked 1:1.
-That is the path a real deployment uses; the pure-palm path is the demo.
+`TENCENT_CAPTURE_MODE=legacy` is the backend default. The original terminal camera
+captures a three-frame burst and posts the sharpest JPEG. Phone digits are no longer
+needed: all active bindings are loaded with pagination and checked through Tencent's
+1:1 comparison endpoint. Exactly one provider-confirmed, high-confidence match is
+required. Multiple matches, an incomplete sweep, provider errors and changed bindings
+all prevent authorization. No native 1:N method remains in the provider interface.
 
-If more than `MAX_CANDIDATES` (4) users share those four digits, the request is rejected with
-`ambiguous_bin` and the terminal asks for more digits — rather than comparing an arbitrary
-subset and letting the answer depend on row order.
+Enrolment uses the existing `complete_h5_palm_enrolment` RPC from migration 0021 for
+atomic local saves in either capture mode. Existing data and the applied migration
+are retained. The original camera flow is restricted to Paystack test mode until
+liveness is validated; local hand guidance is not a liveness check.
+
+H5 implementation files remain available. To deliberately test them later, set
+`TENCENT_CAPTURE_MODE=h5` on the backend and start a new scan. See
+[H5 setup and acceptance tests](PALM_H5_INTEGRATION.md).
 
 ## Error responses
 

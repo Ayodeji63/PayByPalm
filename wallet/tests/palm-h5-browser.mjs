@@ -92,6 +92,7 @@ try {
   await page.getByRole('heading',{name:'Before You Link Your Palm'}).waitFor();
   assert.equal(await page.getByText(/AES-256|bank-grade|NDPA.*compliance/).count(),0);
   await page.getByText(/Tencent also receives session diagnostics/).waitFor();
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('.animate-fade-up')).opacity==='1');
   await page.screenshot({path:`${artifacts}/consent-${viewport.width}.png`,fullPage:true});
   await context.close();
  }

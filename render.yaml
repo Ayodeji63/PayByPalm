@@ -46,6 +46,8 @@ services:
       # only in Render as TENCENT_PALM_API_KEY.
       - key: PALM_PROVIDER
         value: tencent
+      - key: TENCENT_CAPTURE_MODE
+        value: legacy
       - key: TENCENT_BASE_URL
         value: https://open.intl.palm.tencent.com
       # Secret Tencent credential. The backend adds the required Bearer prefix.

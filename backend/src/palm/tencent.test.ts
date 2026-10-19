@@ -45,15 +45,9 @@ describe('pasted Open API guide compatibility',()=>{
   expect(fetch.mock.calls[0]![0]).toBe('https://palm.example.test/palm/openai/compare_rgb_palm');
   expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({CompareUserId:'user',RgbImage:{Data:'test-image',ImageType:1}});
  });
- it.each([2080010,1001013])('treats documented no-match code %s as no match and does not invent a SessionId',async code=>{
-  const fetch=vi.fn().mockResolvedValue(response(code));vi.stubGlobal('fetch',fetch);
-  await expect(createTencentProvider().search('test-image')).resolves.toBeNull();
-  expect(fetch).toHaveBeenCalledTimes(1);
-  expect(fetch.mock.calls[0]![0]).toBe('https://palm.example.test/palm/openai/search_rgb_palm');
- });
  it.each([1001012,1001023,1001032,2080023,2060200,999])('preserves real provider failure %s rather than calling it a no-match',async code=>{
   vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(code)));
-  await expect(createTencentProvider().search('test-image')).rejects.toMatchObject({providerCode:code});
+  await expect(createTencentProvider().compare('candidate','test-image')).rejects.toMatchObject({providerCode:code});
  });
 });
 

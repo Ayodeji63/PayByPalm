@@ -41,14 +41,6 @@ export interface CompareResult {
   meta?: ProviderMeta;
 }
 
-export interface SearchResult {
-  /** Our Supabase user id, as returned by the provider's gallery. */
-  userId: string;
-  /** 0–100. */
-  score: number;
-  meta?: ProviderMeta;
-}
-
 export interface DeleteResult {
   meta?: ProviderMeta;
 }
@@ -72,9 +64,6 @@ export interface PalmProvider {
   /** 1:1. Is this palm the palm we hold for this specific user? */
   compare(userId: string, imageB64: string): Promise<CompareResult>;
 
-  /** 1:N across the whole gallery. Resolves to null when nothing matches. */
-  search(imageB64: string): Promise<SearchResult | null>;
-
   /** Remove every enrolled palm direction for this user from the provider. */
   delete(userId: string): Promise<DeleteResult>;
 
@@ -85,4 +74,4 @@ export interface PalmProvider {
 }
 
 /** Provider operations, as recorded in palm_audit.endpoint. */
-export type PalmOperation = 'register' | 'compare' | 'search' | 'delete' | 'sdk_token';
+export type PalmOperation = 'register' | 'compare' | 'delete' | 'sdk_token';

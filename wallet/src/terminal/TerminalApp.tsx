@@ -40,6 +40,7 @@ type Screen =
 interface Identity {
   merchantName: string;
   terminalLabel: string;
+  captureMode?: 'legacy' | 'h5';
 }
 
 function recoveryError(err: unknown): string {
@@ -81,7 +82,7 @@ export default function TerminalApp() {
     const leds=beginLEDOperation();ledOperation.current=leds;void leds.state('LOADING');
     try {
       const me = await terminalApi.identity();
-      setIdentity({ merchantName: me.merchantName, terminalLabel: me.terminalLabel });
+      setIdentity({ merchantName: me.merchantName, terminalLabel: me.terminalLabel, captureMode: me.captureMode });
       setOnline(true);
     } catch (err) {
       if (err instanceof TerminalApiError && err.isOffline) setOnline(false);
@@ -94,8 +95,8 @@ export default function TerminalApp() {
     void loadIdentity();
   }, [loadIdentity]);
 
-  // Tencent H5 owns its detector and camera. Avoid warming the legacy MediaPipe
-  // worker as well: two WASM pipelines waste memory/CPU on the Pi.
+  // Each selected reader initializes its own guidance. Do not warm both readers
+  // on the idle screen: the optional H5 pipeline must stay unloaded in legacy mode.
 
   // --- reachability ------------------------------------------------------
   // A terminal that has quietly lost the backend looks identical to one that is
@@ -335,6 +336,7 @@ export default function TerminalApp() {
 
       {screen.name === 'capture' && (
         <Capture
+          captureMode={identity?.captureMode}
           transactionId={screen.transactionId}
           amountMinor={screen.amountMinor}
           onOutcome={(outcome) => handleOutcome(screen.transactionId, screen.amountMinor, outcome)}

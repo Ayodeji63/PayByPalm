@@ -22,7 +22,6 @@ import type {
   PalmOperation,
   PalmProvider,
   RegisterResult,
-  SearchResult,
 } from './provider.js';
 
 interface AuditRow {
@@ -133,18 +132,6 @@ export function withAudit(inner: PalmProvider): PalmProvider {
         userId,
         () => inner.compare(userId, imageB64),
         (r) => ({ score: r.score, isMatch: r.meta?.providerIsMatch ?? r.isMatch }),
-      ),
-
-    search: (imageB64) =>
-      audited<SearchResult | null>(
-        'search',
-        null,
-        () => inner.search(imageB64),
-        (r) =>
-          r === null
-            ? // A clean "nobody matched" is a real, loggable outcome, not an error.
-              { score: null, isMatch: false, userId: null }
-            : { score: r.score, isMatch: r.meta?.providerIsMatch ?? true, userId: r.userId },
       ),
 
     delete: (userId) =>

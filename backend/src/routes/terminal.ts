@@ -11,6 +11,7 @@
  */
 
 import { Router } from 'express';
+import { config } from '../config.js';
 import { terminalRateLimit } from '../middleware/abuseLimits.js';
 import { requireTerminal, terminalAuth } from '../middleware/terminalAuth.js';
 
@@ -22,5 +23,6 @@ terminalRouter.get('/terminal/me', terminalAuth, terminalRateLimit('terminal-rea
     terminalId: terminal.id,
     terminalLabel: terminal.label,
     merchantName: terminal.merchantName,
+    captureMode: config.PALM_PROVIDER === 'tencent' && config.TENCENT_CAPTURE_MODE === 'h5' ? 'h5' : 'legacy',
   });
 });

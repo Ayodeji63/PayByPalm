@@ -31,6 +31,8 @@ export const configSchema = z
     PALM_PROVIDER: z.enum(['tencent', 'mock']).default('mock'),
     TENCENT_BASE_URL: z.string().url().default('https://open.intl.palm.tencent.com'),
     TENCENT_PALM_API_KEY: z.string().optional(),
+    // Keep H5 available for later testing; the Pi uses our original camera UI.
+    TENCENT_CAPTURE_MODE: z.enum(['legacy', 'h5']).default('legacy'),
     // Capture-only skips SDK video upload. Enable for live payments only after
     // Tencent confirms this application's encrypted image/liveness contract.
     TENCENT_H5_IMAGE_ONLY_APPROVED: z.enum(['true', 'false']).default('false').transform(v => v === 'true'),
