@@ -5,8 +5,8 @@ import {z} from 'zod';
 import type {Config} from './config.js';
 import {Failure} from './failure.js';
 import {provider,paymentSettings,sealAccount,openAccount,accountFingerprint,ProviderFailure,paymentContext,assertPaymentMode,requirePaymentKey,type PaymentContext,type PaymentMode} from './paystack.js';
+import {loadBanks,type Bank} from './banks.js';
 
-type Bank={code:string;name:string};
 type Setup={merchant_id:string;domain:'test'|'live';request_id:string;fingerprint:string;bank_code:string;bank_name:string;account_last4:string;account_name:string;percentage_charge:number;status:string;subaccount_code:string|null;provider_verified:boolean|null;provider_active:boolean|null};
 const setupFields='merchant_id,domain,request_id,fingerprint,bank_code,bank_name,account_last4,account_name,percentage_charge,status,subaccount_code,provider_verified,provider_active';
 const safe=(s:Setup|null)=>s?{status:s.status,mode:s.domain,bankName:s.bank_name,accountLast4:s.account_last4,accountName:s.account_name,percentageCharge:Number(s.percentage_charge),subaccountCode:s.subaccount_code,verified:s.provider_verified,active:s.provider_active}:null;
@@ -17,14 +17,8 @@ export function mountPayoutRoutes(app:Express,{config,db,writes,dbFailure}:{conf
   requirePaymentKey(context);
   const call=provider(context),key=context.mode,cache=cachedBanks.get(key);
   if(cache&&cache.until>Date.now())return cache.value;
-  const result:Bank[]=[];
-  for(let page=1;page<=20;page++){
-   const r=await call(`/bank?country=nigeria&currency=NGN&use_cursor=false&perPage=100&page=${page}`);
-   if(!Array.isArray(r.data))throw new Failure(502,'invalid_bank_response','The bank list could not be loaded. Please try again.');
-   for(const b of r.data)if(b.active===true&&b.currency==='NGN'&&typeof b.code==='string'&&/^\d{2,12}$/.test(b.code)&&typeof b.name==='string'&&b.name.length<=160)result.push({code:b.code,name:b.name});
-   if(r.data.length<100){const cached={until:Date.now()+120_000,value:[...new Map(result.map(b=>[b.code,b])).values()].sort((a,b)=>a.name.localeCompare(b.name))};cachedBanks.set(key,cached);return cached.value;}
-  }
-  throw new Failure(502,'bank_list_incomplete','The bank list could not finish loading. Please try again.');
+  const value=await loadBanks(call);
+  cachedBanks.set(key,{until:Date.now()+120_000,value});return value;
  }
  async function readSetup(id:string,mode:PaymentMode){
   const r=await db.from('merchant_payout_setups').select(setupFields).eq('merchant_id',id).eq('domain',mode).maybeSingle();
