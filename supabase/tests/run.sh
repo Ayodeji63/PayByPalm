@@ -110,3 +110,7 @@ echo "$result"
 [ $rc -eq 0 ] || fail "direct card payments" "$result"
 
 python3 "$HERE/card_payment_concurrency_test.py" "$CONTAINER" || fail "card payment races" "See Python assertion"
+
+result=$(pg -v ON_ERROR_STOP=1 -f /sql/payment_modes_test.sql 2>&1); rc=$?
+echo "$result"
+[ $rc -eq 0 ] || fail "payment mode isolation" "$result"

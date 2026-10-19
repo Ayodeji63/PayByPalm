@@ -15,7 +15,7 @@ vi.mock('../db/client.js',()=>({db:{
   return q;
  }
 }}));
-import { processCardLink,verifiedPayment,verifiedCard,ownedAttempt,initializeCardLink } from './cardLinkService.js';
+import { processCardLink,verifiedPayment,verifiedCard,ownedAttempt,initializeCardLink,editCard } from './cardLinkService.js';
 import { sealAuthorization,openAuthorization,checkoutUrl,validPaystackSignature } from './paystack.js';
 import { createHmac } from 'node:crypto';
 const reference='pbp_card_'+'a'.repeat(32);
@@ -40,6 +40,21 @@ beforeEach(()=>{
  state.fetch.mockImplementation(async(url,options)=>({ok:true,json:async()=>({status:true,data:String(url).includes('/transaction/verify/')?payment():options.method==='POST'?refund():[refund('processed')]})}));
 });
 describe('verified card linking',()=>{
+ it('rejects stale live checkout consent while backend is test before any provider or DB mutation',async()=>{
+  const previous=JSON.stringify(state.attempt);
+  await expect(initializeCardLink(userId,'user@example.test','request','live')).rejects.toMatchObject({status:409,code:'payment_mode_changed'});
+  expect(JSON.stringify(state.attempt)).toBe(previous);expect(state.fetch).not.toHaveBeenCalled();expect(state.rpc).not.toHaveBeenCalled();
+ });
+ it('rejects stale-mode card edits without changing the card',async()=>{
+  await expect(editCard(userId,'card','remove','live')).rejects.toMatchObject({status:409,code:'payment_mode_changed'});
+  expect(state.rpc).not.toHaveBeenCalled();
+ });
+ it('does not reuse an earlier environment checkout even with the same request ID',async()=>{
+  state.attempt.domain='live';
+  await expect(initializeCardLink(userId,'user@example.test','request','test')).rejects.toMatchObject({status:409,code:'card_mode_changed'});
+  expect(state.fetch).not.toHaveBeenCalled();
+ });
+
  it.each([
   {status:'failed'},{reference:'other'},{domain:'live'},{amount:1},{amount:-5000},{amount:'5000'},{currency:'USD'},
   {customer:{email:'attacker@example.test'}},{metadata:{purpose:'card_link',user_id:'other',request_id:'request'}},{id:0},
@@ -47,11 +62,11 @@ describe('verified card linking',()=>{
  it('initializes only a server-priced card checkout with a fixed callback and verified email',async()=>{
   Object.assign(state.attempt,{status:'initializing',init_started_at:null,checkout_url:null});
   state.fetch.mockResolvedValue({ok:true,json:async()=>({status:true,data:{reference,authorization_url:'https://checkout.paystack.com/abc'}})});
-  const result=await initializeCardLink(userId,'user@example.test','request');
+  const result=await initializeCardLink(userId,'user@example.test','request','test');
   expect(result.checkoutUrl).toBe('https://checkout.paystack.com/abc');
   const body=JSON.parse(state.fetch.mock.calls[0]![1].body);
   expect(body).toMatchObject({email:'user@example.test',amount:'5000',currency:'NGN',channels:['card'],reference,callback_url:'https://wallet.example.test/cards'});
-  await initializeCardLink(userId,'user@example.test','request');expect(state.fetch).toHaveBeenCalledTimes(1);
+  await initializeCardLink(userId,'user@example.test','request','test');expect(state.fetch).toHaveBeenCalledTimes(1);
  });
  it('uses verified masked card details and encrypted authorization credentials',async()=>{
   await processCardLink(reference);

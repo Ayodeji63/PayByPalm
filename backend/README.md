@@ -133,7 +133,12 @@ Reports which palm provider is live — "why did matching stop working?" is near
 The restored card flow uses Paystack-hosted checkout, backend verification,
 encrypted authorizations and refunds. Complete [card setup](CARD_LINKING.md),
 including migration 0017 and backend-only secrets, before enabling it. Terminal
-payments continue to use the wallet ledger.
+payments charge the saved card authorization through Paystack, not an internal
+wallet ledger. In Render, configure `PAYSTACK_SECRET_KEY` (the same test account
+used to link the card) and `CARD_TOKEN_ENCRYPTION_KEY` (the existing key that
+encrypted saved authorizations), with `PAYSTACK_MODE=test`. Local `.env` values
+are not automatically deployed to Render. Never put these secrets in Vercel/Pi
+settings, Git or chat, and do not replace the encryption key to fix missing setup.
 
 ### Auth
 
@@ -268,8 +273,10 @@ all prevent authorization. No native 1:N method remains in the provider interfac
 
 Enrolment uses the existing `complete_h5_palm_enrolment` RPC from migration 0021 for
 atomic local saves in either capture mode. Existing data and the applied migration
-are retained. The original camera flow is restricted to Paystack test mode until
-liveness is validated; local hand guidance is not a liveness check.
+are retained. The original camera supports controlled live tests with matching live
+Paystack credentials, a verified live reusable card and merchant settlement. There
+is no pilot account allowlist or additional pilot amount cap. Local hand guidance
+is not a liveness check.
 
 H5 implementation files remain available. To deliberately test them later, set
 `TENCENT_CAPTURE_MODE=h5` on the backend and start a new scan. See
@@ -361,7 +368,8 @@ See [SECURITY_PAYMENTS.md](SECURITY_PAYMENTS.md) for required migration and roll
 Production rejects sandbox funding and mock matching. Terminal creation requires
 `saleId` (a UUID retained across retries). Use `GET /terminal/transactions/:id`
 with the terminal credential to reconcile uncertain outcomes before creating a new sale.
-Transfers and card charging are currently unavailable.
+Transfers are unavailable. Card payments debit a verified saved Paystack card.
+For test/live switching and migration 0022, see [DIRECT_CARD_PAYMENTS.md](DIRECT_CARD_PAYMENTS.md#one-switch-for-the-wallet-and-backend).
 
 ## API release controls
 

@@ -21,21 +21,31 @@ export default function Activity() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('all');
   const [selectedTx, setSelectedTx] = useState<TransactionSummary | null>(null);
+  const [paymentMode,setPaymentMode]=useState<'test'|'live'|null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
+    let cancelled = false,revision=0;
+    let shownMode:'test'|'live'|null=null;
+    const load=async()=>{
+      const version=++revision;
       try {
         const data = await api.get<TransactionPage>('/transactions?limit=50&offset=0');
-        if (!cancelled) setTransactions(data.transactions);
+        if (!cancelled&&version===revision){
+          const nextMode=data.paymentMode??null;
+          if(shownMode&&shownMode!==nextMode)setSelectedTx(null);
+          shownMode=nextMode;setPaymentMode(nextMode);setTransactions(data.transactions);
+        }
       } catch {
         // Failed to load
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled&&version===revision) setLoading(false);
       }
-    })();
-    return () => { cancelled = true; };
-  }, [me]);
+    };
+    const visible=()=>{if(document.visibilityState==='visible')void load();};
+    void load();window.addEventListener('focus',visible);document.addEventListener('visibilitychange',visible);
+    const timer=window.setInterval(visible,30000);
+    return () => { cancelled = true;window.clearInterval(timer);window.removeEventListener('focus',visible);document.removeEventListener('visibilitychange',visible); };
+  }, [me?.id]);
 
   const filtered = transactions.filter((tx) => {
     if (filter === 'debit') return tx.direction === 'debit';
@@ -49,6 +59,7 @@ export default function Activity() {
     <PageTransition>
       <div className="px-5 py-2">
         <PageHeader title="Transaction History" />
+        {paymentMode&&<p role="status" className="mt-3 text-sm text-ink-muted">{paymentMode==='test'?'Test mode · simulated transactions':'Live mode · real payments'}</p>}
 
         {/* Filter pills */}
         <div className="mt-2 flex gap-2">

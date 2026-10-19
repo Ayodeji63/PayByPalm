@@ -21,25 +21,32 @@ beforeAll(async()=>{
  server=app.listen(0,'127.0.0.1');await new Promise<void>(resolve=>server.once('listening',resolve));base=`http://127.0.0.1:${(server.address() as any).port}`;
 });
 afterAll(async()=>{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));});
-beforeEach(()=>{vi.resetAllMocks();mocks.initialize.mockResolvedValue({checkoutUrl:'https://checkout.paystack.com/abc'});mocks.owned.mockResolvedValue({status:'verified'});mocks.wake.mockResolvedValue(undefined);mocks.wakePayment.mockResolvedValue(undefined);});
+beforeEach(()=>{vi.resetAllMocks();mocks.initialize.mockResolvedValue({checkoutUrl:'https://checkout.paystack.com/abc'});mocks.owned.mockResolvedValue({status:'verified',domain:'test'});mocks.wake.mockResolvedValue(undefined);mocks.wakePayment.mockResolvedValue(undefined);});
 const ref='pbp_card_'+'a'.repeat(32);
 const post=(path:string,body:unknown,auth=true)=>fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json',...(auth?{Authorization:'Bearer test'}:{})},body:JSON.stringify(body)});
 describe('card API boundaries',()=>{
- it('requires authentication to initialize checkout',async()=>{expect((await post('/cards/link',{requestId:'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',consent:true},false)).status).toBe(401);expect(mocks.initialize).not.toHaveBeenCalled();});
+ it('requires authentication to initialize checkout',async()=>{expect((await post('/cards/link',{requestId:'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',consent:true,paymentMode:'test'},false)).status).toBe(401);expect(mocks.initialize).not.toHaveBeenCalled();});
  it.each([{consent:false},{amountMinor:1},{userId:'attacker'},{email:'other@example.test'},{authorization_code:'AUTH_forged'}])('rejects missing consent and mass assignment %j',async patch=>{
-  expect((await post('/cards/link',{requestId:'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',consent:true,...patch})).status).toBe(400);expect(mocks.initialize).not.toHaveBeenCalled();
+  expect((await post('/cards/link',{requestId:'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',consent:true,paymentMode:'test',...patch})).status).toBe(400);expect(mocks.initialize).not.toHaveBeenCalled();
  });
  it('binds checkout to the authenticated ID and email',async()=>{
-  expect((await post('/cards/link',{requestId:'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',consent:true})).status).toBe(201);
-  expect(mocks.initialize).toHaveBeenCalledWith('signed-in-user','user@example.test','aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+  expect((await post('/cards/link',{requestId:'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',consent:true,paymentMode:'test'})).status).toBe(201);
+  expect(mocks.initialize).toHaveBeenCalledWith('signed-in-user','user@example.test','aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa','test');
  });
  it('checks ownership before verifying an arbitrary payment reference',async()=>{
   mocks.owned.mockRejectedValue(new AppError(404,'not_found','Not found'));
   expect((await post('/cards/link/verify',{reference:ref})).status).toBe(404);expect(mocks.process).not.toHaveBeenCalled();
  });
+ it('rejects a previous environment callback before verification',async()=>{
+  mocks.owned.mockResolvedValue({domain:'live'});
+  expect((await post('/cards/link/verify',{reference:ref})).status).toBe(409);expect(mocks.process).not.toHaveBeenCalled();
+ });
+ it.each([undefined,'sandbox','LIVE'])('requires explicit valid mode for checkout: %s',async paymentMode=>{
+  expect((await post('/cards/link',{requestId:'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',consent:true,paymentMode})).status).toBe(400);expect(mocks.initialize).not.toHaveBeenCalled();
+ });
  it('binds card removal to its authenticated owner',async()=>{
-  expect((await post('/cards/aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',{action:'remove'})).status).toBe(200);
-  expect(mocks.edit).toHaveBeenCalledWith('signed-in-user','aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa','remove');
+  expect((await post('/cards/aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',{action:'remove',paymentMode:'test'})).status).toBe(200);
+  expect(mocks.edit).toHaveBeenCalledWith('signed-in-user','aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa','remove','test');
  });
  it('rejects missing and forged webhook signatures before storage writes',async()=>{
   expect((await post('/webhooks/paystack',{event:'charge.success',data:{reference:ref}},false)).status).toBe(401);expect(mocks.wake).not.toHaveBeenCalled();

@@ -5,9 +5,9 @@ import { AppError } from '../errors.js';
 export const CARD_LINK_AMOUNT = 5000;
 export function cardLinkEnabled(): boolean { return !!config.PAYSTACK_SECRET_KEY && !!config.CARD_TOKEN_ENCRYPTION_KEY; }
 export function paystackDomain(): 'live'|'test' { return config.PAYSTACK_MODE ?? 'test'; }
-export function requirePaystack(): void {
+export function requirePaystack(purpose: 'link' | 'payment' = 'link'): void {
  if(config.PAYSTACK_SECRET_KEY && !config.PAYSTACK_SECRET_KEY.startsWith(`sk_${paystackDomain()}_`)) throw new AppError(503,'payment_mode_mismatch','Payment key does not match the configured payment mode.');
- if (!cardLinkEnabled()) throw new AppError(503,'card_link_not_configured','Card linking needs payment service configuration.');
+ if (!cardLinkEnabled()) throw new AppError(503,purpose === 'payment' ? 'card_payment_not_configured' : 'card_link_not_configured',purpose === 'payment' ? 'Card payments need payment service configuration.' : 'Card linking needs payment service configuration.');
 }
 export function checkoutUrl(value: unknown): string {
  if(typeof value!=='string') throw new AppError(502,'invalid_checkout','Payment checkout could not be opened.');

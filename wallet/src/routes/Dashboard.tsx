@@ -39,6 +39,7 @@ import { PalmLinkStatus } from '../components/PalmLinkStatus.js';
 // ---------------------------------------------------------------------------
 
 export interface VirtualCard {
+  paymentMode: 'test' | 'live';
   id: string;
   name: string;
   bank: string;
@@ -71,6 +72,7 @@ function mapCards(linked: LinkedCard[]): VirtualCard[] {
   return linked.map((c) => {
     return {
       id: c.id,
+      paymentMode: c.paymentMode,
       name: c.name,
       bank: c.bank,
       type: `${c.bank.toUpperCase()} DEBIT`,
@@ -232,7 +234,7 @@ export default function Dashboard() {
   const handleTogglePause = async () => {
     if (!activeCard) return;
     try {
-      await editLinkedCard(activeCard.id, activeCard.isPaused ? 'resume' : 'pause');
+      await editLinkedCard(activeCard.id, activeCard.isPaused ? 'resume' : 'pause', activeCard.paymentMode);
       toast.show(activeCard.isPaused ? 'Card resumed.' : 'Card paused.', 'success');
     } catch (error) { toast.show(error instanceof Error ? error.message : 'Could not update your card.', 'error'); }
     setMenuOpen(false);
@@ -294,6 +296,7 @@ export default function Dashboard() {
                   {firstName}
                 </h2>
                 <p className="mt-1 text-xs text-blue-100">{me.palmEnrolled ? 'Palm linked' : 'Palm not linked'}</p>
+                {(linkedCards[0]?.paymentMode??me.paymentMode)&&<p role="status" className="mt-1 text-xs text-blue-100">{(linkedCards[0]?.paymentMode??me.paymentMode)==='test'?'Test mode · simulated payments':'Live mode · real payments'}</p>}
               </div>
             </div>
 

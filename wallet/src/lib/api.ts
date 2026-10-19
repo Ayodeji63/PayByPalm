@@ -245,6 +245,7 @@ export interface Me {
   balanceMinor: null;
   cardBalanceAvailable: false;
   paymentSource: 'linked_card';
+  paymentMode?: 'test' | 'live';
   currency: string;
   createdAt: string;
 }
@@ -266,6 +267,7 @@ export interface TransactionSummary {
 }
 
 export interface TransactionPage {
+  paymentMode?: 'test' | 'live';
   transactions: TransactionSummary[];
   total: number;
   limit: number;

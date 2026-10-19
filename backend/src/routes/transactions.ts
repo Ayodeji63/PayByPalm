@@ -23,6 +23,7 @@ import { requireUser, userAuth } from '../middleware/userAuth.js';
 import { userRateLimit, terminalRateLimit, rateLimit } from '../middleware/abuseLimits.js';
 import { palmJson, imageSchema, sdkPayloadSchema } from '../middleware/requestBody.js';
 import { validate } from '../middleware/validate.js';
+import {paystackDomain} from '../services/paystack.js';
 import {
   authenticateTransaction,
   authenticateSdkTransaction,
@@ -227,8 +228,9 @@ transactionsRouter.get(
 
     const { data, error, count } = await db
       .from('transactions')
-      .select('*, merchants(name), terminals(label)', { count: 'exact' })
+      .select('*, merchants(name), terminals(label), card_payment_attempts!inner(domain)', { count: 'exact' })
       .eq('matched_user_id', user.id)
+      .eq('card_payment_attempts.domain', paystackDomain())
       // Only outcomes the user can act on. A 'pending' row is a till mid-sale and
       // means nothing on a phone.
       .in('status', ['processing', 'settled', 'failed', 'cancelled'])
@@ -238,6 +240,7 @@ transactionsRouter.get(
     if (error) throw new AppError(500, 'db_error', `Could not load history: ${error.message}`);
 
     res.json({
+      paymentMode: paystackDomain(),
       transactions: (data as unknown as HistoryRow[]).map(shapeHistoryRow),
       total: count ?? 0,
       limit,

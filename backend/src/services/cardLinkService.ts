@@ -11,7 +11,10 @@ export interface LinkAttempt {
  refund_status:string; refund_id:string|null; card_id:string|null; created_at:string;
 }
 const PUBLIC_CARD_FIELDS='id,bank,brand,last4,exp_month,exp_year,is_default,is_paused,created_at';
-function dbFailure(error: unknown): void { if(error) throw new AppError(503,'card_storage_unavailable','Card storage could not be updated. Please check again shortly.'); }
+function dbFailure(error: unknown): void {
+ if((error as {code?:string}|null)?.code==='42703')throw new AppError(503,'card_mode_setup_required','Apply payment mode migration 0022 before using cards.');
+ if(error) throw new AppError(503,'card_storage_unavailable','Card storage could not be updated. Please check again shortly.');
+}
 export function publicAttempt(a: LinkAttempt) {
  return {reference:a.reference,status:a.status,refundStatus:a.refund_status,cardId:a.card_id,createdAt:a.created_at};
 }
@@ -20,20 +23,22 @@ export async function ownedAttempt(userId:string,reference:string):Promise<LinkA
  dbFailure(error);if(!data) throw notFound('Card-link request not found.');return data as LinkAttempt;
 }
 export async function listCards(userId:string) {
- const cards=await db.from('linked_cards').select(PUBLIC_CARD_FIELDS).eq('user_id',userId).is('removed_at',null).order('created_at',{ascending:false}).limit(50);
+ const mode=paystackDomain();
+ const cards=await db.from('linked_cards').select(PUBLIC_CARD_FIELDS).eq('user_id',userId).eq('domain',mode).is('removed_at',null).order('created_at',{ascending:false}).limit(50);
  dbFailure(cards.error);
- const attempts=await db.from('card_link_attempts').select('reference,status,refund_status,card_id,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(20);
+ const attempts=await db.from('card_link_attempts').select('reference,status,refund_status,card_id,created_at').eq('user_id',userId).eq('domain',mode).order('created_at',{ascending:false}).limit(20);
  dbFailure(attempts.error);
- return {enabled:cardLinkEnabled(),amountMinor:CARD_LINK_AMOUNT,currency:'NGN',testMode:paystackDomain()==='test',cards:cards.data??[],attempts:(attempts.data??[]).map(a=>publicAttempt(a as LinkAttempt))};
+ return {enabled:cardLinkEnabled(),amountMinor:CARD_LINK_AMOUNT,currency:'NGN',paymentMode:mode,testMode:mode==='test',cards:cards.data??[],attempts:(attempts.data??[]).map(a=>publicAttempt(a as LinkAttempt))};
 }
-export async function initializeCardLink(userId:string,email:string,requestId:string) {
+export async function initializeCardLink(userId:string,email:string,requestId:string,expectedMode:'test'|'live') {
+ if(expectedMode!==paystackDomain())throw new AppError(409,'payment_mode_changed','Payment mode changed. Review the updated payment notice and agree again.');
  requirePaystack();
  let result=await db.from('card_link_attempts').select('*').eq('user_id',userId).eq('request_id',requestId).maybeSingle();
  dbFailure(result.error);
  if(!result.data){
   result=await db.from('card_link_attempts').insert({user_id:userId,email:email.toLowerCase(),request_id:requestId,reference:'pbp_card_'+randomUUID().replaceAll('-',''),domain:paystackDomain()}).select('*').single();
   if(result.error?.code==='23505'){
-   const existing=await db.from('card_link_attempts').select('*').eq('user_id',userId).or(`request_id.eq.${requestId},status.in.(initializing,pending)`).order('created_at',{ascending:false}).limit(1).maybeSingle();
+   const existing=await db.from('card_link_attempts').select('*').eq('user_id',userId).eq('domain',paystackDomain()).or(`request_id.eq.${requestId},status.in.(initializing,pending)`).order('created_at',{ascending:false}).limit(1).maybeSingle();
    result=existing as typeof result;
   }
   dbFailure(result.error);
@@ -145,7 +150,7 @@ let working=false;
 export async function reconcileCardLinks():Promise<void> {
  if(working||!cardLinkEnabled())return;working=true;
  try{
-  const rows=await db.from('card_link_attempts').select('reference').or('status.in.(initializing,pending,init_failed,failed),and(status.in.(verified,unsupported),refund_status.neq.processed)').lte('next_check_at',new Date().toISOString()).order('next_check_at').limit(20);
+  const rows=await db.from('card_link_attempts').select('reference').eq('domain',paystackDomain()).or('status.in.(initializing,pending,init_failed,failed),and(status.in.(verified,unsupported),refund_status.neq.processed)').lte('next_check_at',new Date().toISOString()).order('next_check_at').limit(20);
   dbFailure(rows.error);
   for(const row of rows.data??[]){try{await processCardLink(row.reference);}catch{logger.warn({component:'card-link'},'Card linking needs reconciliation; no provider payload logged');}}
  }catch{logger.warn({component:'card-link'},'Card-link reconciliation unavailable; check migration and provider configuration');}
@@ -155,7 +160,10 @@ export function startCardReconciliation():()=>void {
  if(!cardLinkEnabled())return ()=>{};
  void reconcileCardLinks();const timer=setInterval(()=>void reconcileCardLinks(),30_000);timer.unref();return ()=>clearInterval(timer);
 }
-export async function editCard(userId:string,id:string,action:string) {
+export async function editCard(userId:string,id:string,action:string,expectedMode:'test'|'live') {
+ if(expectedMode!==paystackDomain())throw new AppError(409,'payment_mode_changed','Payment mode changed. Reload your cards and try again.');
+ const owned=await db.from('linked_cards').select('id').eq('id',id).eq('user_id',userId).eq('domain',paystackDomain()).is('removed_at',null).maybeSingle();
+ dbFailure(owned.error);if(!owned.data)throw notFound('Card not found in this payment mode.');
  const result=await db.rpc('edit_linked_card',{p_user:userId,p_id:id,p_action:action});dbFailure(result.error);
  if(!result.data)throw notFound('Card not found.');
 }

@@ -59,9 +59,10 @@ confirmation; a PIN does not override a failed match.
 5. The customer reviews and confirms the payment.
 6. Paystack charges the linked card; the backend records the verified outcome.
 
-The restored camera flow is for test-card acceptance testing. Live card payments
-remain blocked until liveness is validated. A camera image and hand-placement
-guidance do not establish biometric liveness.
+The restored camera supports the operator's controlled live tests when Paystack
+live mode, a live reusable card and merchant settlement are configured. No pilot
+account allowlist or extra amount cap is imposed. A camera image and local hand
+placement guidance do not establish biometric liveness.
 
 ## 🛠️ Tech Stack
 

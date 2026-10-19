@@ -19,6 +19,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "cards:test:preflight": "tsx scripts/card-test-preflight.ts",
+    "cards:live:preflight": "tsx scripts/card-live-preflight.ts",
     "cards:reconcile": "tsx scripts/reconcile-card-links.ts"
   },
   "dependencies": {

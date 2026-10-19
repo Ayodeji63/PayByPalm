@@ -14,8 +14,9 @@ request an SDK token. The following H5 flow describes that opt-in only.
 
 Both modes require exactly one provider-confirmed match, reject ambiguous or
 incomplete sweeps, recheck bindings for changes, and keep card charging behind
-explicit confirmation. Raw-image capture is restricted to Paystack test mode:
-local placement guidance is not biometric liveness. Restoring the interface does
+explicit confirmation. The original camera supports controlled live tests without
+an account allowlist or additional pilot amount cap. Local placement guidance is
+not biometric liveness. Restoring the interface does
 not confirm Tencent supports this application's legacy RGB request format; verify
 it with a real test enrolment and comparison. Existing provider codes remain intact.
 

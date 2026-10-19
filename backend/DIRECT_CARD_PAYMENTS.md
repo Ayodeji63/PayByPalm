@@ -75,8 +75,60 @@ Account-security PIN management remains separate from terminal payments.
 
 ## Merchant settlement and live rollout
 
-In test mode an unset subaccount collects simulated payments into the configured
-Paystack test business. That does not establish a merchant payout rail.
+The original Pi camera flow (`TENCENT_CAPTURE_MODE=legacy`) supports the operator's
+controlled live tests. It has no account allowlist or additional pilot amount cap.
+Normal validation, strong/unique palm matching, ownership, freshness, card-mode,
+settlement and idempotency checks still apply. Local hand guidance is not validated
+biometric liveness. `TENCENT_H5_IMAGE_ONLY_APPROVED` applies only to the separate,
+optional H5 implementation; it is not required for the original camera.
+
+Deploy the updated backend and wallet together. In Render, save these together:
+
+```dotenv
+PAYSTACK_MODE=live
+PAYSTACK_SECRET_KEY=YOUR_PRIVATE_LIVE_SECRET
+TENCENT_CAPTURE_MODE=legacy
+# Preserve the existing CARD_TOKEN_ENCRYPTION_KEY for the existing database.
+```
+
+The Render Blueprint leaves payment mode and secrets in dashboard configuration
+so syncing it does not reset the chosen mode to test. Configuration still rejects
+a mismatched test/live key. No live key is committed or sent to the Pi/frontend.
+Set the live Paystack webhook to the API's `/webhooks/paystack` URL. Configure the
+merchant's `paystack_subaccount`, link a real card through live hosted checkout,
+then select it as default before trying a fresh terminal sale. Check that the
+displayed amount/card are correct, confirm once, and verify the same reference
+in Paystack Live Mode. Reconcile uncertain outcomes on that reference.
+
+For a live readiness review, after configuring a separate live process privately:
+
+```bash
+pnpm cards:live:preflight --user-id USER_UUID --merchant-id MERCHANT_UUID
+```
+
+This command never enables live mode, changes database state, or initializes a
+checkout, charge or refund. It checks local palm-binding state, the default card's
+verified **live** origin, credential decryption, merchant subaccount lookup using
+a Paystack GET, and outstanding sandbox charges. It refuses a test-mode process
+before making any requests. Credentials, email, card tokens and bank account
+details are not printed. A passing result is not evidence of webhook delivery,
+biometric liveness, a real charge, refund processing or bank settlement.
+
+Before an actual live test, the operator must have Paystack Live Mode activated,
+configure the live secret and its live webhook in the backend environment, and
+link a real card through live hosted checkout to obtain a new reusable
+authorization. Existing sandbox cards/history are not converted into live records.
+Keep the existing card encryption key for an existing database. Use the original
+authorization email when charging. Check the exact reference in Paystack Live
+Mode, independently of the app's transaction history. The card-linking ₦50
+verification payment and its refund are separate from a terminal purchase.
+
+Sources: [Paystack activation](https://support.paystack.com/en/articles/2125506),
+[test/live separation](https://support.paystack.com/en/articles/2129922),
+[reusable authorizations](https://paystack.com/docs/payments/recurring-charges/).
+
+With migration 0022, test mode collects simulated payments into the configured
+Paystack test business and retains the merchant’s live subaccount without sending it. That does not establish a merchant payout rail.
 For live mode every merchant must have its correct Paystack split subaccount
 configured in `merchants.paystack_subaccount` (`ACCT_...`), using the same Paystack
 business as the live secret. The server refuses a live charge without it. The
@@ -92,7 +144,45 @@ provider declines, issuer authentication, secret handling and receipt gating.
 Isolated Postgres tests cover no ledger mutations, authorization/ownership,
 card selection, concurrent charge claims, cancellation races, final outcomes and
 browser access restrictions. Run `bash supabase/tests/run.sh` from the root.
-Hosted direct-card acceptance remains pending migration 0018 and a full test
-terminal sale. Use only Paystack test fixtures until it passes.
+Automated tests use fixtures and do not certify live collection, refunds or bank
+settlement. Run the read-only live preflight and verify actual provider outcomes
+for the selected merchant after applying migration 0022.
 
 Provider reference: https://paystack.com/docs/payments/recurring-charges/
+
+## One switch for the wallet and backend
+
+Apply `supabase/migrations/0022_payment_modes.sql` once, then deploy the backend
+and wallet changes together. Existing users, palms and financial records are retained.
+Verified legacy cards are classified using their verified checkout origin;
+ambiguous or unverified cards remain unclassified and must be relinked.
+
+There is **no frontend payment-mode environment variable** and no Paystack key
+belongs in Vercel, the wallet or the Pi. `/me`, `/cards` and `/transactions` report
+the backend's `paymentMode`. Card screens refresh on focus and every 30 seconds;
+the dashboard also refreshes cards when `/me` observes a changed mode. Checkout
+checks mode again before opening, and the server rejects stale-mode consent.
+
+For each future switch, finish/reconcile pending payments and verification refunds
+in the current environment first. Save both Render environment values together,
+then redeploy the backend:
+
+| Environment | `PAYSTACK_MODE` | `PAYSTACK_SECRET_KEY` |
+| --- | --- | --- |
+| Sandbox | `test` | Your private `sk_test_…` key |
+| Real money | `live` | Your private `sk_live_…` key |
+
+Preserve `CARD_TOKEN_ENCRYPTION_KEY`. The wallet follows the running backend;
+no wallet rebuild or Pi configuration change is needed for future mode switches.
+Test/live credentials, defaults, pending checkouts and transaction history are
+separate. Switching back restores the corresponding cards and history. A test
+card is never upgraded to live: link a real card in live mode and configure the
+merchant's live `ACCT_…` settlement code. Never leave a completed test checkout
+waiting for verification when retiring its test-key process. A late old-mode
+callback is retained for reconciliation under its original mode, not processed
+with the other environment's key.
+
+Run `python3 supabase/tests/payment_modes_migration_test.py` for disposable
+PostgreSQL backfill/isolation tests. `wallet/tests/cards-browser.mjs` uses fixture
+APIs to exercise test→live→test without rebuilding and rejects a switch between
+pre-check and checkout POST; it performs no real payment.

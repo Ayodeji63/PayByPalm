@@ -14,6 +14,7 @@ import { decide, explain, rejectWithout, thresholds, type PolicyOutcome } from '
 import type { AuthedTerminal } from '../middleware/terminalAuth.js';
 import type { Logger } from '../logger.js';
 import { chargeCardPayment } from './cardPaymentService.js';
+import { requirePaystack, paystackDomain } from './paystack.js';
 import { consumePalmCapture, getActivePalmCandidates, issuePalmCapture, type CaptureSubmission, type PalmCandidate } from './palmCaptureService.js';
 import type { CompareResult } from '../palm/provider.js';
 
@@ -179,9 +180,6 @@ export async function authenticateTransaction(
 ): Promise<AuthenticateOutcome> {
   const txn = await pendingTransaction(transactionId, terminal);
   if (config.PALM_PROVIDER === 'tencent' && config.TENCENT_CAPTURE_MODE === 'h5') throw conflict('palm_sdk_required', 'This terminal is configured to use the Tencent palm reader. Start a new scan.');
-  if (config.PALM_PROVIDER === 'tencent' && config.PAYSTACK_MODE === 'live') {
-    throw new AppError(503, 'palm_liveness_confirmation_required', 'The original camera flow supports test-card payments. Validated liveness is required before live card payments.');
-  }
   const image = normaliseImage(rawImage);
   const candidates = await getActivePalmCandidates();
   const matched = await matchPalmCandidates(candidates, userId => palm.compare(userId, image.data));
@@ -216,7 +214,10 @@ async function finaliseAuthentication(
 
   // Palm-only payments require a full accept; marginal matches must rescan.
   if(outcome.decision !== 'accept')return {decision:'reject',mode,score:outcome.score,reason:'strong_match_required',message:'Please reposition your hand and scan again.'};
-  const card=await db.from('linked_cards').select('id,last4,brand').eq('user_id',profile.id).eq('is_default',true).eq('is_paused',false).is('removed_at',null).maybeSingle();
+  // Do not offer card confirmation when this deployment cannot charge a card.
+  // Charge still checks again before claiming a payment attempt.
+  requirePaystack('payment');
+  const card=await db.from('linked_cards').select('id,last4,brand').eq('user_id',profile.id).eq('domain',paystackDomain()).eq('is_default',true).eq('is_paused',false).is('removed_at',null).maybeSingle();
   if(card.error)throw new AppError(503,'card_payment_unavailable','Could not check the linked card. Please try again.');
   if(!card.data)return {decision:'reject',mode,score:outcome.score,reason:'no_active_card',message:'Link an active default card in your PayByPalm account first.'};
 

@@ -8,20 +8,26 @@ const browser=await chromium.launch({executablePath:process.env.PLAYWRIGHT_CHROM
 const context=await browser.newContext({viewport:{width:390,height:844}});
 const artifacts='/tmp/pbp-card-link-check';mkdirSync(artifacts,{recursive:true});
 const reference='pbp_card_'+'a'.repeat(32);
-let cards=[],attempts=[],everLinked=false,refundStatus='pending',initializations=0,checks=0,failReads=false,enabled=true;
+let paymentMode='test', flipBeforePost=false;
+let cards=[],attempts=[],everLinked=false,refundStatus='pending',initializations=0,checks=0,failReads=false,enabled=true,missingMode=false;
 const card={id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',bank:'Actual Test Bank',brand:'visa',last4:'5678',exp_month:'11',exp_year:'2098',is_default:true,is_paused:false,created_at:'2026-10-18T00:00:00Z'};
 await context.addInitScript(()=>{
  localStorage.setItem('paybypalm.session',JSON.stringify({accessToken:'fixture-token',refreshToken:'fixture-refresh'}));
  localStorage.setItem('paybypalm.tokenized_cards',JSON.stringify([{last4:'9999',balanceMinor:25000000}]));
 });
-await context.route('http://localhost:8080/**',async route=>{
- const path=new URL(route.request().url()).pathname;
+await context.route(/\/(me|cards(?:\/.*)?|transactions)(?:\?.*)?$/,async route=>{
+ const req=route.request();
+ if(req.isNavigationRequest())return route.continue();
+ if(req.method()==='OPTIONS')return route.fulfill({status:204,headers:{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Content-Type,Authorization','Access-Control-Allow-Methods':'GET,POST,OPTIONS'}});
+ const path=new URL(req.url()).pathname;
  const body=route.request().postDataJSON();let data,status=200;
- if(path==='/me')data={id:'fixture-user',fullName:'Test User',email:'user@example.test',phone:'08010001234',hasPin:true,palmEnrolled:false,balanceMinor:9876543,currency:'NGN',createdAt:'2026-10-18T00:00:00Z'};
- else if(path==='/cards'&&failReads){status=503;data={error:{code:'unavailable',message:'Card storage unavailable'}};}
- else if(path==='/cards')data={enabled,testMode:true,amountMinor:5000,currency:'NGN',cards,attempts};
+ if(path==='/me')data={paymentMode,id:'fixture-user',fullName:'Test User',email:'user@example.test',phone:'08010001234',hasPin:true,palmEnrolled:false,balanceMinor:9876543,currency:'NGN',createdAt:'2026-10-18T00:00:00Z'};
+ else if(path==='/cards'&&failReads){status=503;data={error:{code:'card_mode_setup_required',message:'Payment mode setup needs database migration 0022. Ask the administrator to complete the update.'}};}
+ else if(path==='/cards')data={enabled,paymentMode:missingMode?undefined:paymentMode,testMode:paymentMode==='test',amountMinor:5000,currency:'NGN',cards,attempts};
  else if(path==='/cards/link'){
-  assert.deepEqual(Object.keys(body).sort(),['consent','requestId']);assert.equal(body.consent,true);assert.match(body.requestId,/^[a-f0-9-]{36}$/);
+  assert.deepEqual(Object.keys(body).sort(),['consent','paymentMode','requestId']);assert.equal(body.consent,true);assert.match(body.requestId,/^[a-f0-9-]{36}$/);
+  if(flipBeforePost){paymentMode='live';flipBeforePost=false;}
+  if(body.paymentMode!==paymentMode){await route.fulfill({status:409,json:{error:{code:'payment_mode_changed',message:'Payment mode changed. Review the updated payment notice and agree again.'}}});return;}
   initializations++;data={checkoutUrl:'https://checkout.paystack.com/pbp-fixture',reference};
  }else if(path==='/cards/link/verify'){
   assert.equal(body.reference,reference);checks++;
@@ -41,7 +47,8 @@ const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors
 try{
  await page.goto(origin+'/cards');
  await page.getByRole('heading',{name:'Your saved cards'}).waitFor();
- await page.getByText('You haven’t linked a card yet.').waitFor();
+ await page.addStyleTag({content:'*,*::before,*::after{animation:none!important;transition:none!important;}'});
+ await page.getByText('You haven’t linked a card in test mode yet.').waitFor();
  const start=page.getByRole('button',{name:'Continue to Paystack · ₦50'});
  assert.equal(await start.isDisabled(),true);
  assert.equal(await page.locator('input').count(),1); // Consent only: card data belongs to hosted checkout.
@@ -66,11 +73,52 @@ try{
  await page.screenshot({path:artifacts+'/linked-desktop.png',fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  page.on('dialog',dialog=>dialog.accept());
- await page.getByRole('button',{name:'Remove',exact:true}).click();await page.getByText('You haven’t linked a card yet.').waitFor();
- await page.goto(origin+'/cards?reference='+reference);await page.getByText('You haven’t linked a card yet.').waitFor();
+ await page.getByRole('button',{name:'Remove',exact:true}).click();await page.getByText('You haven’t linked a card in test mode yet.').waitFor();
+ await page.goto(origin+'/cards?reference='+reference);await page.getByText('You haven’t linked a card in test mode yet.').waitFor();
  await page.getByText(/Status updated/).waitFor();assert.equal(cards.length,0);assert.equal(initializations,1);
  failReads=true;await page.goto(origin+'/cards');await page.getByRole('alert').waitFor();
- failReads=false;await page.getByRole('button',{name:'Reload cards'}).click();await page.getByText('You haven’t linked a card yet.').waitFor();
+ await page.getByRole('alert').filter({hasText:'Payment mode setup needs database migration 0022.'}).waitFor();
+ await page.getByRole('button',{name:'Reload cards'}).waitFor();
+ assert.equal(await page.locator('.animate-pulse').count(),0);
+ await page.screenshot({path:artifacts+'/missing-migration.png',fullPage:true});
+
+ failReads=false;await page.getByRole('button',{name:'Reload cards'}).click();await page.getByText('You haven’t linked a card in test mode yet.').waitFor();
+ await page.getByRole('alert').waitFor({state:'detached'});
+ missingMode=true;await page.goto(origin+'/cards');
+ await page.getByRole('alert').filter({hasText:'The payment service needs an update.'}).waitFor();
+ assert.equal(await page.getByRole('checkbox').count(),0);
+ assert.equal(await page.getByRole('button',{name:'Continue to Paystack · ₦50'}).count(),0);
+ missingMode=false;await page.getByRole('button',{name:'Reload cards'}).click();
+ await page.getByText('You haven’t linked a card in test mode yet.').waitFor();
+ await page.getByRole('alert').waitFor({state:'detached'});
+
+
+ // Changing the server mode while the page stays open clears old consent and cards.
+ await page.getByRole('checkbox').check();
+ const testCards=[{...card}];cards=[];attempts=[];paymentMode='live';
+ await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await page.getByText('Live mode: use a real card. Payments charge real money.').waitFor();
+ await page.getByText('You haven’t linked a card in live mode yet.').waitFor();
+ assert.equal(await page.getByRole('checkbox').isChecked(),false);
+ assert.equal(await start.isDisabled(),true);
+ await page.evaluate(()=>new Promise(r=>setTimeout(r,400)));
+ await page.setViewportSize({width:390,height:844});
+ await page.screenshot({path:artifacts+'/live-mobile.png',fullPage:true});
+ await page.setViewportSize({width:1280,height:900});
+ await page.screenshot({path:artifacts+'/live-desktop.png',fullPage:true});
+ // Switching back restores only the test cards, with a fresh consent requirement.
+ paymentMode='test';cards=testCards;
+ await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await page.getByText('Test mode: use Paystack test cards. No real payment is collected.').waitFor();
+ await page.getByRole('heading',{name:'Actual Test Bank'}).waitFor();
+ assert.equal(await page.getByRole('checkbox').isChecked(),false);
+ // Server flips after the pre-check: expected-mode POST still rejects without checkout.
+ await page.getByRole('checkbox').check();flipBeforePost=true;
+ await start.click();await page.getByRole('alert').waitFor();
+ await page.getByText('Live mode: use a real card. Payments charge real money.').waitFor();
+ assert.equal(initializations,1);assert.equal(new URL(page.url()).origin,origin);
+ assert.equal(await page.getByRole('checkbox').isChecked(),false);
+ paymentMode='test';
  enabled=false;cards=[{...card}];await page.goto(origin+'/cards');
  await page.getByRole('heading',{name:'Actual Test Bank'}).waitFor();
  await page.getByText(/Payment setup is not complete/).waitFor();
@@ -82,6 +130,6 @@ try{
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  }
  assert.deepEqual(errors,[]);
- console.log('PASS: card consent/hosted checkout/server verification/refund pending-to-processed/pause/resume/remove/replay/load failure recovery; mobile and desktop. No real charge.');
+ console.log('PASS: runtime test/live/test switching, consent reset and stale-mode POST rejection; card consent/hosted checkout/server verification/refund pending-to-processed/pause/resume/remove/replay/load failure recovery; mobile and desktop. No real charge.');
 }catch(error){await page.screenshot({path:artifacts+'/failure.png',fullPage:true}).catch(()=>{});throw error;}
 finally{await context.close();await browser.close();}

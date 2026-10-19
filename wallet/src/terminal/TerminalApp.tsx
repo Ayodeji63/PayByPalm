@@ -340,8 +340,8 @@ export default function TerminalApp() {
           transactionId={screen.transactionId}
           amountMinor={screen.amountMinor}
           onOutcome={(outcome) => handleOutcome(screen.transactionId, screen.amountMinor, outcome)}
-          onError={(message) =>
-            setScreen({ name: 'result', ok: false, title: 'Could not read the palm', detail: message })
+          onError={(message, code) =>
+            setScreen({ name: 'result', ok: false, title: code === 'card_payment_not_configured' || code === 'payment_mode_mismatch' ? 'Card payments unavailable' : 'Could not read the palm', detail: message })
           }
           onCancel={() => abandon(screen.transactionId)}
         />

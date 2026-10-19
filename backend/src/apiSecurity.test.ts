@@ -165,6 +165,13 @@ describe('API security boundaries', () => {
     const result=await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/palm-capture',{});
     expect(result.status).toBe(401);expect(mocks.beginCapture).not.toHaveBeenCalled();
   });
+  it('reports missing card-payment configuration without calling it a linking error',async()=>{
+    mocks.confirm.mockRejectedValue(new AppError(503,'card_payment_not_configured','private diagnostic'));
+    const response=await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/confirm',{}, {'X-Terminal-Key':'test'});
+    expect(response.status).toBe(503);
+    const result=await response.json() as {error:{code:string;message:string}};expect(result.error.code).toBe('card_payment_not_configured');
+    expect(result.error.message).toContain('Card payments');expect(JSON.stringify(result)).not.toContain('private diagnostic');
+  });
   it('passes an opaque SDK capture to the server verifier rather than trusting a client match',async()=>{
     mocks.authenticateSdk.mockResolvedValue({decision:'reject',mode:'compare',score:null});
     const result=await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/authenticate',{captureId:'dddddddd-dddd-4ddd-dddd-dddddddddddd',payload:'opaque-capture'},{'X-Terminal-Key':'test'});

@@ -54,6 +54,27 @@ begin
   perform public.begin_card_payment(t.id,terminal,'test',60,95);
   raise exception 'TEST FAILED: weak match charged';
  exception when sqlstate 'PB005' then null; end;
+ -- A configured live merchant still cannot use a sandbox-only authorization.
+ update public.merchants set paystack_subaccount='ACCT_livefixture'
+  where id=(select merchant_id from public.transactions where id=t.id);
+ begin
+  perform public.begin_card_payment(t.id,terminal,'live',60,85);
+  raise exception 'TEST FAILED: test-only authorization charged in live mode';
+ exception when sqlstate 'PB008' then null; end;
+ -- Fixture proof of a separately verified live authorization (no provider call).
+ insert into public.card_link_attempts(user_id,request_id,reference,email,domain,status,card_id)
+ values('d1000000-0000-4000-8000-000000000001',gen_random_uuid(),'direct-live-card-link','direct-card@example.test','live','verified','d2000000-0000-4000-8000-000000000001');
+ if exists(select 1 from information_schema.columns where table_schema='public' and table_name='linked_cards' and column_name='domain') then
+  execute 'update public.linked_cards set domain=''live'' where id=''d2000000-0000-4000-8000-000000000001''';
+ end if;
+ t:=public.create_terminal_transaction(terminal,gen_random_uuid(),15000,'Live card fixture');
+ update public.transactions set status='authenticated',matched_user_id='d1000000-0000-4000-8000-000000000001',match_score=92,match_mode='compare',payment_card_id='d2000000-0000-4000-8000-000000000001' where id=t.id;
+ select * into a from public.begin_card_payment(t.id,terminal,'live',60,85);
+ assert a.domain='live' and a.subaccount='ACCT_livefixture' and a.amount_minor=15000,'live charge lost its environment, destination or amount';
+ assert (select count(*) from public.begin_card_payment(t.id,terminal,'live',60,85))=0,'live replay obtained a second claim';
+ perform public.finish_card_payment(a.reference,'success','987654321');
+ assert (select status from public.transactions where id=t.id)='settled','verified live payment did not settle';
+ assert (select count(*) from public.ledger_entries)=n,'live payment mutated internal ledger';
  -- App role can no longer create/debit stored-value funds.
  assert not has_function_privilege('service_role','public.post_transaction(uuid,integer)','EXECUTE'),'legacy ledger debit still enabled';
  assert not has_function_privilege('service_role','public.post_topup(uuid,bigint,text)','EXECUTE'),'legacy funding still enabled';

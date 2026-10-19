@@ -23,7 +23,7 @@ type CaptureProps = {
   transactionId: string;
   amountMinor: number;
   onOutcome: (outcome: AuthenticateOutcome) => void;
-  onError: (message: string) => void;
+  onError: (message: string, code?: string) => void;
   onCancel: () => void;
 };
 
@@ -85,6 +85,7 @@ function LegacyCapture({
         err instanceof TerminalApiError
           ? `${err.message}${err.requestId ? ` Support reference: ${err.requestId}.` : ''}`
           : err instanceof Error?err.message:'The camera did not produce a usable image. Try again.',
+        err instanceof TerminalApiError ? err.code : undefined,
       );
     } finally {
       captureInProgress.current=false;

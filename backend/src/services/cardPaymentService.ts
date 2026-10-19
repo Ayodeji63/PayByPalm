@@ -47,7 +47,7 @@ export async function verifyCardPayment(a:CardPaymentAttempt):Promise<void>{
  await finish(a,'success',String(t.id));
 }
 export async function chargeCardPayment(transactionId:string,terminalId:string):Promise<void>{
- requirePaystack();
+ requirePaystack('payment');
  const claim=await db.rpc('begin_card_payment',{p_transaction:transactionId,p_terminal:terminalId,p_domain:paystackDomain(),p_validity:config.AUTH_VALIDITY_SECONDS,p_accept_score:config.PALM_ACCEPT_SCORE});
  failure(claim.error);
  const a=claim.data?.[0] as CardPaymentAttempt|undefined;
@@ -79,7 +79,7 @@ let working=false;
 export async function reconcileCardPayments():Promise<void>{
  if(working||!cardLinkEnabled())return;working=true;
  try{
-  const r=await db.from('card_payment_attempts').select('*').not('status','in','(success,failed)').lte('next_check_at',new Date().toISOString()).order('next_check_at').limit(20);failure(r.error);
+  const r=await db.from('card_payment_attempts').select('*').eq('domain',paystackDomain()).not('status','in','(success,failed)').lte('next_check_at',new Date().toISOString()).order('next_check_at').limit(20);failure(r.error);
   for(const a of r.data??[]){try{await verifyCardPayment(a as CardPaymentAttempt);}catch{
    await db.from('card_payment_attempts').update({next_check_at:new Date(Date.now()+60000).toISOString()}).eq('transaction_id',a.transaction_id);
    logger.warn({transactionId:a.transaction_id},'Card payment remains unresolved');

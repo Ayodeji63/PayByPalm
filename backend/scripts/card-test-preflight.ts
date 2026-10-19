@@ -19,6 +19,9 @@ for(const table of ['linked_cards','card_link_attempts','card_payment_attempts']
  if(result.error||result.count===null)blocked(`${table} could not be read; apply migrations 0017 and 0018 in the test project and check backend grants.`);
  else ok(`${table} is accessible (${result.count} rows)`);
 }
+const modeSchema=await db.from('linked_cards').select('domain').limit(0);
+if(modeSchema.error)blocked('Apply migration 0022_payment_modes.sql for separate test/live cards and defaults.');
+else ok('Payment mode schema is available');
 const domains=await db.from('card_link_attempts').select('id',{count:'exact',head:true}).neq('domain','test');
 if(!domains.error&&domains.count!==null){
  if(domains.count)blocked('Non-test card attempts exist. Use a separate test database.');

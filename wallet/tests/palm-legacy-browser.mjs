@@ -12,7 +12,12 @@ const origin=process.env.PBP_PREVIEW_ORIGIN||'http://127.0.0.1:4186';
 const artifacts='/tmp/paybypalm-legacy-browser';mkdirSync(artifacts,{recursive:true});
 const txn='cccccccc-cccc-4ccc-8ccc-cccccccccccc',enrol='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 try {
- for(const viewport of [{width:800,height:480},{width:1280,height:720}]) {
+ for(const scenario of [
+  {viewport:{width:800,height:480},missingConfig:false},
+  {viewport:{width:1280,height:720},missingConfig:false},
+  {viewport:{width:800,height:480},missingConfig:true},
+ ]) {
+  const {viewport,missingConfig}=scenario;
   const context=await browser.newContext({viewport,hasTouch:true,permissions:['camera']});
   const calls=[],errors=[],vendorRequests=[];
   await context.addInitScript(()=>{
@@ -34,6 +39,7 @@ try {
    const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Content-Type,X-Terminal-Key','Access-Control-Allow-Methods':'GET,POST,OPTIONS','Cache-Control':'no-store'};
    if(req.method()==='OPTIONS')return route.fulfill({status:204,headers});
    const body=req.postDataJSON();calls.push({path,body,method:req.method()});
+   if(missingConfig&&path.endsWith('/authenticate'))return route.fulfill({status:503,headers,json:{error:{code:'card_payment_not_configured',message:'Card payments are not configured on this server. Ask the administrator to check the Paystack settings.'}}});
    let data;
    if(path==='/terminal/me')data={terminalId:'terminal',terminalLabel:'Counter 1',merchantName:'Test merchant',captureMode:'legacy'};
    else if(path==='/health')data={status:'ok'};
@@ -60,6 +66,15 @@ try {
   assert.equal(await page.evaluate(()=>window.__ledStates.at(-1)),'CAPTURING');
   await page.screenshot({path:`${artifacts}/payment-${viewport.width}.png`});
   await page.getByRole('button',{name:'Capture',exact:true}).click();
+  if(missingConfig){
+   await page.getByText('Card payments unavailable',{exact:true}).waitFor();
+   await page.getByText(/Card payments are not configured/).waitFor();
+   assert.equal(calls.some(c=>c.path.endsWith('/confirm')),false);
+   assert.equal(await page.getByRole('button',{name:'Pay from card',exact:true}).count(),0);
+   await page.screenshot({path:`${artifacts}/payment-not-configured.png`});
+   console.log('PASS: missing payment configuration is identified as a payment error; no card confirmation or charge.');
+   await context.close();continue;
+  }
   await page.getByRole('button',{name:'Pay from card',exact:true}).waitFor();
   const auth=calls.find(c=>c.path.endsWith('/authenticate'));
   assert.deepEqual(Object.keys(auth.body),['imageB64']);

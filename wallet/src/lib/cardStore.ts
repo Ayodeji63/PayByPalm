@@ -28,6 +28,7 @@ export interface CardTheme {
 }
 
 export interface LinkedCard {
+  paymentMode: 'test' | 'live';
   id: string;
   name: string;
   bank: string;

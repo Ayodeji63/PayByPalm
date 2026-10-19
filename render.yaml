@@ -31,9 +31,16 @@ services:
       - key: SUPABASE_ANON_KEY
         sync: false
 
-      # Sandbox until test-card acceptance is complete. Live keys are rejected here.
+      # Set mode and its matching secret together in Render. The application
+      # defaults to test when unset; Blueprint sync must not overwrite the choice.
       - key: PAYSTACK_MODE
-        value: test
+        sync: false
+      # Keep these private. Reuse the same account/encryption key that linked
+      # existing cards; a new encryption key cannot decrypt their saved tokens.
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: CARD_TOKEN_ENCRYPTION_KEY
+        sync: false
 
       # Public production wallet origin, without a trailing slash. Used for CORS
       # and terminal enrolment links. This is public configuration, not a secret.
