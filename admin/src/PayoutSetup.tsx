@@ -10,61 +10,84 @@ export function PayoutSetup({merchant,onSaved}:{merchant:Merchant;onSaved:(m:Mer
  const [bank,setBank]=useState(''),[account,setAccount]=useState(''),[fee,setFee]=useState('0');
  const [verified,setVerified]=useState<Verification|null>(null),[confirmed,setConfirmed]=useState(false);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
- const revision=useRef(0),mounted=useRef(true);
- async function load(){
-  const next=await api<Info>(`/merchants/${merchant.id}/payout`);
-  if(!mounted.current)return;
-  setInfo(next);
-  if(next.enabled&&!next.subaccountCode&&!['submitting','needs_review'].includes(next.setup?.status||'')){
-   const list=await api<{banks:Array<{code:string;name:string}>}>('/payouts/banks');if(mounted.current)setBanks(list.banks);
+ const revision=useRef(0),mounted=useRef(true),loading=useRef(0),busyRef=useRef(false),currentInfo=useRef<Info|null>(null);
+ function markBusy(value:boolean){busyRef.current=value;setBusy(value);}
+ function acceptInfo(next:Info){
+  if(currentInfo.current&&currentInfo.current.mode!==next.mode){
+   invalidate();setBank('');setBanks([]);
+   setNotice(`Payment backend switched to ${next.mode} mode. Verify the bank account again before creating a payout account.`);
   }
+  currentInfo.current=next;setInfo(next);
+ }
+ async function load(){
+  const request=++loading.current;
+  const next=await api<Info>(`/merchants/${merchant.id}/payout`);
+  if(!mounted.current||request!==loading.current)return null;
+  acceptInfo(next);setError('');
+  if(next.enabled&&!next.subaccountCode&&!['submitting','needs_review'].includes(next.setup?.status||'')){
+   const list=await api<{mode:Info['mode'];banks:Array<{code:string;name:string}>}>('/payouts/banks');
+   if(mounted.current&&request===loading.current&&list.mode===next.mode)setBanks(list.banks);
+  }
+  return next;
+ }
+ function unavailable(e:unknown){
+  if(!mounted.current)return;
+  invalidate();currentInfo.current=null;setInfo(null);setBanks([]);setError((e as Error).message);
  }
  useEffect(()=>{
-  mounted.current=true;void load().catch(e=>{if(mounted.current)setError(e.message);});
-  return()=>{mounted.current=false;++revision.current;};
+  mounted.current=true;currentInfo.current=null;setInfo(null);
+  const refresh=()=>{if(!busyRef.current)void load().catch(unavailable);};
+  const visible=()=>{if(document.visibilityState==='visible')refresh();};
+  refresh();const timer=window.setInterval(visible,30_000);
+  window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',visible);
+  return()=>{mounted.current=false;++revision.current;++loading.current;window.clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',visible);};
  },[merchant.id]);
- useEffect(()=>{++revision.current;setVerified(null);setConfirmed(false);},[info?.mode]);
  function invalidate(){++revision.current;setVerified(null);setConfirmed(false);setNotice('');}
  async function verify(){
-  if(busy)return;setBusy(true);setError('');setVerified(null);setConfirmed(false);
+  if(busyRef.current)return;++loading.current;markBusy(true);setError('');setVerified(null);setConfirmed(false);
   const version=++revision.current;
   try{
    const next=await api<Verification>('/payouts/verify',{merchantId:merchant.id,bankCode:bank,accountNumber:account});
-   if(mounted.current&&version===revision.current)setVerified(next);
+   if(mounted.current&&version===revision.current){
+    if(next.mode!==currentInfo.current?.mode){await load();setError('Payment mode changed. Verify the bank account again.');}
+    else setVerified(next);
+   }
   }catch(e){if(mounted.current)setError((e as Error).message);}
-  finally{if(mounted.current)setBusy(false);}
+  finally{if(mounted.current)markBusy(false);}
  }
  async function create(){
-  if(busy||!verified||!confirmed)return;
+  if(busyRef.current||!verified||!confirmed)return;
   if(Date.parse(verified.expiresAt)<=Date.now()){invalidate();setError('The bank check expired. Verify the account again.');return;}
-  setBusy(true);setError('');setNotice('Creating the payout account in Paystack…');
+  ++loading.current;markBusy(true);setError('');setNotice('Creating the payout account in Paystack…');
   try{
+   const latest=await load();
+   if(!latest||latest.mode!==verified.mode||!latest.enabled){invalidate();setError('Payment mode or configuration changed. Verify the bank account again.');return;}
    const result=await api<{merchant:Merchant;setup:Setup}>(`/merchants/${merchant.id}/payout`,{verificationToken:verified.verificationToken,percentageCharge:Number(fee),expected:merchant.updated_at});
    if(!mounted.current)return;
-   setInfo(current=>current?{...current,setup:result.setup,subaccountCode:result.setup.subaccountCode}:current);
+   if(currentInfo.current?.mode===result.setup.mode)acceptInfo({...currentInfo.current,setup:result.setup,subaccountCode:result.setup.subaccountCode});
    setVerified(null);setConfirmed(false);setAccount('');
    setNotice(result.setup.status==='created'?'Payout account created and saved.':'The original setup is still being checked. Use Check status.');
    if(result.setup.status==='created')onSaved(result.merchant);
-  }catch(e){if(mounted.current){setNotice('');setError((e as Error).message);await load().catch(()=>{});}}
-  finally{if(mounted.current)setBusy(false);}
+  }catch(e){if(mounted.current){setNotice('');setError((e as Error).message);await load().catch(unavailable);setError((e as Error).message);}}
+  finally{if(mounted.current)markBusy(false);}
  }
  async function check(){
-  if(busy)return;setBusy(true);setError('');setNotice('');
+  if(busyRef.current)return;++loading.current;markBusy(true);setError('');setNotice('');
   try{
    const result=await api<{merchant:Merchant;setup:Setup}>(`/merchants/${merchant.id}/payout/check`,{});
    if(!mounted.current)return;
-   setInfo(current=>current?{...current,setup:result.setup,subaccountCode:result.setup.subaccountCode}:current);
+   if(currentInfo.current?.mode===result.setup.mode)acceptInfo({...currentInfo.current,setup:result.setup,subaccountCode:result.setup.subaccountCode});
    if(result.setup.status==='created'){setNotice('Paystack status refreshed.');onSaved(result.merchant);}
-  }catch(e){if(mounted.current)setError((e as Error).message);}finally{if(mounted.current)setBusy(false);}
+  }catch(e){if(mounted.current)setError((e as Error).message);}finally{if(mounted.current)markBusy(false);}
  }
  const setup=info?.setup,unresolved=setup&&['submitting','needs_review'].includes(setup.status);
  return <section className="panel form-panel payout-panel" aria-labelledby="payout-title">
   <div className="panel-heading"><h2 id="payout-title">Bank payouts</h2>{info&&<span className={`badge ${info.mode==='live'?'blue':'neutral'}`}>{info.mode==='live'?'Live mode':'Test mode'}</span>}</div>
-  <p>Verify the merchant’s bank account and create its Paystack subaccount here.</p>
+  <p>Verify the merchant’s bank account and create its Paystack subaccount here. Payment mode follows the payment backend automatically.</p>
   {error&&<div className="notice danger" role="alert">{error}</div>}
   {notice&&<p className="notice" role="status">{notice}</p>}
   {!info?<button className="button secondary" onClick={()=>void load().then(()=>setError('')).catch(e=>setError(e.message))}>Reload payout setup</button>:
-   !info.enabled?<p className="notice">Configure the Paystack secret on the admin server to enable bank verification. The merchant profile is already saved.</p>:
+   !info.enabled?<p className="notice">Configure the {info.mode} Paystack secret on the admin server to enable bank verification. The merchant profile is already saved.</p>:
    info.subaccountCode?<div className="payout-result">
     <p><strong>Paystack subaccount: </strong><span className="payout-code">{info.subaccountCode}</span></p>
     {setup&&<><p>{setup.bankName} · account ending {setup.accountLast4}</p><p>{setup.accountName}</p><p>PayByPalm share: {setup.percentageCharge}%</p></>}

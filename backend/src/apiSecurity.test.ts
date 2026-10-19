@@ -76,6 +76,13 @@ const post = (path: string, body: unknown, headers: Record<string, string> = {})
 });
 
 describe('API security boundaries', () => {
+  it('publishes only the non-secret runtime payment mode for other apps, without requiring user authentication',async()=>{
+    const response=await fetch(base+'/payment-settings');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toEqual({paymentMode:'test'});
+    expect(mocks.getUser).not.toHaveBeenCalled();
+  });
   it('returns an unavailable card balance instead of internal funds',async()=>{
     const r=await fetch(base+'/me',{headers:{Authorization:'Bearer test'}});
     expect(r.status).toBe(200);expect(await r.json()).toMatchObject({balanceMinor:null,cardBalanceAvailable:false,paymentSource:'linked_card'});

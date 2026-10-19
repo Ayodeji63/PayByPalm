@@ -150,7 +150,7 @@ for the selected merchant after applying migration 0022.
 
 Provider reference: https://paystack.com/docs/payments/recurring-charges/
 
-## One switch for the wallet and backend
+## One switch for the wallet, admin and backend
 
 Apply `supabase/migrations/0022_payment_modes.sql` once, then deploy the backend
 and wallet changes together. Existing users, palms and financial records are retained.
@@ -158,7 +158,7 @@ Verified legacy cards are classified using their verified checkout origin;
 ambiguous or unverified cards remain unclassified and must be relinked.
 
 There is **no frontend payment-mode environment variable** and no Paystack key
-belongs in Vercel, the wallet or the Pi. `/me`, `/cards` and `/transactions` report
+belongs in the wallet Vercel project, the wallet bundle or the Pi. `/me`, `/cards` and `/transactions` report
 the backend's `paymentMode`. Card screens refresh on focus and every 30 seconds;
 the dashboard also refreshes cards when `/me` observes a changed mode. Checkout
 checks mode again before opening, and the server rejects stale-mode consent.
@@ -171,6 +171,16 @@ then redeploy the backend:
 | --- | --- | --- |
 | Sandbox | `test` | Your private `sk_test_…` key |
 | Real money | `live` | Your private `sk_live_…` key |
+
+For the separate admin server, configure these once in its Vercel project:
+`PAYMENT_API_BASE_URL=https://paybypalm-backend.onrender.com`,
+`PAYSTACK_TEST_SECRET_KEY` and `PAYSTACK_LIVE_SECRET_KEY` (the same business's
+private keys). Deploy the updated backend and admin once. The admin reads
+`/payment-settings` on the main backend and chooses its matching server key
+without another admin deployment. It ignores any old admin `PAYSTACK_MODE`.
+Bank payouts refresh on focus, every 30 seconds while visible and before creation;
+a mode switch clears previous bank confirmation. If the backend cannot confirm
+its mode, payout operations wait instead of guessing. See `admin/README.md`.
 
 Preserve `CARD_TOKEN_ENCRYPTION_KEY`. The wallet follows the running backend;
 no wallet rebuild or Pi configuration change is needed for future mode switches.

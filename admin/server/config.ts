@@ -27,7 +27,13 @@ export const configSchema = z
           .filter(Boolean),
       )
       .pipe(z.array(z.string().uuid()).min(1)),
-    PAYSTACK_MODE: z.enum(["test","live"]).default("test"),
+    PAYMENT_API_BASE_URL: z.string().url().default("https://paybypalm-backend.onrender.com").refine(v=>{
+      const u=new URL(v);
+      return (u.protocol==='https:'||(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)))&&u.pathname==='/'&&!u.search&&!u.hash&&!u.username&&!u.password;
+    },"Use the payment backend's HTTPS origin, or HTTP localhost for development").transform(v=>new URL(v).origin),
+    PAYSTACK_TEST_SECRET_KEY: z.string().regex(/^sk_test_[A-Za-z0-9]+$/).optional(),
+    PAYSTACK_LIVE_SECRET_KEY: z.string().regex(/^sk_live_[A-Za-z0-9]+$/).optional(),
+    // Compatibility with an existing deployment; usable only in its own mode.
     PAYSTACK_SECRET_KEY: z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/).optional(),
     SESSION_ENCRYPTION_KEY: z.string().regex(/^[a-f0-9]{64}$/i),
     TERMINAL_URL: z
@@ -48,7 +54,6 @@ export const configSchema = z
         );
       }, "Use the HTTPS wallet URL ending exactly in /terminal"),
   })
-  .refine(c=>!c.PAYSTACK_SECRET_KEY||c.PAYSTACK_SECRET_KEY.startsWith(`sk_${c.PAYSTACK_MODE}_`),"Paystack secret must match PAYSTACK_MODE")
   .refine(
     (c) => c.NODE_ENV !== "production" || c.APP_ORIGIN.startsWith("https://"),
     "Production APP_ORIGIN requires HTTPS",

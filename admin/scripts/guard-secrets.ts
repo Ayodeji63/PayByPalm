@@ -6,6 +6,8 @@ const names = [
   "SUPABASE_ANON_KEY",
   "SESSION_ENCRYPTION_KEY",
   "PAYSTACK_SECRET_KEY",
+  "PAYSTACK_TEST_SECRET_KEY",
+  "PAYSTACK_LIVE_SECRET_KEY",
 ];
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((file) => {

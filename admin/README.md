@@ -158,8 +158,9 @@ prefixes. Use the existing Supabase project whose admin migration is applied.
 | `ADMIN_USER_IDS` | The UUID allowlist from the admin's local `.env`, **not an email address** |
 | `SESSION_ENCRYPTION_KEY` | The admin's private 64-hex-character encryption key |
 | `TERMINAL_URL` | `https://www.paybypalm.app/terminal` |
-| `PAYSTACK_MODE` | `test` or `live`, matching the payment backend |
-| `PAYSTACK_SECRET_KEY` | Same business and matching mode as the payment backend; server only |
+| `PAYMENT_API_BASE_URL` | `https://paybypalm-backend.onrender.com` (main backend origin) |
+| `PAYSTACK_TEST_SECRET_KEY` | Private `sk_test_…` key from the same Paystack business as the backend |
+| `PAYSTACK_LIVE_SECRET_KEY` | Private `sk_live_…` key from that same business; server only |
 
 Keep `SESSION_ENCRYPTION_KEY` stable across deployments so existing cookies remain
 valid. To generate a replacement privately, run
@@ -269,12 +270,31 @@ subaccount codes are preserved. The main payment backend already reads
 `merchants.paystack_subaccount`; it needs no change to use a newly created live
 code. Sandbox codes use a separate `paystack_test_subaccount` column.
 
-Configure `PAYSTACK_MODE` and the matching `PAYSTACK_SECRET_KEY` in the **admin
-Vercel project’s server environment**, then deploy the admin app. Use the same
-Paystack business as Render. No Paystack key belongs in a frontend `VITE_`
-variable or on a Pi. The admin server defaults to test mode and rejects a key
-whose prefix does not match its explicit mode. With no key, merchant and terminal
-management remain available, and Bank payouts explains the missing setup.
+Configure `PAYMENT_API_BASE_URL`, `PAYSTACK_TEST_SECRET_KEY` and
+`PAYSTACK_LIVE_SECRET_KEY` once in the **admin Vercel project’s server environment**,
+then deploy the backend and admin changes. The backend exposes only its non-secret
+`paymentMode` at `/payment-settings`. The admin reads it at runtime and uses the
+corresponding private server key. It no longer has an independent `PAYSTACK_MODE`;
+any old admin value can be removed and is ignored. Existing `PAYSTACK_SECRET_KEY`
+remains compatible only when its prefix matches the backend's active mode. To
+switch automatically in both directions, configure the two named keys once.
+
+After setup, change only `PAYSTACK_MODE` and its matching `PAYSTACK_SECRET_KEY`
+on the main backend, then redeploy that backend. Admin Bank payouts updates on
+focus, every 30 seconds while visible, and before creation. Test/live subaccounts
+remain separate. Mode changes clear bank verification and consent, so the operator
+must verify and confirm again. Every creation rechecks the backend after its
+atomic database claim and before Paystack's POST. An already accepted POST is
+completed using its original key and mode; it is never replayed in another mode.
+Reconcile pending work before switching environments.
+
+For a locally running main backend, set `PAYMENT_API_BASE_URL=http://127.0.0.1:8080`
+in `admin/.env`. Otherwise local admin follows the configured Render backend.
+The setting must be an HTTPS origin (HTTP loopback is allowed for development).
+If the backend is unreachable or returns an invalid mode, bank payouts pause
+without assuming test or live. Missing keys disable payouts only for their mode;
+merchant and terminal management remain available. No Paystack secret belongs
+in a frontend `VITE_` variable, the wallet, or a Pi.
 
 A resolved name is displayed before the operator confirms account details and
 PayByPalm's share. The default share is 0%, shown explicitly and confirmed before

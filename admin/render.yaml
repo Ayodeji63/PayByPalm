@@ -28,7 +28,9 @@ services:
         sync: false
       - key: TERMINAL_URL
         value: https://pay-by-palm.vercel.app/terminal
-      - key: PAYSTACK_MODE
+      - key: PAYMENT_API_BASE_URL
+        value: https://paybypalm-backend.onrender.com
+      - key: PAYSTACK_TEST_SECRET_KEY
         sync: false
-      - key: PAYSTACK_SECRET_KEY
+      - key: PAYSTACK_LIVE_SECRET_KEY
         sync: false
