@@ -131,6 +131,10 @@ export const TENCENT_ERROR_CODES: Readonly<Record<number, TencentFailure>> = Obj
 });
 
 export const isTencentSearchMiss = (code?: number): boolean => code === 1001013 || code === 2080010;
+/** Only a 1:1 candidate exclusion: this account has no template for this hand.
+ * Never interpret transport, auth, quality, or missing-user errors as a miss. */
+export const isTencentCompareDirectionAbsent = (code?: number, httpStatus?: number): boolean =>
+  (httpStatus === undefined || httpStatus === 200 || httpStatus === 400) && (code === 1001025 || code === 2080017);
 /** Only valid for a GetPalm absence check, never for arbitrary operations. */
 export const isTencentPalmAbsent = (code?: number, httpStatus?: number): boolean =>
   (httpStatus === undefined || httpStatus === 200) && (code === 1001012 || code === 2080009);

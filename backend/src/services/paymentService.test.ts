@@ -9,6 +9,7 @@ vi.mock('../palm/index.js',()=>({palm:{search:m.search,compare:m.compare,compare
 vi.mock('./palmCaptureService.js',()=>({getActivePalmCandidates:m.candidates,consumePalmCapture:m.consume,issuePalmCapture:m.issue}));
 vi.mock('../lib/image.js',()=>({normaliseImage:(data:string)=>({data})}));
 import {authenticateTransaction,authenticateSdkTransaction,beginPaymentCapture,matchPalmCandidates,confirmTransaction,cancelTransaction,createTransaction} from './paymentService.js';
+import {PalmProviderError} from '../errors.js';
 const terminal={id:'terminal',merchantId:'merchant',merchantName:'Merchant',label:'Counter'};
 const profile={id:'payer',full_name:'Payer',pin_hash:null,palm_enrolled:true};
 const pending={id:'txn',terminal_id:'terminal',amount_minor:100,status:'pending'};
@@ -17,6 +18,18 @@ const settled={...auth,status:'settled',settled_at:new Date().toISOString()};
 const log={info:vi.fn(),warn:vi.fn()} as any;
 beforeEach(()=>{vi.clearAllMocks();m.ready.mockReset();m.settings.PALM_PROVIDER="mock";m.settings.PAYSTACK_MODE="test";m.settings.TENCENT_CAPTURE_MODE="legacy";m.settings.TENCENT_H5_IMAGE_ONLY_APPROVED=false;m.single.mockReset();m.profile.mockResolvedValue(profile);m.search.mockResolvedValue({userId:'payer',score:92});m.compare.mockResolvedValue({isMatch:true,score:92});m.candidates.mockResolvedValue([{id:'binding',user_id:'payer',tencent_palm_id:'palm-id'}]);m.consume.mockResolvedValue({userId:'payer',capture:{}});m.compareCapture.mockResolvedValue({isMatch:true,score:92});m.charge.mockResolvedValue(undefined);});
 describe('direct card payment policy',()=>{
+ it.each(['legacy','h5'])('checks the next enrolled user after a missing hand without charging during %s authentication',async mode=>{
+  m.settings.PALM_PROVIDER='tencent';m.settings.TENCENT_CAPTURE_MODE=mode;
+  m.candidates.mockResolvedValue([{id:'opposite-binding',user_id:'other-payer',tencent_palm_id:'other-palm'},{id:'binding',user_id:'payer',tencent_palm_id:'palm-id'}]);
+  m.consume.mockResolvedValue({userId:'payer',capture:{}});
+  const compare=mode==='h5'?m.compareCapture:m.compare;
+  compare.mockRejectedValueOnce(new PalmProviderError('hand absent',{providerCode:2080017,httpStatus:200})).mockResolvedValueOnce({isMatch:true,score:95});
+  m.single.mockResolvedValueOnce({data:pending}).mockResolvedValueOnce({data:{id:'card',last4:'4081'}}).mockResolvedValueOnce({data:auth});
+  const outcome=mode==='h5'?await authenticateSdkTransaction('txn',terminal,{captureId:'capture',payload:'opaque'},log):await authenticateTransaction('txn',terminal,'image',undefined,log);
+  expect(outcome).toMatchObject({decision:'accept',cardLast4:'4081'});
+  expect(compare.mock.calls.map(([user])=>user)).toEqual(['other-payer','payer']);
+  expect(m.update).toHaveBeenCalledWith(expect.objectContaining({matched_user_id:'payer'}));expect(m.charge).not.toHaveBeenCalled();expect(m.search).not.toHaveBeenCalled();
+ });
  it('checks payment setup before persisting authorization or offering card confirmation',async()=>{
   m.single.mockResolvedValue({data:pending});m.ready.mockImplementation(()=>{throw Object.assign(new Error('missing payment configuration'),{code:'card_payment_not_configured',status:503});});
   await expect(authenticateTransaction('txn',terminal,'image',undefined,log)).rejects.toMatchObject({code:'card_payment_not_configured',status:503});
@@ -60,6 +73,47 @@ describe('direct card payment policy',()=>{
 
 describe('complete 1:1 candidate sweep',()=>{
  const candidates=Array.from({length:12},(_,i)=>({id:`binding-${i}`,user_id:`user-${i}`,tencent_palm_id:`palm-${i}`}));
+ it.each([1001025,2080017])('continues after direction code %s before and after a unique positive match',async code=>{
+  for(const index of [0,1]){
+   const compare=vi.fn(async(user:string)=>{
+    if(user===`user-${index}`)return {isMatch:true,score:95};
+    throw new PalmProviderError('hand absent',{providerCode:code,httpStatus:400});
+   });
+   expect(await matchPalmCandidates(candidates,compare)).toMatchObject({userId:`user-${index}`,outcome:{decision:'accept'}});expect(compare).toHaveBeenCalledTimes(12);
+  }
+ });
+ it('rejects when none of the enrolled accounts has the scanned hand',async()=>{
+  const compare=vi.fn().mockRejectedValue(new PalmProviderError('hand absent',{providerCode:2080017}));
+  expect(await matchPalmCandidates(candidates,compare)).toMatchObject({userId:null,outcome:{decision:'reject',reason:'no_match'}});expect(compare).toHaveBeenCalledTimes(12);
+ });
+ it('still rejects ambiguity when another candidate has no registration for this hand',async()=>{
+  const compare=vi.fn().mockRejectedValueOnce(new PalmProviderError('hand absent',{providerCode:2080017})).mockResolvedValue({isMatch:true,score:95});
+  expect(await matchPalmCandidates(candidates,compare)).toMatchObject({userId:null,outcome:{reason:'ambiguous_match'}});expect(compare).toHaveBeenCalledTimes(12);
+ });
+ it.each([999,2080023,2080003,2080004,2080006,2080016,1001023,1001024])('keeps provider failure %s fatal even after finding a match',async providerCode=>{
+  const failure=new PalmProviderError('provider failed',{providerCode});
+  const compare=vi.fn().mockResolvedValueOnce({isMatch:true,score:95}).mockRejectedValueOnce(failure);
+  await expect(matchPalmCandidates(candidates,compare)).rejects.toBe(failure);
+ });
+ it.each([401,403,429,500,502,503])('does not suppress missing-hand codes returned with HTTP %s',async httpStatus=>{
+  const failure=new PalmProviderError('unavailable',{providerCode:2080017,httpStatus});
+  await expect(matchPalmCandidates(candidates,vi.fn().mockRejectedValue(failure))).rejects.toBe(failure);
+ });
+ it('does not suppress unrelated errors carrying a lookalike provider code',async()=>{
+  const failure=Object.assign(new Error('unrelated'),{providerCode:2080017});
+  await expect(matchPalmCandidates(candidates,vi.fn().mockRejectedValue(failure))).rejects.toBe(failure);
+ });
+ it.each([null,undefined])('rejects an empty comparison after a positive match: %j',async value=>{
+  const compare=vi.fn().mockResolvedValueOnce({isMatch:true,score:95}).mockResolvedValueOnce(value);
+  await expect(matchPalmCandidates(candidates,compare)).rejects.toMatchObject({code:'palm_comparison_invalid'});
+ });
+ it('enforces the sweep deadline even when a direction-missing response arrives late',async()=>{
+  const clock=vi.spyOn(Date,'now').mockReturnValue(0);
+  try{
+   const compare=vi.fn(async()=>{clock.mockReturnValue(45001);throw new PalmProviderError('hand absent',{providerCode:2080017});});
+   await expect(matchPalmCandidates(candidates,compare)).rejects.toMatchObject({code:'palm_comparison_incomplete'});expect(compare).toHaveBeenCalledTimes(1);
+  }finally{clock.mockRestore();}
+ });
  it('compares every enrolled candidate, including beyond ten',async()=>{const compare=vi.fn(async(userId:string)=>({isMatch:userId==='user-11',score:userId==='user-11'?95:10}));expect(await matchPalmCandidates(candidates,compare)).toMatchObject({userId:'user-11',outcome:{decision:'accept'}});expect(compare).toHaveBeenCalledTimes(12);});
  it('does not accept the highest score when Tencent says not matched',async()=>{expect(await matchPalmCandidates(candidates,async()=>({isMatch:false,score:99}))).toMatchObject({userId:null,outcome:{decision:'reject'}});});
  it('rejects multiple provider matches instead of choosing the first or highest',async()=>{expect(await matchPalmCandidates(candidates,async()=>({isMatch:true,score:95}))).toMatchObject({userId:null,outcome:{reason:'ambiguous_match'}});});

@@ -7,7 +7,7 @@ import {
   maskName,
   type Profile,
 } from '../db/queries.js';
-import { AppError, conflict, fromPostgresError, notFound } from '../errors.js';
+import { AppError, PalmProviderError, conflict, fromPostgresError, notFound } from '../errors.js';
 import { normaliseImage } from '../lib/image.js';
 import { palm } from '../palm/index.js';
 import { decide, explain, rejectWithout, thresholds, type PolicyOutcome } from '../palm/policy.js';
@@ -17,6 +17,7 @@ import { chargeCardPayment } from './cardPaymentService.js';
 import { requirePaystack, paystackDomain } from './paystack.js';
 import { consumePalmCapture, getActivePalmCandidates, issuePalmCapture, type CaptureSubmission, type PalmCandidate } from './palmCaptureService.js';
 import type { CompareResult } from '../palm/provider.js';
+import { isTencentCompareDirectionAbsent } from '../palm/tencentErrors.js';
 
 export interface TransactionRow {
   id: string;
@@ -118,11 +119,22 @@ export async function matchPalmCandidates(
   const matches: { userId: string; score: number }[] = [];
   for (const candidate of candidates) {
     if (Date.now() >= deadline) throw new AppError(503, 'palm_comparison_incomplete', 'The palm check took too long. No payment was authorized. Please try again.');
-    const result = await compare(candidate.user_id);
-    if (typeof result.isMatch !== 'boolean' || !Number.isFinite(result.score) || result.score < 0 || result.score > 100) {
-      throw new AppError(502, 'palm_comparison_invalid', 'The palm service returned an invalid comparison. Please scan again.');
+    let result: CompareResult | undefined;
+    let directionAbsent = false;
+    try {
+      result = await compare(candidate.user_id);
+    } catch (error) {
+      // The audited provider has already retained the original code/request ID.
+      // An account enrolled with the opposite hand is not a possible match for
+      // this capture; continue the sweep instead of blocking every other user.
+      if (!(error instanceof PalmProviderError) || !isTencentCompareDirectionAbsent(error.providerCode, error.providerHttpStatus)) throw error;
+      directionAbsent = true;
     }
     if (Date.now() >= deadline) throw new AppError(503, 'palm_comparison_incomplete', 'The palm check took too long. Please scan again.');
+    if (directionAbsent) continue;
+    if (!result || typeof result.isMatch !== 'boolean' || !Number.isFinite(result.score) || result.score < 0 || result.score > 100) {
+      throw new AppError(502, 'palm_comparison_invalid', 'The palm service returned an invalid comparison. Please scan again.');
+    }
     if (result.isMatch) matches.push({ userId: candidate.user_id, score: result.score });
   }
   if (matches.length !== 1) return { outcome: rejectWithout(matches.length ? 'ambiguous_match' : 'no_match'), userId: null };

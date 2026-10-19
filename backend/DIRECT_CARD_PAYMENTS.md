@@ -7,6 +7,15 @@ fallback, or terminal PIN/OTP prompt. Marginal palm scores require another scan.
 A bank can still decline or require issuer authentication; that never counts as
 a successful payment. Initial card linking may require bank authentication.
 
+## Comparing enrolled palms
+
+The 1:1 candidate sweep treats Tencent's `2080017` / `1001025` as a definitive
+exclusion for that candidate's missing hand direction, then checks the remaining
+active bindings. The provider audit retains the original error and request ID.
+This never counts as a positive match: exactly one explicit match is still
+required. Missing users, application/configuration errors, image quality or
+liveness failures, transport failures and ambiguous matches block authorization.
+
 ## Enable in the test environment
 
 1. Apply `supabase/migrations/0018_card_payments.sql` in Supabase SQL Editor after

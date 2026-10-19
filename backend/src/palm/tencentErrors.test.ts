@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {classifyTencentError,isTencentPalmAbsent,isTencentSearchMiss,TENCENT_ERROR_CODES} from './tencentErrors.js';
+import {classifyTencentError,isTencentPalmAbsent,isTencentSearchMiss,isTencentCompareDirectionAbsent,TENCENT_ERROR_CODES} from './tencentErrors.js';
 
 describe('published Tencent RGB error identities',()=>{
   it.each([
@@ -39,6 +39,13 @@ describe('published Tencent RGB error identities',()=>{
     for(const code of Object.keys(TENCENT_ERROR_CODES).map(Number)){
       expect(isTencentSearchMiss(code)).toBe([1001013,2080010].includes(code));
       expect(isTencentPalmAbsent(code)).toBe([1001012,2080009].includes(code));
+      expect(isTencentCompareDirectionAbsent(code)).toBe([1001025,2080017].includes(code));
+    }
+  });
+  it('never treats HTTP authentication, throttling or server failures as a definitive missing direction',()=>{
+    for(const code of [1001025,2080017]){
+      for(const status of [200,400])expect(isTencentCompareDirectionAbsent(code,status)).toBe(true);
+      for(const status of [401,403,429,500,502,503])expect(isTencentCompareDirectionAbsent(code,status)).toBe(false);
     }
   });
 });
