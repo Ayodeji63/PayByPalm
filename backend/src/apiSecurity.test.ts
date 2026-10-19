@@ -172,6 +172,15 @@ describe('API security boundaries', () => {
     const result=await response.json() as {error:{code:string;message:string}};expect(result.error.code).toBe('card_payment_not_configured');
     expect(result.error.message).toContain('Card payments');expect(JSON.stringify(result)).not.toContain('private diagnostic');
   });
+  it('explains missing live merchant settlement without exposing database diagnostics',async()=>{
+    mocks.confirm.mockRejectedValue(new AppError(503,'merchant_settlement_missing','private SQL diagnostic'));
+    const response=await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/confirm',{}, {'X-Terminal-Key':'test'});
+    expect(response.status).toBe(503);
+    const result=await response.json() as {error:{code:string;message:string};requestId:string};
+    expect(result.error.code).toBe('merchant_settlement_missing');
+    expect(result.error.message).toContain('payout setup is incomplete');
+    expect(result.requestId).toBeTruthy();expect(JSON.stringify(result)).not.toContain('private SQL');
+  });
   it('passes an opaque SDK capture to the server verifier rather than trusting a client match',async()=>{
     mocks.authenticateSdk.mockResolvedValue({decision:'reject',mode:'compare',score:null});
     const result=await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/authenticate',{captureId:'dddddddd-dddd-4ddd-dddd-dddddddddddd',payload:'opaque-capture'},{'X-Terminal-Key':'test'});

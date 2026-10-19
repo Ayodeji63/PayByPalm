@@ -189,7 +189,7 @@ export default function TerminalApp() {
         amountMinor: receipt.amountMinor,
       });
     } catch (err) {
-      const message = err instanceof TerminalApiError ? err.message : 'Payment failed.';
+      const message = recoveryError(err);
 
       void leds.state('ERROR');
       setStepUpError(message);

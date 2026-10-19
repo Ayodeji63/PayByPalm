@@ -324,6 +324,10 @@ test('an account marked unlinked can still remove a retained provider registrati
   assert.equal(h.refreshCount(),1);
 });
 
+class FixtureTerminalApiError extends Error {
+  constructor(message,requestId){super(message);this.requestId=requestId;}
+}
+
 function terminalHarness(terminalApi, sessionStorage = storage()) {
   const states = [];
   let index = 0;
@@ -340,7 +344,7 @@ function terminalHarness(terminalApi, sessionStorage = storage()) {
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
     './leds.js': {beginLEDOperation:()=>({state:async()=>({available:false}),active:()=>true,close:()=>{}})},
-    './api.js': { terminalApi, TerminalApiError: class extends Error {} },
+    './api.js': { terminalApi, TerminalApiError: FixtureTerminalApiError },
     './paymentRecovery.js': recovery,
     './config.js': { resolveTerminalKey: () => 'device-key', TIMINGS: {} },
     './ui.js': { KioskFrame: 'Frame', Pane: 'Pane', TButton: 'Button' },
@@ -535,4 +539,20 @@ test('processing card payments recover the same sale without a PIN',async()=>{
  const app=terminalHarness({status:async()=>({status:'processing',amountMinor:100}),confirm:async(...args)=>{calls.push(args);return {transactionId:paymentId,amountMinor:100,settledAt:new Date().toISOString(),maskedName:'Payer',merchantName:'Merchant'};}},sessionStorage);
  app.find('Button','Check or retry this payment').props.onClick();await flushActions();
  assert.deepEqual(calls,[[paymentId]]);assert.equal(app.find('Result').props.ok,true);
+});
+
+
+test('failed confirmation keeps its sale and shows the API support reference',async()=>{
+ const app=terminalHarness({
+  createTransaction:async()=>({transactionId:paymentId,amountMinor:2000,status:'pending'}),
+  confirm:async()=>{throw new FixtureTerminalApiError('This merchant’s payout setup is incomplete.','fixture-support-id');},
+ });
+ app.find('Idle').props.onNewSale();app.find('Amount').props.onCharge(2000);await flushActions();
+ app.find('Capture').props.onOutcome({decision:'accept',pinRequired:false});
+ app.find('Confirm').props.onConfirm();await flushActions();
+ assert.ok(app.find('p','This merchant’s payout setup is incomplete. Support reference: fixture-support-id.'));
+ assert.ok(app.find('Button','Check or retry this payment'));
+ assert.equal(app.recovery.loadPendingSale().transactionId,paymentId);
+ assert.equal(app.recovery.loadPendingSale().confirming,true);
+ assert.equal(app.find('Result'),null);
 });

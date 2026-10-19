@@ -55,6 +55,8 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
       palm_unlink_incomplete: 'Palm removal could not be fully confirmed. Retry unlinking before enrolling again.',
       payment_setup_required: 'Sales are unavailable until the administrator applies the terminal sale recovery database update.',
       card_link_not_configured: 'Card linking is not configured yet. Please contact support.',
+      merchant_settlement_missing: 'This merchant’s payout setup is incomplete. Ask the administrator to configure its live Paystack settlement account.',
+      card_payment_unavailable: 'Payment status is unavailable. Keep this sale open and check again.',
       card_payment_not_configured: 'Card payments are not configured on this server. Ask the administrator to check the Paystack settings.',
       card_mode_setup_required: 'Payment mode setup needs database migration 0022. Ask the administrator to complete the update.',
       payment_mode_mismatch: 'The payment key does not match this server’s payment mode. Ask the administrator to check the Paystack settings.',
