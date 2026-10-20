@@ -558,22 +558,7 @@ export function BottomNav() {
           aria-label="Scan palm"
           className="relative -top-5 flex h-13 w-13 items-center justify-center rounded-full bg-[#2851c5] text-white shadow-md shadow-slate-900/20 ring-4 ring-white active:scale-95 transition-all"
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path
-              d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {/* Palm / biometric scanner lines in centre */}
-            <path
-              d="M9 12h6M9 9.5h6M10 14.5h4"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-            />
-          </svg>
+          <PalmScanIcon className="h-8 w-8" />
         </Link>
 
         <NavItem
@@ -659,6 +644,40 @@ export function PalmIcon({ className = '' }: { className?: string }) {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+/** Decorative scan cue only; does not start the camera or imply verification. */
+export function PalmScanIcon({ className = '' }: { className?: string }) {
+  const root = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    const element = root.current;
+    if (!element) return;
+    let inView = false;
+    const update = () => {
+      element.dataset.scanVisible = String(inView && !document.hidden);
+    };
+    const observer = new IntersectionObserver(([entry]) => {
+      inView = entry?.isIntersecting ?? false;
+      update();
+    });
+    observer.observe(element);
+    document.addEventListener('visibilitychange', update);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener('visibilitychange', update);
+    };
+  }, []);
+
+  return (
+    <span ref={root} className={`wallet-palm-scan ${className}`} aria-hidden="true">
+      <PalmIcon className="wallet-palm-scan__palm" />
+      <svg className="wallet-palm-scan__frame" viewBox="0 0 32 32" fill="none">
+        <path d="M3 9V5a2 2 0 0 1 2-2h4M23 3h4a2 2 0 0 1 2 2v4M29 23v4a2 2 0 0 1-2 2h-4M9 29H5a2 2 0 0 1-2-2v-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+      <span className="wallet-palm-scan__beam" />
+    </span>
   );
 }
 

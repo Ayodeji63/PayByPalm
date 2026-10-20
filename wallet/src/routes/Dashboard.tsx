@@ -27,7 +27,7 @@ import { useAuth } from '../lib/auth.js';
 import { formatNaira } from '../lib/money.js';
 import { type LinkedCard } from '../lib/cardStore.js';
 import { useServerCards, editLinkedCard } from '../lib/serverCards.js';
-import { PalmIcon, Skeleton } from '../components/ui.js';
+import { PalmIcon, PalmScanIcon, Skeleton } from '../components/ui.js';
 import { BankCard } from '../components/BankCard.js';
 import { TransactionSheet } from '../components/sheets.js';
 import { PageTransition } from '../components/transitions.js';
@@ -323,7 +323,7 @@ export default function Dashboard() {
                 title={me.palmEnrolled ? 'Palm linked' : 'Palm not linked'}
                 aria-label={me.palmEnrolled ? 'Palm linked — manage palm' : 'Palm not linked — link palm'}
               >
-                <PalmIcon className="h-5 w-5 text-white" />
+                <PalmScanIcon className="h-7 w-7 text-white" />
                 {me.palmEnrolled && <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center">
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400 ring-2 ring-[#0f2468]" />
                 </span>}
