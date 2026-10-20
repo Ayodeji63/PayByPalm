@@ -345,3 +345,14 @@ npm produces the “installed by a different package manager” notices; these d
 not describe an application error. Vercel and Render keep their explicit npm
 installation commands. No package-manager upgrade or payment configuration change
 is required for this fix.
+
+## Merchant portal access
+
+Open a merchant record → **Merchant portal access**. Enter an existing verified
+PayByPalm account email and choose **Grant merchant access**. Owners sign into
+`merchant.paybypalm.app` with their own account; the grant gives read-only business
+report access, without administrator privileges. **Revoke access** removes that
+business grant after confirmation. This works with existing merchants such as Ayo
+Stores and does not reprovision their terminals. Apply
+[0024_merchant_portal.sql](../supabase/migrations/0024_merchant_portal.sql) first.
+See [merchant setup and reporting rules](../merchant/README.md).

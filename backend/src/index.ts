@@ -30,6 +30,7 @@ import { paystackWebhookRouter } from './routes/paystackWebhook.js';
 import { startCardPaymentReconciliation } from './services/cardPaymentService.js';
 import { startCardReconciliation } from './services/cardLinkService.js';
 import { walletRouter } from './routes/wallet.js';
+import { merchantRouter } from './routes/merchant.js';
 
 export function createApp(): express.Express {
   const app = express();
@@ -74,6 +75,7 @@ export function createApp(): express.Express {
   app.use(healthRouter);
   app.use(authRouter);
   app.use(walletRouter);
+  app.use(merchantRouter);
   app.use(cardsRouter);
   app.use(terminalRouter);
   app.use(enrolRouter);

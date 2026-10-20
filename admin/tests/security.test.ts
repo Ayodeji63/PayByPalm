@@ -418,3 +418,36 @@ describe("device and session material", () => {
     ).toThrow();
   });
 });
+
+describe('merchant portal access administration',()=>{
+ it('requires administrator authentication for access grants',async()=>{
+  expect((await send(`/api/merchants/${merchantId}/access`,{email:'owner@example.test'})).status).toBe(401);
+  expect(rpc.mock.calls.some(([name])=>name==='admin_grant_merchant_access')).toBe(false);
+ });
+ it('rejects customer metadata roles before granting merchant access',async()=>{
+  getUser.mockResolvedValue({data:{user:{...user,id:otherId,user_metadata:{role:'admin'}}},error:null});
+  expect((await send(`/api/merchants/${merchantId}/access`,{email:'owner@example.test'},{cookie:cookie()})).status).toBe(403);
+  expect(rpc.mock.calls.some(([name])=>name==='admin_grant_merchant_access')).toBe(false);
+ });
+ it('binds grant attribution to the verified administrator',async()=>{
+  const r=await send(`/api/merchants/${merchantId}/access`,{email:'OWNER@example.test'},{cookie:cookie()});expect(r.status).toBe(200);
+  expect(rpc).toHaveBeenCalledWith('admin_grant_merchant_access',{p_actor:adminId,p_merchant:merchantId,p_email:'owner@example.test'});
+ });
+ it('rejects actor and role mass assignment',async()=>{
+  expect((await send(`/api/merchants/${merchantId}/access`,{email:'owner@example.test',actor:otherId,role:'admin'},{cookie:cookie()})).status).toBe(400);
+  expect(rpc.mock.calls.some(([name])=>name==='admin_grant_merchant_access')).toBe(false);
+ });
+ it('explains that the target account must already be verified',async()=>{
+  rpc.mockImplementation(async(name:string)=>name==='consume_api_budget'?{data:0,error:null}:{data:null,error:{code:'MA405'}});
+  const r=await send(`/api/merchants/${merchantId}/access`,{email:'owner@example.test'},{cookie:cookie()});expect(r.status).toBe(400);expect((await r.json()).error.code).toBe('verified_account_required');
+ });
+ it('requires the observed update timestamp before revoking access',async()=>{
+  expect((await send(`/api/merchants/${merchantId}/access/${otherId}/revoke`,{},{cookie:cookie()})).status).toBe(400);
+  const expected='2026-10-19T00:00:00Z';expect((await send(`/api/merchants/${merchantId}/access/${otherId}/revoke`,{expected},{cookie:cookie()})).status).toBe(204);
+  expect(rpc).toHaveBeenCalledWith('admin_revoke_merchant_access',{p_actor:adminId,p_merchant:merchantId,p_user:otherId,p_expected:expected});
+ });
+ it('does not silently revoke a grant that changed concurrently',async()=>{
+  rpc.mockImplementation(async(name:string)=>name==='consume_api_budget'?{data:0,error:null}:{data:null,error:{code:'MA409'}});
+  expect((await send(`/api/merchants/${merchantId}/access/${otherId}/revoke`,{expected:'2026-10-19T00:00:00Z'},{cookie:cookie()})).status).toBe(409);
+ });
+});

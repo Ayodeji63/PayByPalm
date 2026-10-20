@@ -52,6 +52,7 @@ const terminals = [
   },
 ];
 const activity = [];
+let accessMembers=[];
 let signedIn = false,
   failCreate = true,
   terminalHash = "",
@@ -80,6 +81,9 @@ await context.route("**/api/**", async (route) => {
       terminalUrl: "https://pay-by-palm.vercel.app/terminal",
       fixture: true,
     };
+  else if(/^\/api\/merchants\/[^/]+\/access$/.test(path)){
+    if(req.method()==='POST'){assert.equal(req.postDataJSON().email,'merchant-owner@example.test');accessMembers=[{id:randomUUID(),user_id:randomUUID(),email:'merchant-owner@example.test',created_at:now,updated_at:now}];data={member:accessMembers[0]};}else data={members:accessMembers};
+  }else if(/^\/api\/merchants\/[^/]+\/access\/[^/]+\/revoke$/.test(path)){assert.equal(req.postDataJSON().expected,now);accessMembers=[];status=204;}
   else if(path==='/api/payouts/banks')data={mode:paymentMode,enabled:true,banks:[{code:'058',name:'Fixture Bank'}]};
   else if(path==='/api/payouts/verify'){
     const body=req.postDataJSON();assert.equal(body.bankCode,'058');assert.equal(body.accountNumber,'0123456789');
@@ -227,6 +231,16 @@ try {
     .waitFor();
   assert.equal(merchantRequests, 2);
   assert.equal(merchants.length, 5);
+  await page.getByRole('heading',{name:'Merchant portal access',exact:true}).waitFor();
+  await page.getByLabel('Verified account email').fill('merchant-owner@example.test');
+  await page.getByRole('button',{name:'Grant merchant access',exact:true}).click();
+  await page.getByText('merchant-owner@example.test',{exact:true}).waitFor();
+  await screenshot('merchant-access-desktop');
+  await page.getByRole('button',{name:'Revoke access',exact:true}).click();
+  assert.equal(accessMembers.length,1);await page.getByRole('button',{name:'Keep access',exact:true}).click();
+  await page.getByRole('button',{name:'Revoke access',exact:true}).click();
+  await page.getByRole('button',{name:'Confirm revoke',exact:true}).click();
+  await page.getByText('No accounts have portal access to this business yet.',{exact:true}).waitFor();assert.equal(accessMembers.length,0);
   await page.getByRole('heading',{name:'Bank payouts',exact:true}).waitFor();
   await page.getByLabel('Settlement bank',{exact:true}).selectOption('058');
   await page.getByLabel('Account number',{exact:true}).fill('0123456789');

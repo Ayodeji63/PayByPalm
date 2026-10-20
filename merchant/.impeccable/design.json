@@ -1,0 +1,442 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-20T00:30:45.764118+00:00",
+  "title": "Design System: PayByPalm Merchant workspace",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Primary",
+        "tonalRamp": [
+          "oklch(15% 0.1960 264.08)",
+          "oklch(26.4% 0.1960 264.08)",
+          "oklch(37.9% 0.1960 264.08)",
+          "oklch(49.3% 0.1960 264.08)",
+          "oklch(60.7% 0.1960 264.08)",
+          "oklch(72.1% 0.1960 264.08)",
+          "oklch(83.6% 0.1960 264.08)",
+          "oklch(95% 0.1960 264.08)"
+        ]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Primary Hover",
+        "tonalRamp": [
+          "oklch(15% 0.1636 263.84)",
+          "oklch(26.4% 0.1636 263.84)",
+          "oklch(37.9% 0.1636 263.84)",
+          "oklch(49.3% 0.1636 263.84)",
+          "oklch(60.7% 0.1636 263.84)",
+          "oklch(72.1% 0.1636 263.84)",
+          "oklch(83.6% 0.1636 263.84)",
+          "oklch(95% 0.1636 263.84)"
+        ]
+      },
+      "primary-soft": {
+        "role": "primary",
+        "displayName": "Primary Soft",
+        "tonalRamp": [
+          "oklch(15% 0.0182 269.09)",
+          "oklch(26.4% 0.0182 269.09)",
+          "oklch(37.9% 0.0182 269.09)",
+          "oklch(49.3% 0.0182 269.09)",
+          "oklch(60.7% 0.0182 269.09)",
+          "oklch(72.1% 0.0182 269.09)",
+          "oklch(83.6% 0.0182 269.09)",
+          "oklch(95% 0.0182 269.09)"
+        ]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Canvas",
+        "tonalRamp": [
+          "oklch(15% 0.0057 264.53)",
+          "oklch(26.4% 0.0057 264.53)",
+          "oklch(37.9% 0.0057 264.53)",
+          "oklch(49.3% 0.0057 264.53)",
+          "oklch(60.7% 0.0057 264.53)",
+          "oklch(72.1% 0.0057 264.53)",
+          "oklch(83.6% 0.0057 264.53)",
+          "oklch(95% 0.0057 264.53)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "tonalRamp": [
+          "oklch(15% 0.0000 0.00)",
+          "oklch(26.4% 0.0000 0.00)",
+          "oklch(37.9% 0.0000 0.00)",
+          "oklch(49.3% 0.0000 0.00)",
+          "oklch(60.7% 0.0000 0.00)",
+          "oklch(72.1% 0.0000 0.00)",
+          "oklch(83.6% 0.0000 0.00)",
+          "oklch(95% 0.0000 0.00)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "tonalRamp": [
+          "oklch(15% 0.0511 262.46)",
+          "oklch(26.4% 0.0511 262.46)",
+          "oklch(37.9% 0.0511 262.46)",
+          "oklch(49.3% 0.0511 262.46)",
+          "oklch(60.7% 0.0511 262.46)",
+          "oklch(72.1% 0.0511 262.46)",
+          "oklch(83.6% 0.0511 262.46)",
+          "oklch(95% 0.0511 262.46)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "tonalRamp": [
+          "oklch(15% 0.0410 258.83)",
+          "oklch(26.4% 0.0410 258.83)",
+          "oklch(37.9% 0.0410 258.83)",
+          "oklch(49.3% 0.0410 258.83)",
+          "oklch(60.7% 0.0410 258.83)",
+          "oklch(72.1% 0.0410 258.83)",
+          "oklch(83.6% 0.0410 258.83)",
+          "oklch(95% 0.0410 258.83)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Line",
+        "tonalRamp": [
+          "oklch(15% 0.0133 262.38)",
+          "oklch(26.4% 0.0133 262.38)",
+          "oklch(37.9% 0.0133 262.38)",
+          "oklch(49.3% 0.0133 262.38)",
+          "oklch(60.7% 0.0133 262.38)",
+          "oklch(72.1% 0.0133 262.38)",
+          "oklch(83.6% 0.0133 262.38)",
+          "oklch(95% 0.0133 262.38)"
+        ]
+      },
+      "field-line": {
+        "role": "neutral",
+        "displayName": "Field Line",
+        "tonalRamp": [
+          "oklch(15% 0.0234 258.36)",
+          "oklch(26.4% 0.0234 258.36)",
+          "oklch(37.9% 0.0234 258.36)",
+          "oklch(49.3% 0.0234 258.36)",
+          "oklch(60.7% 0.0234 258.36)",
+          "oklch(72.1% 0.0234 258.36)",
+          "oklch(83.6% 0.0234 258.36)",
+          "oklch(95% 0.0234 258.36)"
+        ]
+      },
+      "control-line": {
+        "role": "neutral",
+        "displayName": "Control Line",
+        "tonalRamp": [
+          "oklch(15% 0.0186 258.35)",
+          "oklch(26.4% 0.0186 258.35)",
+          "oklch(37.9% 0.0186 258.35)",
+          "oklch(49.3% 0.0186 258.35)",
+          "oklch(60.7% 0.0186 258.35)",
+          "oklch(72.1% 0.0186 258.35)",
+          "oklch(83.6% 0.0186 258.35)",
+          "oklch(95% 0.0186 258.35)"
+        ]
+      },
+      "focus": {
+        "role": "neutral",
+        "displayName": "Focus",
+        "tonalRamp": [
+          "oklch(15% 0.1326 266.16)",
+          "oklch(26.4% 0.1326 266.16)",
+          "oklch(37.9% 0.1326 266.16)",
+          "oklch(49.3% 0.1326 266.16)",
+          "oklch(60.7% 0.1326 266.16)",
+          "oklch(72.1% 0.1326 266.16)",
+          "oklch(83.6% 0.1326 266.16)",
+          "oklch(95% 0.1326 266.16)"
+        ]
+      },
+      "success-ink": {
+        "role": "neutral",
+        "displayName": "Success Ink",
+        "tonalRamp": [
+          "oklch(15% 0.0931 153.34)",
+          "oklch(26.4% 0.0931 153.34)",
+          "oklch(37.9% 0.0931 153.34)",
+          "oklch(49.3% 0.0931 153.34)",
+          "oklch(60.7% 0.0931 153.34)",
+          "oklch(72.1% 0.0931 153.34)",
+          "oklch(83.6% 0.0931 153.34)",
+          "oklch(95% 0.0931 153.34)"
+        ]
+      },
+      "success-soft": {
+        "role": "neutral",
+        "displayName": "Success Soft",
+        "tonalRamp": [
+          "oklch(15% 0.0173 159.12)",
+          "oklch(26.4% 0.0173 159.12)",
+          "oklch(37.9% 0.0173 159.12)",
+          "oklch(49.3% 0.0173 159.12)",
+          "oklch(60.7% 0.0173 159.12)",
+          "oklch(72.1% 0.0173 159.12)",
+          "oklch(83.6% 0.0173 159.12)",
+          "oklch(95% 0.0173 159.12)"
+        ]
+      },
+      "warning-ink": {
+        "role": "neutral",
+        "displayName": "Warning Ink",
+        "tonalRamp": [
+          "oklch(15% 0.1013 74.15)",
+          "oklch(26.4% 0.1013 74.15)",
+          "oklch(37.9% 0.1013 74.15)",
+          "oklch(49.3% 0.1013 74.15)",
+          "oklch(60.7% 0.1013 74.15)",
+          "oklch(72.1% 0.1013 74.15)",
+          "oklch(83.6% 0.1013 74.15)",
+          "oklch(95% 0.1013 74.15)"
+        ]
+      },
+      "warning-soft": {
+        "role": "neutral",
+        "displayName": "Warning Soft",
+        "tonalRamp": [
+          "oklch(15% 0.0308 86.46)",
+          "oklch(26.4% 0.0308 86.46)",
+          "oklch(37.9% 0.0308 86.46)",
+          "oklch(49.3% 0.0308 86.46)",
+          "oklch(60.7% 0.0308 86.46)",
+          "oklch(72.1% 0.0308 86.46)",
+          "oklch(83.6% 0.0308 86.46)",
+          "oklch(95% 0.0308 86.46)"
+        ]
+      },
+      "danger-ink": {
+        "role": "neutral",
+        "displayName": "Danger Ink",
+        "tonalRamp": [
+          "oklch(15% 0.1562 27.38)",
+          "oklch(26.4% 0.1562 27.38)",
+          "oklch(37.9% 0.1562 27.38)",
+          "oklch(49.3% 0.1562 27.38)",
+          "oklch(60.7% 0.1562 27.38)",
+          "oklch(72.1% 0.1562 27.38)",
+          "oklch(83.6% 0.1562 27.38)",
+          "oklch(95% 0.1562 27.38)"
+        ]
+      },
+      "danger-soft": {
+        "role": "neutral",
+        "displayName": "Danger Soft",
+        "tonalRamp": [
+          "oklch(15% 0.0198 25.17)",
+          "oklch(26.4% 0.0198 25.17)",
+          "oklch(37.9% 0.0198 25.17)",
+          "oklch(49.3% 0.0198 25.17)",
+          "oklch(60.7% 0.0198 25.17)",
+          "oklch(72.1% 0.0198 25.17)",
+          "oklch(83.6% 0.0198 25.17)",
+          "oklch(95% 0.0198 25.17)"
+        ]
+      },
+      "neutral-soft": {
+        "role": "neutral",
+        "displayName": "Neutral Soft",
+        "tonalRamp": [
+          "oklch(15% 0.0074 260.73)",
+          "oklch(26.4% 0.0074 260.73)",
+          "oklch(37.9% 0.0074 260.73)",
+          "oklch(49.3% 0.0074 260.73)",
+          "oklch(60.7% 0.0074 260.73)",
+          "oklch(72.1% 0.0074 260.73)",
+          "oklch(83.6% 0.0074 260.73)",
+          "oklch(95% 0.0074 260.73)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Operational page headings."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Panel headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Root interface text."
+      },
+      "field-label": {
+        "displayName": "Field Label",
+        "purpose": "Explicit form labels."
+      },
+      "table": {
+        "displayName": "Table",
+        "purpose": "Compact business records."
+      },
+      "metric": {
+        "displayName": "Metric",
+        "purpose": "Summary-strip financial and count values; tabular numerals."
+      },
+      "badge": {
+        "displayName": "Badge",
+        "purpose": "Worded status labels."
+      }
+    },
+    "shadows": [
+      {
+        "name": "payment-dialog",
+        "value": "0 18px 70px #14213a35",
+        "purpose": "Temporary native payment-detail modal only."
+      }
+    ],
+    "motion": [
+      {
+        "name": "spinner",
+        "value": "spin 0.8s linear infinite",
+        "purpose": "Labelled loading state; disabled by reduced-motion preference."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "wide-rail",
+        "value": "1600px"
+      },
+      {
+        "name": "compact-desktop",
+        "value": "1200px"
+      },
+      {
+        "name": "stacked-overview",
+        "value": "1000px"
+      },
+      {
+        "name": "mobile",
+        "value": "720px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The shared text action with visible keyboard focus.",
+      "html": "<button class=\"ds-button-primary\">Export payments</button>",
+      "css": ".ds-button-primary{font-family:Inter,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;display:inline-flex;align-items:center;justify-content:center;min-height:42px;gap:9px;padding:11px 16px;border:1px solid transparent;border-radius:8px;background:var(--blue,#2454ce);color:white;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}.ds-button-primary:hover{background:var(--blue-hover,#173e9f);}.ds-button-primary:focus-visible{outline:3px solid var(--focus,#84a8ff);outline-offset:3px}.ds-button-primary:disabled{opacity:.55;cursor:wait;}@media(max-width:720px){.ds-button-primary{min-height:44px;}}"
+    },
+    {
+      "name": "Secondary button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "The shared text action with visible keyboard focus.",
+      "html": "<button class=\"ds-button-secondary\">Refresh</button>",
+      "css": ".ds-button-secondary{font-family:Inter,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;display:inline-flex;align-items:center;justify-content:center;min-height:42px;gap:9px;padding:11px 16px;border:1px solid transparent;border-radius:8px;background:var(--blue,#2454ce);color:white;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}.ds-button-secondary{background:var(--surface,#fff);color:var(--ink,#14213a);border-color:#d7dfeb;}.ds-button-secondary:hover{background:#f0f4fc;}.ds-button-secondary:focus-visible{outline:3px solid var(--focus,#84a8ff);outline-offset:3px}.ds-button-secondary:disabled{opacity:.55;cursor:wait;}@media(max-width:720px){.ds-button-secondary{min-height:44px;}}"
+    },
+    {
+      "name": "Labelled input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Explicit label above a white field.",
+      "html": "<label class=\"ds-field\">Reference<input placeholder=\"Exact payment reference\" /></label>",
+      "css": ".ds-field{font-family:Inter,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;display:flex;flex-direction:column;gap:8px;font-size:13px;font-weight:550;color:var(--ink,#14213a);}.ds-field input{font:inherit;min-height:42px;min-width:0;padding:10px 12px;border:1px solid #cbd5e4;border-radius:7px;background:var(--surface,#fff);color:var(--ink,#14213a);}.ds-field input::placeholder{color:#64748b;}.ds-field input:focus-visible{outline:3px solid var(--focus,#84a8ff);outline-offset:3px}"
+    },
+    {
+      "name": "Active navigation",
+      "kind": "nav",
+      "refersTo": "nav-active",
+      "description": "Selected destination with icon, text and current-page semantics.",
+      "html": "<nav aria-label=\"Merchant navigation\"><a class=\"ds-nav\" href=\"#/overview\" aria-current=\"page\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 4h16v16H4V4Zm4 4h8M8 12h8m-8 4h5\"/></svg>Overview</a></nav>",
+      "css": ".ds-nav{font-family:Inter,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;display:flex;align-items:center;gap:12px;min-height:46px;padding:13px 12px;border-radius:8px;background:var(--blue-soft,#edf2ff);color:var(--blue,#2454ce);font-size:13px;font-weight:650;text-decoration:none;}.ds-nav:hover{text-decoration:none;}.ds-nav:focus-visible{outline:3px solid var(--focus,#84a8ff);outline-offset:3px}@media(max-width:720px){.ds-nav{flex-direction:column;gap:7px;min-width:74px;padding:11px 9px 12px;border-radius:7px 7px 0 0;font-size:11px;}}"
+    },
+    {
+      "name": "Paid badge",
+      "kind": "chip",
+      "refersTo": "badge-green",
+      "description": "Noninteractive worded state on a semantic soft fill.",
+      "html": "<span class=\"ds-badge-green\">Paid</span>",
+      "css": ".ds-badge-green{font-family:Inter,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;display:inline-flex;align-items:center;padding:5px 8px;border-radius:5px;font-size:10px;font-weight:600;white-space:nowrap;background:#eaf7ef;color:#24653d;}"
+    },
+    {
+      "name": "Processing badge",
+      "kind": "chip",
+      "refersTo": "badge-amber",
+      "description": "Noninteractive worded state on a semantic soft fill.",
+      "html": "<span class=\"ds-badge-amber\">Processing</span>",
+      "css": ".ds-badge-amber{font-family:Inter,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;display:inline-flex;align-items:center;padding:5px 8px;border-radius:5px;font-size:10px;font-weight:600;white-space:nowrap;background:#fff5df;color:#875b10;}"
+    },
+    {
+      "name": "Failed badge",
+      "kind": "chip",
+      "refersTo": "badge-red",
+      "description": "Noninteractive worded state on a semantic soft fill.",
+      "html": "<span class=\"ds-badge-red\">Failed</span>",
+      "css": ".ds-badge-red{font-family:Inter,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;display:inline-flex;align-items:center;padding:5px 8px;border-radius:5px;font-size:10px;font-weight:600;white-space:nowrap;background:#ffedeb;color:#a12a25;}"
+    },
+    {
+      "name": "Cancelled badge",
+      "kind": "chip",
+      "refersTo": "badge-neutral",
+      "description": "Noninteractive worded state on a semantic soft fill.",
+      "html": "<span class=\"ds-badge-neutral\">Cancelled</span>",
+      "css": ".ds-badge-neutral{font-family:Inter,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;display:inline-flex;align-items:center;padding:5px 8px;border-radius:5px;font-size:10px;font-weight:600;white-space:nowrap;background:#eef1f6;color:#58677e;}"
+    },
+    {
+      "name": "Work panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Flat white bordered content container.",
+      "html": "<section class=\"ds-panel\"><h2>Business details</h2><p>Contact your administrator to update these details or manage portal access.</p></section>",
+      "css": ".ds-panel{font-family:Inter,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;background:var(--surface,#fff);color:var(--ink,#14213a);border:1px solid var(--line,#e2e7f0);border-radius:12px;padding:23px;}.ds-panel h2{font-size:17px;line-height:1.4;letter-spacing:-.015em;margin:0 0 16px;}.ds-panel p{font-size:14px;line-height:1.7;color:var(--muted,#58677e);margin:0;}@media(max-width:720px){.ds-panel{padding:20px;}}"
+    },
+    {
+      "name": "Payout context",
+      "kind": "card",
+      "refersTo": "payout-panel",
+      "description": "Separate bank-settlement context and destination link.",
+      "html": "<section class=\"ds-payout\"><h2>Your bank payouts</h2><p>Your bank<br/>settlement details.</p><a href=\"#/settlements\">View settlements \u2192</a><small>Card payments and bank settlements have separate statuses.</small></section>",
+      "css": ".ds-payout{font-family:Inter,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;border:1px solid #d4e0ff;background:var(--blue-soft,#edf2ff);border-radius:12px;padding:24px;color:var(--ink,#14213a);}.ds-payout h2{font-size:14px;color:var(--blue,#2454ce);margin:0 0 24px;}.ds-payout p{font-size:23px;font-weight:600;line-height:1.4;letter-spacing:-.025em;color:#173e9f;margin:0 0 22px;}.ds-payout a{display:block;text-align:center;padding:11px 16px;min-height:42px;border:1px solid #d7dfeb;border-radius:8px;color:var(--ink,#14213a);background:white;font-size:12px;font-weight:600;text-decoration:none;margin-bottom:19px;}.ds-payout a:hover{background:#f0f4fc;}.ds-payout a:focus-visible{outline:3px solid var(--focus,#84a8ff);outline-offset:3px}.ds-payout small{display:block;font-size:11px;line-height:1.65;color:#405b8d;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "PayByPalm merchant workspace",
+    "overview": "The merchant app inherits the established PayByPalm blue identity: white work surfaces, navy text, restrained borders and tabular financial amounts. Compact controls and labelled statuses support reviewing business records, with a visibly separate Merchant workspace identity.\n\nThis is the built system, extracted from src/style.css, src/main.tsx and src/icons.tsx and checked against the desktop and mobile browser captures. The parent identity authority is ../admin/DESIGN.md; merchant-specific dimensions and states below describe this implementation. The operational overview and reconciliation rail belong to the surface contract in index.html, rather than defining every future screen.",
+    "keyCharacteristics": [
+      "PayByPalm blue actions and pale blue selections.",
+      "White bordered surfaces on a cool neutral canvas.",
+      "Compact sans typography and aligned financial amounts.",
+      "Responsive navigation, semantic tables and explicit status words."
+    ],
+    "rules": [
+      {
+        "name": "The Worded State Rule",
+        "body": "Pair semantic color with a status word or explanatory message; color alone never states the payment outcome, payout state or environment.",
+        "section": "colors"
+      },
+      {
+        "name": "The Separate Money States Rule",
+        "body": "Keep payment receipt and bank settlement explicitly separate in labels, summaries and detail views.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do keep PayByPalm blue, white surfaces and the cool neutral canvas.",
+      "Do label controls, preserve visible focus and keep the skip link available to keyboard users.",
+      "Do keep payments, provider settlement and terminal contact as distinct facts.",
+      "Do format money as NGN with two decimals and present record dates in Africa/Lagos.",
+      "Do preserve table columns in a horizontal scroll region on small screens.",
+      "Do show unavailable, loading and error states with explanatory text."
+    ],
+    "donts": [
+      "Don't treat a paid card payment as a completed bank settlement.",
+      "Don't replace provider errors with zero balances or empty-success reports.",
+      "Don't interpret a last-contact timestamp as a live online status.",
+      "Don't turn read-only business or payout information into editing controls.",
+      "Don't promote browser fixture records or their demonstration banner into production design content."
+    ]
+  }
+}

@@ -81,6 +81,7 @@ placement guidance do not establish biometric liveness.
 
 ```text
 admin/        Merchant onboarding, Paystack payout setup and terminal administration
+merchant/     Separate business reports, settlements and terminal workspace
 backend/      Express API, transaction services, PalmAI integration and tests
 wallet/       Customer wallet and merchant-terminal React application
 supabase/     Database migrations, row-level security and schema tests
@@ -300,3 +301,11 @@ is ordinary tracked files, so GitHub shows its directory without a separate
 repository checkout. The guarded admin CLI deployment is
 `pnpm --dir admin run deploy:vercel`; Git deployments use the configured `admin`
 Root Directory automatically.
+
+## Merchant workspace
+
+The separate [merchant app](merchant/README.md) targets `merchant.paybypalm.app`.
+Administrators grant verified accounts access from each merchant record in Admin.
+Run migration `0024_merchant_portal.sql` and deploy the updated backend/admin before
+using the portal. It follows the backend payment mode and separates card payments
+from Paystack bank settlements.

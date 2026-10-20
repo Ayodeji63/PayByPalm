@@ -12,6 +12,7 @@ import { Icon } from "./icons";
 import type { Merchant, Overview, Provision, Terminal, User } from "./types";
 import "./style.css";
 import {PayoutSetup} from "./PayoutSetup";
+import {MerchantAccess} from "./MerchantAccess";
 
 const go = (path: string) => {
   window.location.hash = path;
@@ -1226,6 +1227,7 @@ function App() {
                   onCancel={() => go("/merchants")}
                 />
                 {merchant&&<PayoutSetup key={merchant.id} merchant={merchant} onSaved={saveMerchant}/>}
+                {merchant&&<MerchantAccess key={"access-"+merchant.id} merchantId={merchant.id}/>}
                 {merchant && (
                   <div className="panel merchant-terminals">
                     <div className="panel-heading">

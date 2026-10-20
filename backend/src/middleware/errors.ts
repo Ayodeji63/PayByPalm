@@ -46,6 +46,9 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     log[level]({ err, code: err.code, status: err.status }, 'request failed');
     const privateError = err.status >= 500 || err.code === 'signup_failed';
     const publicSignupErrors: Record<string, string> = {
+      merchant_setup_required: 'Merchant reports require database migration 0024. Ask the administrator to complete setup.',
+      merchant_report_unavailable: 'Merchant reporting is temporarily unavailable. Please try again.',
+      merchant_settlement_invalid: 'The settlement response could not be verified. Please retry or contact support.',
       palm_sdk_setup_required: 'The palm reader requires database migration 0021. Ask the administrator to check setup.',
       palm_liveness_confirmation_required: 'Live palm payments require Tencent confirmation of the new capture and liveness integration. Contact the administrator.',
       palm_sdk_unavailable: 'The Tencent palm reader is not configured. Please contact the administrator.',

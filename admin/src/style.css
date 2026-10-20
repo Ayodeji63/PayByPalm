@@ -1480,3 +1480,5 @@ tbody tr:hover {
 .payout-result { display: grid; gap: 12px; margin-top: 20px; }
 .payout-result .button { justify-self: start; }
 .payout-code { overflow-wrap: anywhere; }
+
+.merchant-access-list{list-style:none;margin:24px 0 0;padding:0}.merchant-access-list li{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 0;border-top:1px solid var(--line,#e2e7f0)}.merchant-access-list small{display:block;color:var(--muted,#58677e);margin-top:4px}.merchant-access-list strong{overflow-wrap:anywhere}@media(max-width:600px){.merchant-access-list li{align-items:flex-start;flex-direction:column}}
