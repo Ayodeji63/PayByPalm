@@ -5,6 +5,8 @@ import { bearer } from 'better-auth/plugins';
 import { hashPassword, verifyPassword } from 'better-auth/crypto';
 import bcrypt from 'bcryptjs';
 import pg from 'pg';
+import { rootCertificates } from 'node:tls';
+import { supabaseRootCertificate } from './supabase-ca.js';
 import { PostgresDialect } from 'kysely';
 import { AppError } from '../errors.js';
 
@@ -31,8 +33,12 @@ export function authPool(databaseURL: string) {
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
   // pg connection-string SSL options can silently override certificate validation.
   for (const key of ['sslmode', 'sslcert', 'sslkey', 'sslrootcert', 'uselibpqcompat', 'options']) url.searchParams.delete(key);
+  const supabase = url.hostname.endsWith('.pooler.supabase.com') || /^db\.[a-z0-9]+\.supabase\.co$/.test(url.hostname);
+  const ssl = local ? false : { rejectUnauthorized: true,
+    ...(supabase ? { ca: [...rootCertificates, supabaseRootCertificate] } : {}),
+  };
   const pool = new pg.Pool({ connectionString: url.href, max: 5, connectionTimeoutMillis: 8000,
-    idleTimeoutMillis: 30000, query_timeout: 15000, ssl: local ? false : { rejectUnauthorized: true } });
+    idleTimeoutMillis: 30000, query_timeout: 15000, ssl });
   // Idle connection failures must not terminate the payment API or leak a URI.
   pool.on('error', () => { console.error('Authentication database connection interrupted.'); });
   return pool;

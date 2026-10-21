@@ -17,7 +17,19 @@ else {
    const state=await pool.query(`select count(*)::int as identities,count(*) filter(where "emailVerified" and not disabled)::int as verified_identities from pbp_auth."user"`);
    console.log(state.rows[0]);
   } else {console.log('PENDING: authentication cutover migration 0025. See AUTH_MIGRATION.md before applying.');process.exitCode=1;}
- }catch(error){console.error('FAIL: authentication database connection or schema check.',(error as {code?:string}).code??'connection_error');process.exitCode=1;}
+ }catch(error){
+  const code=(error as {code?:string}).code??'connection_error';
+  const messages:Record<string,string>={
+   '28P01':'PostgreSQL rejected the credentials. Check the database password in AUTH_DATABASE_URL and URL-encode reserved characters.',
+   'SELF_SIGNED_CERT_IN_CHAIN':'The database certificate chain is not trusted. Use the current backend release with the Supabase production CA.',
+   'ERR_TLS_CERT_ALTNAME_INVALID':'The database certificate does not match the configured hostname. Copy the Session pooler URI from Supabase Connect.',
+   'ENOTFOUND':'The database hostname could not be resolved. Check the Session pooler URI from Supabase Connect.',
+   'ETIMEDOUT':'The database connection timed out. Check connectivity and database network restrictions.',
+  };
+  console.error('FAIL: authentication database connection or schema check.',code);
+  if(messages[code])console.error(messages[code]);
+  process.exitCode=1;
+ }
  finally {await pool?.end();}
 }
 console.log('No accounts, passwords, sessions or emails were changed.');

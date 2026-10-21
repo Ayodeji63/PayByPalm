@@ -40,3 +40,12 @@ describe('production payment configuration', () => {
     expect(configSchema.safeParse({ ...process.env, AUTH_VALIDITY_SECONDS: value }).success).toBe(false);
   });
 });
+
+describe('authentication connection configuration',()=>{
+ it.each(['AUTH_DATABASE_URL','AUTH_BASE_URL'])('rejects malformed %s without throwing a credential-bearing URL error',field=>{
+  const run=()=>configSchema.safeParse({...process.env,[field]:'credential-marker@invalid-url'});
+  expect(run).not.toThrow();
+  const result=run();expect(result.success).toBe(false);
+  if(!result.success)expect(result.error.issues.map(issue=>issue.message).join(' ')).not.toContain('credential-marker');
+ });
+});

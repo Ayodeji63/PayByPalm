@@ -17,6 +17,10 @@ In `backend/.env` and **Render → backend → Environment**, configure:
 | `RESEND_API_KEY` | Resend API key with email-sending permission. |
 | `RESEND_FROM_EMAIL` | Bare address on your verified Resend domain, such as `auth@paybypalm.app`. |
 
+The backend includes Supabase's public production root certificate for official Supabase database hosts, while retaining normal hostname and certificate validation. No extra TLS setting is needed for the Session pooler. The certificate source is the [official Supabase Dashboard configuration](https://github.com/supabase/supabase/blob/master/apps/studio/hooks/custom-content/custom-content.json).
+
+If preflight reports PostgreSQL `28P01`, check the **database password** in the connection URI. This is separate from Supabase API keys and your Supabase dashboard login password. Percent-encode reserved characters in the password; leave the host, username and port from the Connect panel intact.
+
 Keep `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, payment and palm settings. `SUPABASE_ANON_KEY` is no longer used by runtime authentication. Do not replace `CARD_TOKEN_ENCRYPTION_KEY`.
 
 Admin and merchant need their existing `PAYMENT_API_BASE_URL` pointing at this backend. They do not need Resend keys, the auth signing secret, or the PostgreSQL password. Existing administrator UUID allowlists and merchant memberships remain in effect.
