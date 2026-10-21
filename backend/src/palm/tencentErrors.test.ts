@@ -35,6 +35,14 @@ describe('published Tencent RGB error identities',()=>{
     expect(classifyTencentError(999,'unknown diagnostic').code).toBe('palm_provider_error');
     expect(classifyTencentError(9999999,'unknown diagnostic',403).code).toBe('palm_provider_error');
   });
+  it('identifies only the observed detection diagnostic without guessing the private SDK return-code meaning',()=>{
+    const diagnostic='grpc invoke failed. err: rpc error: code = Code(268566619) desc = call palm decection sdk err: call PalmDet fail, ret=-21';
+    expect(classifyTencentError(999,diagnostic,200)).toMatchObject({status:502,code:'palm_image_detection_failed',description:'Observed palm detection SDK failure'});
+    expect(classifyTencentError(999,'unknown error ret=-21').code).toBe('palm_provider_error');
+    expect(classifyTencentError(999,diagnostic+'0').code).toBe('palm_provider_error');
+    expect(classifyTencentError(1000001,diagnostic).code).toBe('palm_provider_internal_error');
+    expect(isTencentCompareMiss(999,200)).toBe(false);
+  });
   it('keeps normal no-match and verified-absence codes disjoint, with ambiguous failures in neither',()=>{
     for(const code of Object.keys(TENCENT_ERROR_CODES).map(Number)){
       expect(isTencentSearchMiss(code)).toBe([1001013,2080010].includes(code));

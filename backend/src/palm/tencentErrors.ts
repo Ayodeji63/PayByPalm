@@ -146,6 +146,12 @@ export const isTencentPalmAbsent = (code?: number, httpStatus?: number): boolean
   (httpStatus === undefined || httpStatus === 200) && (code === 1001012 || code === 2080009);
 
 export function classifyTencentError(code?: number, diagnostic = '', httpStatus?: number): TencentFailure {
+  // Observed in a real compare response. The SDK's private ret=-21 value has
+  // no verified public definition: identify the failing stage, not a guessed
+  // lighting, enrollment or hardware cause. Keep it an upstream failure.
+  if (code === 999 && /call palm decection sdk err: call PalmDet fail, ret=-21(?:\s|$)/.test(diagnostic)) {
+    return describe(failure(502, 'palm_image_detection_failed', 'The palm provider could not complete detection for this capture. Keep your whole open palm visible in even lighting, hold still and try a new scan. If it repeats, contact support.'), 'Observed palm detection SDK failure');
+  }
   if (code === 999 && diagnostic.includes('call palm alignment sdk err: call PalmAlignGap by rect fail, ret=-360')) {
     return describe(failure(422, 'palm_image_alignment_failed', 'Palm comparison could not align the image. Face your open palm toward the camera, keep your whole hand visible and hold still, then try again.'), 'Observed palm alignment failure');
   }

@@ -255,6 +255,18 @@ describe('API security boundaries', () => {
     expect(result.status).toBe(502); const body=await result.text();
     expect(body).not.toContain('unknown-private-diagnostic'); expect(body).not.toContain('palm_image_alignment_failed');
   });
+  it('reports the observed detection-stage failure without exposing SDK internals or authorizing payment',async()=>{
+    const diagnostic='grpc invoke failed. err: rpc error: code = Code(268566619) desc = call palm decection sdk err: call PalmDet fail, ret=-21';
+    mocks.authenticate.mockRejectedValue(new PalmProviderError(diagnostic,{providerCode:999,requestId:'provider-detection',httpStatus:200}));
+    const result=await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/authenticate',{imageB64:'AAAA'},{'X-Terminal-Key':'test'});
+    const body=await result.json() as {error:{code:string;message:string;details:{providerCode:number;providerRequestId:string}}};
+    expect(result.status).toBe(502);
+    expect(body.error.code).toBe('palm_image_detection_failed');
+    expect(body.error.message).toContain('try a new scan');
+    expect(body.error.details).toMatchObject({providerCode:999,providerRequestId:'provider-detection'});
+    expect(JSON.stringify(body)).not.toMatch(/PalmDet|268566619|ret=-21/);
+    expect(mocks.confirm).not.toHaveBeenCalled();
+  });
   it('reports the observed Tencent missing-application error without accepting a palm or leaking diagnostics', async () => {
     mocks.authenticate.mockRejectedValue(new PalmProviderError('private-provider-diagnostic', {providerCode:2080023, requestId:'provider-request'}));
     const result = await post('/transactions/cccccccc-cccc-4ccc-cccc-cccccccccccc/authenticate', {imageB64:'AAAA'}, {'X-Terminal-Key':'test'});
