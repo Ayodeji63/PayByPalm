@@ -7,7 +7,7 @@
  */
 
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import { z, type ZodTypeAny } from 'zod';
+import { z, type ZodTypeAny } from 'zod/v3';
 import { AppError } from '../errors.js';
 
 export interface ValidationSchemas {

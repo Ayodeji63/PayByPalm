@@ -7,7 +7,7 @@
  * row delete.
  *
  * A terminal identifies the DEVICE and its merchant. It never identifies a user
- * and can never be used in place of a user JWT.
+ * and can never be used in place of a user session token.
  */
 
 import { createHash } from 'node:crypto';

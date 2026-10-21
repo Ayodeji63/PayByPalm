@@ -69,7 +69,7 @@ placement guidance do not establish biometric liveness.
 - **Frontend:** React 18, TypeScript, Vite, Tailwind CSS
 - **Palm and QR detection:** MediaPipe Tasks Vision, ZXing, `qrcode.react`
 - **Backend:** Node.js, Express, TypeScript, Zod
-- **Database and authentication:** PostgreSQL and Supabase Auth
+- **Database and authentication:** Supabase PostgreSQL, Better Auth and Resend
 - **Biometric API:** Tencent PalmAI
 - **Terminal hardware:** Raspberry Pi, OV5647 camera, 7-inch touch display,
   Chromium kiosk mode
@@ -132,7 +132,11 @@ Populate the following values in `backend/.env`:
 ```dotenv
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
-SUPABASE_ANON_KEY=YOUR_ANON_KEY
+AUTH_DATABASE_URL=YOUR_POSTGRES_SESSION_POOLER_URI
+AUTH_SECRET=GENERATE_PRIVATELY_WITH_PNPM_AUTH_PREPARE
+AUTH_BASE_URL=http://localhost:8080
+RESEND_API_KEY=YOUR_RESEND_SENDING_KEY
+RESEND_FROM_EMAIL=auth@YOUR_VERIFIED_DOMAIN
 
 PALM_PROVIDER=mock
 TENCENT_BASE_URL=https://open.intl.palm.tencent.com
@@ -146,7 +150,7 @@ Use `PALM_PROVIDER=mock` for local development. To test the real integration,
 set `PALM_PROVIDER=tencent` and provide `TENCENT_PALM_API_KEY`.
 
 ```bash
-pnpm seed
+pnpm auth:prepare
 pnpm dev
 ```
 
@@ -309,3 +313,7 @@ Administrators grant verified accounts access from each merchant record in Admin
 Run migration `0024_merchant_portal.sql` and deploy the updated backend/admin before
 using the portal. It follows the backend payment mode and separates card payments
 from Paystack bank settlements.
+
+## Authentication cutover
+
+Accounts, passwords and sessions now use Better Auth; Resend delivers verification and recovery emails. Supabase remains the database. Before deploying this release, complete the coordinated UUID-preserving steps in [AUTH_MIGRATION.md](AUTH_MIGRATION.md).

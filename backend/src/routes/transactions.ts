@@ -15,7 +15,7 @@
  */
 
 import { Router } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { db } from '../db/client.js';
 import { AppError, forbidden, notFound } from '../errors.js';
 import { requireTerminal, terminalAuth } from '../middleware/terminalAuth.js';

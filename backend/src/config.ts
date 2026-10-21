@@ -7,9 +7,11 @@
  */
 
 import 'dotenv/config';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 /** Coerce a numeric env var, keeping a readable error when it is not a number. */
+const optionalSetting = <T extends z.ZodTypeAny>(schema: T) => z.preprocess(value => value === '' ? undefined : value, schema.optional());
+
 const intFromEnv = (fallback: number) =>
   z.coerce.number().int().refine(Number.isFinite, 'must be an integer').default(fallback);
 
@@ -22,7 +24,16 @@ export const configSchema = z
 
     SUPABASE_URL: z.string().url('SUPABASE_URL must be a full URL'),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY is required'),
-    SUPABASE_ANON_KEY: z.string().min(1, 'SUPABASE_ANON_KEY is required'),
+    SUPABASE_ANON_KEY: z.string().optional(), // Legacy tools only; Auth no longer uses it.
+    AUTH_DATABASE_URL: optionalSetting(z.string().url().refine(value=>['postgres:','postgresql:'].includes(new URL(value).protocol),'Use a PostgreSQL connection URI')),
+    AUTH_SECRET: optionalSetting(z.string().min(32)),
+    AUTH_BASE_URL: z.string().url().default('https://paybypalm-backend.onrender.com').refine(value=>{
+      const u=new URL(value);
+      return u.pathname==='/' && !u.search && !u.hash && !u.username && !u.password &&
+        (u.protocol==='https:' || (u.protocol==='http:' && ['localhost','127.0.0.1'].includes(u.hostname)));
+    },'Use the backend HTTPS origin, or loopback HTTP for development'),
+    RESEND_API_KEY: optionalSetting(z.string().min(1)),
+    RESEND_FROM_EMAIL: optionalSetting(z.string().email()),
 
     PAYSTACK_MODE: z.enum(['test', 'live']).default('test'),
     PAYSTACK_SECRET_KEY: z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/).optional(),

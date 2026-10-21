@@ -8,8 +8,7 @@
  * the only thing in this system that can write to the database. It must never be
  * handed to a client, echoed in a response, or logged.
  *
- * `authClient` holds the anon key and is used only to exchange credentials with
- * Supabase Auth and to verify user JWTs. It is subject to RLS like any browser.
+ * Account authentication is handled separately by Better Auth.
  */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -27,11 +26,4 @@ export const db: SupabaseClient = createClient(
       autoRefreshToken: false,
     },
   },
-);
-
-/** Anon-key client, for login/signup and JWT verification. Subject to RLS. */
-export const authClient: SupabaseClient = createClient(
-  config.SUPABASE_URL,
-  config.SUPABASE_ANON_KEY,
-  { auth: { persistSession: false, autoRefreshToken: false } },
 );

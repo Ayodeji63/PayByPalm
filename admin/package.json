@@ -16,7 +16,8 @@
     "test:database": "python3 tests/database.py",
     "admin:lookup": "tsx scripts/lookup-admin.ts",
     "preflight": "tsx scripts/preflight.ts",
-    "guard:secrets": "tsx scripts/guard-secrets.ts"
+    "guard:secrets": "tsx scripts/guard-secrets.ts",
+    "test:wallet-auth": "node tests/wallet-auth.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.112.3",

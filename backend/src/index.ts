@@ -2,7 +2,7 @@
  * PayByPalm API.
  *
  * Two authentication planes, kept strictly apart:
- *   - the wallet app, holding a Supabase user JWT
+ *   - the wallet app, holding a PayByPalm session token
  *   - terminals, holding a device key
  *
  * And one thing that never leaves this process: the palm provider credential. The

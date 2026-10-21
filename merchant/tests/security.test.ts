@@ -146,7 +146,8 @@ beforeAll(async () => {
     db,
     auth: () =>
       ({
-        auth: { signInWithPassword: login, getUser, refreshSession: refresh },
+        auth: { signInWithPassword: login,
+        signOut, getUser, refreshSession: refresh },
       }) as any,
     serveFrontend: false,
   }).listen(0, "127.0.0.1");

@@ -1,5 +1,5 @@
 import express from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { config } from '../config.js';
 
 export const MAX_ENCODED_IMAGE = Math.ceil(config.MAX_IMAGE_BYTES / 3) * 4 + 128;

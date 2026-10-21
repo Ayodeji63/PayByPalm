@@ -11,9 +11,17 @@
  * policy tests assert against known boundaries.
  */
 
+import 'dotenv/config';
+
 const TEST_ENV: Record<string, string> = {
   NODE_ENV: 'test',
   PAYSTACK_MODE: 'test',
+  PAYSTACK_SECRET_KEY: 'sk_test_inert',
+  CARD_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32,1).toString('base64'),
+  AUTH_DATABASE_URL: 'postgresql://test:inert@localhost:5432/test',
+  AUTH_SECRET: 'inert-test-auth-secret-at-least-thirty-two-characters',
+  RESEND_API_KEY: 're_test_inert',
+  RESEND_FROM_EMAIL: 'test@example.com',
   SUPABASE_URL: 'https://test.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key',
   SUPABASE_ANON_KEY: 'test-anon-key',

@@ -1,15 +1,15 @@
 /**
- * Wallet authentication — Supabase user JWTs.
+ * Wallet authentication — centrally validated, revocable Better Auth sessions.
  *
  * This is one of two authentication planes, and they are kept strictly disjoint.
- * A route protected by this middleware accepts a user JWT and nothing else; a
+ * A route protected by this middleware accepts a user session token and nothing else; a
  * route protected by terminalAuth accepts a device key and nothing else. There is
  * deliberately no middleware that accepts "either", because that is how a stolen
  * terminal key eventually becomes a way to act as a user.
  */
 
 import type { NextFunction, Request, Response } from 'express';
-import { authClient } from '../db/client.js';
+import { identityService } from '../auth/service.js';
 import { AppError, unauthorized } from '../errors.js';
 
 export interface AuthedUser {
@@ -40,12 +40,12 @@ export async function userAuth(req: Request, _res: Response, next: NextFunction)
     return;
   }
 
-  // Ask Supabase rather than verifying locally: this also catches tokens that
-  // were valid when signed but have since been revoked or had the user deleted.
-  const { data, error } = await authClient.auth.getUser(token);
+  const checked = await identityService.session(token);
+  const data = { user: checked?.user };
+  const error = !checked;
 
   if (error || !data.user) {
-    req.log.debug({ err: error }, 'rejected user token');
+    req.log.debug('rejected user token');
     next(unauthorized('Session expired or invalid. Please sign in again.'));
     return;
   }

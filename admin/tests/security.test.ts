@@ -95,7 +95,7 @@ beforeAll(async () => {
     db: { rpc, from, auth: { admin: { signOut } } } as any,
     auth: () =>
       ({
-        auth: { getUser, refreshSession, signInWithPassword: signIn },
+        auth: { getUser, refreshSession, signInWithPassword: signIn, signOut },
       }) as any,
   }).listen(0, "127.0.0.1");
   await new Promise<void>((r) => server.once("listening", r));

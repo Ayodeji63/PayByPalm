@@ -14,7 +14,10 @@
 import bcrypt from 'bcryptjs';
 import { db } from '../src/db/client.js';
 import { config } from '../src/config.js';
-import { normalisePhone, syntheticEmailFor } from '../src/lib/phone.js';
+import { randomUUID } from 'node:crypto';
+import { hashPassword } from 'better-auth/crypto';
+import { authPool } from '../src/auth/engine.js';
+import { normalisePhone } from '../src/lib/phone.js';
 import { getBalanceMinor, getWalletAccountId } from '../src/db/queries.js';
 
 const OPENING_BALANCE_MINOR = 20_000 * 100; // ₦20,000
@@ -39,44 +42,37 @@ const DEMO_USERS: DemoUser[] = [
   { fullName: 'Emeka Obi', phone: '08010001005', pin: '7391' },
 ];
 
-async function findUserIdByEmail(email: string): Promise<string | null> {
-  // listUsers is paginated; the demo set is tiny, so one page is plenty.
-  const { data, error } = await db.auth.admin.listUsers({ page: 1, perPage: 200 });
-  if (error) throw new Error(`Could not list users: ${error.message}`);
-  return data.users.find((u) => u.email === email)?.id ?? null;
-}
-
+let identityDB: ReturnType<typeof authPool>;
 async function seedUser(user: DemoUser): Promise<{ id: string; created: boolean }> {
   const phone = normalisePhone(user.phone);
-  const email = syntheticEmailFor(phone);
-
-  const existing = await findUserIdByEmail(email);
-  if (existing) return { id: existing, created: false };
-
-  const { data, error } = await db.auth.admin.createUser({
-    email,
-    password: SHARED_PASSWORD,
-    email_confirm: true,
-    // handle_new_user() reads these to build the profile and wallet account.
-    user_metadata: { full_name: user.fullName, phone },
-  });
-
-  if (error || !data.user) {
-    throw new Error(`Could not create ${user.fullName}: ${error?.message ?? 'unknown error'}`);
-  }
+  const email = `demo-${phone}@demo.paybypalm.invalid`;
+  const existing = await identityDB.query('select id from pbp_auth."user" where email=$1',[email]);
+  if (existing.rows[0]) return {id:existing.rows[0].id,created:false};
+  const id=randomUUID(), client=await identityDB.connect();
+  try {
+    await client.query('begin');
+    await client.query(`insert into pbp_auth."user"(id,name,email,"emailVerified",phone,disabled) values($1,$2,$3,true,$4,false)`,[id,user.fullName,email,phone]);
+    await client.query(`insert into pbp_auth.account("accountId","providerId","userId",password,"updatedAt") values($1,'credential',$2,$3,now())`,[id,id,await hashPassword(SHARED_PASSWORD)]);
+    await client.query('commit');
+  } catch(error) {await client.query('rollback');throw error;}
+  finally {client.release();}
 
   const { error: pinError } = await db
     .from('profiles')
     .update({ pin_hash: await bcrypt.hash(user.pin, 10) })
-    .eq('id', data.user.id);
+    .eq('id', id);
 
   if (pinError) throw new Error(`Could not set PIN for ${user.fullName}: ${pinError.message}`);
 
-  return { id: data.user.id, created: true };
+  return { id, created: true };
 }
 
 async function main(): Promise<void> {
-  if (config.isProduction) throw new Error('Demo funding is forbidden in production.');
+  if (config.isProduction || !config.AUTH_DATABASE_URL ||
+      !['localhost','127.0.0.1'].includes(new URL(config.AUTH_DATABASE_URL).hostname) ||
+      !['localhost','127.0.0.1'].includes(new URL(config.SUPABASE_URL).hostname))
+    throw new Error('Demo seeding requires isolated loopback databases and is forbidden on hosted services.');
+  identityDB=authPool(config.AUTH_DATABASE_URL);
   console.log(`Seeding demo users against ${config.SUPABASE_URL}\n`);
 
   const { data: float, error: floatError } = await db
@@ -119,7 +115,7 @@ async function main(): Promise<void> {
     ]);
   }
 
-  const headers = ['Name', 'Phone (login)', 'PIN', 'Balance', ''];
+  const headers = ['Name', 'Phone (profile)', 'PIN', 'Balance', ''];
   const widths = headers.map((h, i) =>
     Math.max(h.length, ...rows.map((r) => (r[i] ?? '').length)),
   );
@@ -130,12 +126,13 @@ async function main(): Promise<void> {
   console.log(widths.map((w) => '-'.repeat(w)).join('  '));
   for (const r of rows) console.log(line(r));
 
+  console.log("Email for each demo user: demo-<profile phone>@demo.paybypalm.invalid");
   console.log(`\nPassword for every demo user: ${SHARED_PASSWORD}`);
-  console.log('Terminal key (from supabase/seed.sql): pbp_dev_terminal_key_001');
+  console.log('Provision a local test terminal separately; seed.sql does not create device credentials.');
   console.log('\nOn PALM_PROVIDER=mock, pass X-Mock-User: <user id> to simulate a palm.');
 }
 
-main().catch((err) => {
+main().finally(async()=>{await identityDB?.end();}).catch((err) => {
   console.error(`\nSeed failed: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 });

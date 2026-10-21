@@ -29,7 +29,7 @@ export default function Verify() {
     <h1 className="mt-8 text-2xl font-bold">Check your email</h1>
     {!email ? <p className="mt-4">Start registration or sign in to request a confirmation link.</p> : <div className="mt-4 space-y-6">
       <p className="break-words text-gray-700">{state?.emailSent === false ? 'Confirm your email address to continue: ' : 'We sent a confirmation link to '}{email}.</p>
-      <p className="text-sm text-gray-600">Open the email and select “Confirm your email” to return to PayByPalm and set up your wallet PIN. Check your spam folder if you cannot find it.</p>
+      <p className="text-sm text-gray-600">Open the email, select the verification link, then choose “Verify email”. After verification, sign in to continue. Check your spam folder if you cannot find it.</p>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {notice && <p role="status" className="text-sm text-green-700">{notice}</p>}
       <button type="button" onClick={() => void resend()} disabled={busy || countdown > 0} className="min-h-11 text-sm font-semibold text-blue-700 disabled:text-gray-500">{busy ? 'Sending link…' : countdown > 0 ? `Resend link in ${countdown}s` : 'Resend confirmation link'}</button>

@@ -1,7 +1,7 @@
 # PayByPalm merchant workspace
 
 Separate, read-only merchant app for **merchant.paybypalm.app**. It shares verified
-Supabase identities with PayByPalm, but uses its own encrypted, HttpOnly session.
+PayByPalm identities with the wallet, but uses its own encrypted, HttpOnly session.
 An account needs an explicit administrator grant for each business. Being a customer,
 knowing a merchant ID, or setting a role in user metadata does not grant access.
 
@@ -22,7 +22,7 @@ an anonymous or signed-in Supabase client. Server credentials remain private.
 Deploy the updated main backend and admin app with this migration. The main backend
 provides `/merchant/overview`, `/merchant/transactions`, `/merchant/settlements`,
 `/merchant/terminals`, `/merchant/settings` and `/merchant/export`. Every request
-requires a verified user JWT and a current membership for the requested business.
+requires a centrally verified user session token and a current membership for the requested business.
 
 ## Grant access, including an existing merchant
 
@@ -48,7 +48,7 @@ cp .env.example .env
 corepack pnpm install --frozen-lockfile
 ```
 
-Privately set `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` for
+Privately set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for
 the same project as the backend/admin. Generate an independent 32-byte
 `SESSION_ENCRYPTION_KEY` using the command in `.env.example`. Do not reuse an admin
 cookie key or put server secrets in `VITE_*` variables.
@@ -142,3 +142,7 @@ Browser tests intercept API requests with labeled synthetic fixtures and never s
 into a real account. Security tests cover tenant isolation, grants/revocation,
 encrypted sessions, exact-origin checks and read-only proxy behavior. Main backend
 tests cover reporting scopes, payment modes, full exports and settlement ownership.
+
+## Authentication replacement
+
+Follow [AUTH_MIGRATION.md](../AUTH_MIGRATION.md) for the coordinated Better Auth and Resend cutover. Existing user UUIDs and merchant memberships remain unchanged. Login uses `PAYMENT_API_BASE_URL`; this app does not need a Resend key or the PostgreSQL password. Existing sessions must sign in again. Apply 0024 before 0025; do not reapply older identity-dependent functions afterward.

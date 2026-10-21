@@ -18,6 +18,7 @@ import {
 } from "react";
 import {
   api,
+  revokeSession,
   clearSession,
   getSessionRevision,
   loadSession,
@@ -43,7 +44,7 @@ interface AuthApi {
   status: "loading" | "authenticated" | "anonymous";
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (input: SignUpInput) => Promise<{ email: string }>;
-  confirmEmail: (refreshToken: string) => Promise<void>;
+  confirmEmail: (token: string) => Promise<void>;
   resendConfirmation: (email: string) => Promise<void>;
   signOut: () => void;
   /** Force an immediate refresh — after a payment, or on returning from enrolment. */
@@ -96,6 +97,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(() => {
+    const previous = loadSession();
+    if (previous) void revokeSession(previous.accessToken).catch(() => {});
     clearSession();
     setCardOwner(null);
     setConsentGiven(false);
@@ -193,16 +196,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [signOut],
   );
 
-  const confirmEmail = useCallback(async (refreshToken: string) => {
-    signOut();
-    const revision = getSessionRevision();
-    const data = await api.anonPost<AuthResponse>("/auth/confirm", { refreshToken });
-    if (revision !== getSessionRevision()) throw new Error("Verification cancelled.");
-    saveSession(data.session);
-    setStatus("loading");
-    await fetchMe();
-    if (!loadSession()) throw new Error("Your email is verified. Please sign in to continue.");
-  }, [fetchMe, signOut]);
+  const confirmEmail = useCallback(async (token: string) => {
+    await api.anonPost<{ verified: true }>("/auth/confirm", { token });
+  }, []);
 
   const resendConfirmation = useCallback(async (email: string) => {
     await api.anonPost("/auth/resend-confirmation", { email });

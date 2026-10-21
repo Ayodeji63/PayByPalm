@@ -1,6 +1,6 @@
 /** Merchant-only, read-only reports. Every request rechecks an explicit grant. */
 import { Router, type Request } from "express";
-import { z } from "zod";
+import { z } from "zod/v3";
 import { db } from "../db/client.js";
 import { AppError } from "../errors.js";
 import { userAuth, requireUser } from "../middleware/userAuth.js";

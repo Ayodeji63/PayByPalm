@@ -7,6 +7,7 @@ import { AppError, PalmProviderError } from './errors.js';
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(), rpc: vi.fn(), login: vi.fn(), refresh: vi.fn(), profile: vi.fn(),
   sendLink: vi.fn(), signup: vi.fn(), verifyOtp: vi.fn(), resend: vi.fn(), adminUpdate: vi.fn(), adminSignOut: vi.fn(), adminCreate: vi.fn(), pinUpdate: vi.fn(), pinEq: vi.fn(), pinNull: vi.fn(), pinSelect: vi.fn(),
+  verify: vi.fn(), logout: vi.fn(), resetPassword: vi.fn(), requestReset: vi.fn(),
   confirm: vi.fn(), authenticate: vi.fn(), authenticateSdk: vi.fn(), beginCapture: vi.fn(),
   warn: vi.fn(), error: vi.fn(), info: vi.fn(),
 }));
@@ -17,8 +18,11 @@ vi.mock('./logger.js', () => {
 vi.mock('./db/client.js', () => ({
   db: { rpc: mocks.rpc, auth: { admin: { updateUserById: mocks.adminUpdate, signOut: mocks.adminSignOut, createUser: mocks.adminCreate } },
     from: () => ({ update: mocks.pinUpdate.mockReturnThis(), eq: mocks.pinEq.mockReturnThis(), is: mocks.pinNull.mockReturnThis(), select: mocks.pinSelect }) },
-  authClient: { auth: { getUser: mocks.getUser, signInWithPassword: mocks.login, signInWithOtp: mocks.sendLink, refreshSession: mocks.refresh, signUp: mocks.signup, verifyOtp: mocks.verifyOtp, resend: mocks.resend } },
 }));
+vi.mock('./auth/service.js', () => ({ identityService: {
+  signup: mocks.signup, login: mocks.login, session: mocks.refresh, confirm: mocks.verify,
+  resend: mocks.resend, logout: mocks.logout, reset: mocks.resetPassword, requestReset: mocks.requestReset,
+} }));
 vi.mock('./middleware/userAuth.js', () => ({
   userAuth: (req: any, _res: any, next: any) => {
     if (!req.header('authorization')) return next(new AppError(401, 'unauthorized', 'Authentication required.'));
@@ -56,14 +60,18 @@ afterAll(async () => { server.closeAllConnections(); await new Promise<void>(res
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.rpc.mockReset().mockResolvedValue({ data: 0, error: null });
-  mocks.login.mockReset().mockResolvedValue({ data: { user: { id: 'user', email: 'user@example.com', email_confirmed_at: '2026-01-01' }, session: { access_token: 'test', refresh_token: 'test', expires_at: 123 } }, error: null });
+  mocks.login.mockReset().mockResolvedValue({user: { id: 'user', email: 'user@example.com' }, session: {accessToken:'test',refreshToken:'test',expiresAt:123}});
   mocks.refresh.mockReset().mockResolvedValue({ data: { session: { user: { id: 'user' }, access_token: 'rotated', refresh_token: 'rotated-refresh' } }, error: null });
   mocks.getUser.mockReset().mockResolvedValue({ data: { user: { id: 'user', email: 'user@example.com', email_confirmed_at: '2026-01-01' } }, error: null });
   mocks.profile.mockReset().mockResolvedValue({ id: 'user', pin_hash: bcrypt.hashSync('2468', 4) });
   mocks.confirm.mockReset().mockResolvedValue({ transactionId: 'cccccccc-cccc-4ccc-cccc-cccccccccccc', amountMinor: 100, settledAt: '2026-01-01', maskedName: 'Customer', merchantName: 'Merchant', terminalLabel: 'Counter', balanceMinor: 999999, internalField: 'secret' });
   mocks.authenticate.mockReset();
   mocks.sendLink.mockReset().mockResolvedValue({ data: { user: null, session: null }, error: null });
-  mocks.signup.mockReset().mockResolvedValue({ data: { user: { id: 'user', email: 'user@example.com', email_confirmed_at: '2026-01-01' }, session: null }, error: null });
+  mocks.signup.mockReset().mockResolvedValue(undefined);
+  mocks.verify.mockReset().mockResolvedValue(undefined);
+  mocks.logout.mockReset().mockResolvedValue(undefined);
+  mocks.resetPassword.mockReset().mockResolvedValue(undefined);
+  mocks.requestReset.mockReset().mockResolvedValue(undefined);
   mocks.verifyOtp.mockReset().mockResolvedValue({ data: { user: { id: 'user', email: 'user@example.com', email_confirmed_at: '2026-01-01' }, session: { access_token: 'verified', refresh_token: 'verified-refresh' } }, error: null });
   mocks.resend.mockReset().mockResolvedValue({ error: null });
   mocks.adminUpdate.mockReset().mockResolvedValue({ error: null });
@@ -281,7 +289,7 @@ describe('API security boundaries', () => {
   it('strips unknown login fields instead of assigning client privileges', async () => {
     const result = await post('/auth/login', { email: 'user@example.com', password: 'test', role: 'admin', user_id: 'other' });
     expect(result.status).toBe(200);
-    expect(mocks.login).toHaveBeenCalledWith({ email: 'user@example.com', password: 'test' });
+    expect(mocks.login).toHaveBeenCalledWith('user@example.com', 'test');
   });
   it('fails closed if shared abuse protection is unavailable', async () => {
     mocks.rpc.mockResolvedValue({ data: null, error: { message: 'offline' } });
@@ -297,7 +305,7 @@ describe('API security boundaries', () => {
     const result = await post('/auth/signup', { fullName: 'Real User', phone: '08010001234', email: 'user@example.com', password: 'strong-password' });
     expect(result.status).toBe(201);
     expect(await result.json()).toEqual({ email: 'user@example.com', verificationRequired: true });
-    expect(mocks.signup).toHaveBeenCalledWith({ email: 'user@example.com', password: 'strong-password', options: { emailRedirectTo: 'http://localhost:5173/auth/confirm', data: { full_name: 'Real User', phone: '08010001234' } } });
+    expect(mocks.signup).toHaveBeenCalledWith({email:'user@example.com',password:'strong-password',fullName:'Real User',phone:'08010001234'});
     expect(mocks.pinUpdate).not.toHaveBeenCalled(); expect(mocks.sendLink).not.toHaveBeenCalled();
   });
   it('retains separate signup budgets for shared IPs and recipient email', async () => {
@@ -309,56 +317,53 @@ describe('API security boundaries', () => {
     expect((await post('/auth/signup', { email: 'user@example.com' })).status).toBe(400);
     expect(mocks.rpc.mock.calls.some(([, args]) => args.p_window_seconds === 3600)).toBe(false);
   });
-  it('reports restricted email delivery without exposing provider messages', async () => {
-    mocks.signup.mockResolvedValue({ error: { code: 'email_address_not_authorized', name: 'AuthApiError', status: 400, message: 'secret-provider-diagnostic' } });
-    const result = await post('/auth/signup', { fullName: 'Real User', phone: '08010001234', email: 'user@example.com', password: 'strong-password' });
-    expect(result.status).toBe(503); expect(await result.json()).toMatchObject({ error: { code: 'email_delivery_restricted' } });
-    expect(JSON.stringify(mocks.error.mock.calls)).not.toContain('secret-provider-diagnostic');
-  });
-  it.each([
-    ['Error sending confirmation email', 'email_delivery'],
-    ['Database error saving new user', 'signup_database'],
-    ['Internal Server Error', 'upstream_service'],
-  ])('classifies upstream 500 failures without logging their raw messages', async (message, category) => {
-    mocks.signup.mockResolvedValue({ error: { name: 'AuthRetryableFetchError', status: 500, message: message + ' private-user@example.com token=secret' } });
-    const result = await post('/auth/signup', { fullName: 'Real User', phone: '08010001234', email: 'user@example.com', password: 'strong-password' });
+  it('reports mail outages without exposing provider details', async () => {
+    mocks.signup.mockRejectedValue(new AppError(503,'email_send_failed','safe classification'));
+    const result=await post('/auth/signup',{fullName:'Real User',phone:'08010001234',email:'user@example.com',password:'strong-password'});
     expect(result.status).toBe(503);
-    expect(mocks.error).toHaveBeenCalledWith(expect.objectContaining({ authStatus: 500, authFailureCategory: category }), 'Email signup failed');
-    expect(JSON.stringify(mocks.error.mock.calls)).not.toContain('private-user@example.com');
-    expect(JSON.stringify(mocks.error.mock.calls)).not.toContain('token=secret');
-    expect(await result.text()).not.toContain('token=secret');
+    expect(await result.json()).toMatchObject({error:{code:'email_send_failed'}});
   });
-  it('rejects auto-confirmed signup sessions', async () => {
-    mocks.signup.mockResolvedValue({ data: { user: { id: 'user' }, session: { access_token: 'unverified-token' } }, error: null });
-    const result = await post('/auth/signup', { fullName: 'Real User', phone: '08010001234', email: 'user@example.com', password: 'strong-password' });
-    expect(result.status).toBe(503); expect(await result.text()).not.toContain('unverified-token');
+  it('confirms a single-purpose token without returning a session or changing a PIN',async()=>{
+    const result=await post('/auth/confirm',{token:'verification-token'});
+    expect(result.status).toBe(200);expect(await result.json()).toEqual({verified:true});
+    expect(mocks.verify).toHaveBeenCalledWith('verification-token');
+    expect(mocks.login).not.toHaveBeenCalled();expect(mocks.pinUpdate).not.toHaveBeenCalled();
   });
-  it('rejects expired confirmation sessions without changing credentials or PIN', async () => {
-    mocks.refresh.mockResolvedValue({ data: { session: null }, error: { code: 'invalid_grant' } });
-    const result = await post('/auth/confirm', { refreshToken: 'expired' });
-    expect(result.status).toBe(400); expect(mocks.getUser).not.toHaveBeenCalled();
-    expect(mocks.adminUpdate).not.toHaveBeenCalled(); expect(mocks.pinUpdate).not.toHaveBeenCalled();
+  it('rejects old Supabase confirmation payloads',async()=>{
+    expect((await post('/auth/confirm',{refreshToken:'legacy-refresh'})).status).toBe(400);
+    expect(mocks.verify).not.toHaveBeenCalled();
   });
-  it('rotates the confirmation session and verifies the authoritative identity', async () => {
-    const result = await post('/auth/confirm', { refreshToken: 'link-refresh' });
-    expect(result.status).toBe(200);
-    expect(mocks.refresh).toHaveBeenCalledWith({ refresh_token: 'link-refresh' });
-    expect(mocks.getUser).toHaveBeenCalledWith('rotated');
-    expect(await result.json()).toMatchObject({ session: { accessToken: 'rotated' } });
-    expect(mocks.adminUpdate).not.toHaveBeenCalled(); expect(mocks.pinUpdate).not.toHaveBeenCalled();
+  it('does not accept confirmation links via GET',async()=>{
+    expect((await fetch(base+'/auth/confirm?token=verification-token')).status).toBe(404);
+    expect(mocks.verify).not.toHaveBeenCalled();
   });
-  it.each([
-    { id: 'user', email: 'user@example.com' },
-    { id: 'other', email: 'user@example.com', email_confirmed_at: '2026-01-01' },
-    { id: 'user', email: '2348010001234@phone.paybypalm.local', email_confirmed_at: '2026-01-01' },
-  ])('rejects an unconfirmed, mismatched, or synthetic confirmation identity', async user => {
-    mocks.getUser.mockResolvedValue({ data: { user }, error: null });
-    const result = await post('/auth/confirm', { refreshToken: 'link-refresh' });
-    expect(result.status).toBe(400); expect(await result.text()).not.toContain('rotated-refresh');
+  it('returns expiry errors without changing identities',async()=>{
+    mocks.verify.mockRejectedValue(new AppError(400,'invalid_confirmation','This link expired.'));
+    expect((await post('/auth/confirm',{token:'expired'})).status).toBe(400);
+    expect(mocks.adminUpdate).not.toHaveBeenCalled();
   });
-  it('resends signup links to the server-owned redirect target', async () => {
-    expect((await post('/auth/resend-confirmation', { email: 'user@example.com', redirectTo: 'https://attacker.example' })).status).toBe(200);
-    expect(mocks.resend).toHaveBeenCalledWith({ type: 'signup', email: 'user@example.com', options: { emailRedirectTo: 'http://localhost:5173/auth/confirm' } });
+  it('ignores caller-provided resend destinations',async()=>{
+    expect((await post('/auth/resend-confirmation',{email:'user@example.com',redirectTo:'https://attacker.example'})).status).toBe(200);
+    expect(mocks.resend).toHaveBeenCalledWith('user@example.com');
+  });
+  it('requires authentication before logout and revokes exactly that session',async()=>{
+    expect((await post('/auth/logout',{})).status).toBe(401);
+    expect(mocks.logout).not.toHaveBeenCalled();
+    expect((await post('/auth/logout',{}, {Authorization:'Bearer opaque-session'})).status).toBe(204);
+    expect(mocks.logout).toHaveBeenCalledWith('opaque-session');
+  });
+  it('requests recovery without revealing whether an email exists',async()=>{
+    const result=await post('/auth/request-password-reset',{email:'other@example.com'});
+    expect(result.status).toBe(200);expect(await result.json()).toEqual({sent:true});
+    expect(mocks.requestReset).toHaveBeenCalledWith('other@example.com');
+  });
+  it('rejects short recovery passwords before touching credentials',async()=>{
+    expect((await post('/auth/reset-password',{token:'reset-token',password:'short'})).status).toBe(400);
+    expect(mocks.resetPassword).not.toHaveBeenCalled();
+  });
+  it('uses the supplied recovery token, never a client-selected user ID',async()=>{
+    expect((await post('/auth/reset-password',{token:'reset-token',password:'long-enough-password',userId:'victim'})).status).toBe(200);
+    expect(mocks.resetPassword).toHaveBeenCalledWith('reset-token','long-enough-password');
   });
   it('retires numeric signup code endpoints', async () => {
     expect((await post('/auth/verify-otp', {})).status).toBe(404);
@@ -366,11 +371,11 @@ describe('API security boundaries', () => {
   });
   it('normalizes email/password login and never invokes passwordless delivery', async () => {
     const result = await post('/auth/login', { email: ' USER@Example.COM ', password: 'test' });
-    expect(result.status).toBe(200); expect(mocks.login).toHaveBeenCalledWith({ email: 'user@example.com', password: 'test' });
+    expect(result.status).toBe(200); expect(mocks.login).toHaveBeenCalledWith('user@example.com', 'test');
     expect(mocks.sendLink).not.toHaveBeenCalled();
   });
   it('rejects unconfirmed login identities', async () => {
-    mocks.login.mockResolvedValue({ data: { user: { id: 'user', email: 'user@example.com' }, session: { access_token: 'unconfirmed' } }, error: null });
+    mocks.login.mockRejectedValue(new AppError(403,'email_verification_required','Verify your email.'));
     const result = await post('/auth/login', { email: 'user@example.com', password: 'test' });
     expect(result.status).toBe(403); expect(await result.text()).not.toContain('unconfirmed');
   });

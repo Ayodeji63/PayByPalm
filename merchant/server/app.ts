@@ -3,7 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express, { type RequestHandler } from "express";
 import { z } from "zod";
-import type { SupabaseClient, User } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { CentralAuth, IdentityUser as User } from "./identity.js";
 import type { Config } from "./config.js";
 import {
   COOKIE,
@@ -19,7 +20,7 @@ import { Failure } from "./failure.js";
 type Dependencies = {
   config: Config;
   db: SupabaseClient;
-  auth: () => SupabaseClient;
+  auth: () => CentralAuth;
   serveFrontend?: boolean;
 };
 export function createApp({
@@ -35,7 +36,7 @@ export function createApp({
     string,
     {
       until: number;
-      promise: ReturnType<SupabaseClient["auth"]["refreshSession"]>;
+      promise: ReturnType<CentralAuth["auth"]["refreshSession"]>;
     }
   >();
   const cookieOptions = {
@@ -339,8 +340,8 @@ export function createApp({
     clear(res);
     // Merchant session access is already durably revoked even if the upstream refresh-token
     // cleanup is unavailable. Never invalidate unrelated customer sessions.
-    await db.auth.admin
-      .signOut(res.locals.session.access, "local")
+    await auth().auth
+      .signOut(res.locals.session.access)
       .catch(() => {});
     res.status(204).end();
   });

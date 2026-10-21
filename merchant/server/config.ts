@@ -23,7 +23,7 @@ export const configSchema = z
     APP_ORIGIN: origin.default("http://127.0.0.1:5193"),
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(1).default(0),
     SUPABASE_URL: z.string().url(),
-    SUPABASE_ANON_KEY: z.string().min(1),
+    SUPABASE_ANON_KEY: z.string().optional(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
     SESSION_ENCRYPTION_KEY: z.string().regex(/^[a-f0-9]{64}$/i),
     PAYMENT_API_BASE_URL: origin.default(

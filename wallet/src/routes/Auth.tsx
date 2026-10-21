@@ -360,6 +360,8 @@ function SignInForm({ onSwitch }: { onSwitch: () => void }) {
           />
         </div>
 
+        <a href="/auth/forgot" className="mt-4 inline-block min-h-11 font-semibold text-blue-700">Forgot password?</a>
+
         {error && (
           <div role="alert" className="mt-4 flex items-center gap-2 rounded-xl bg-red-50 border border-red-100 p-3.5">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="shrink-0 text-red-500">

@@ -58,6 +58,10 @@ out=$(pg -v ON_ERROR_STOP=1 -q -f /sql/local_supabase_stub.sql 2>&1) \
 
 for f in "$SUPA"/migrations/*.sql; do
   b="$(basename "$f")"
+  # These invariants exercise the retired signup trigger. Auth cutover has its
+  # own full-schema, UUID-preservation and session tests (backend test:auth:database).
+  [ "$b" = "0025_resend_auth.sql" ] && continue
+
   out=$(pg -v ON_ERROR_STOP=1 -q -f "/sql/$b" 2>&1) || fail "migration $b" "$out"
   echo "applied  $b"
 done

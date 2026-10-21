@@ -1,12 +1,12 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { Request, Response, NextFunction } from 'express';
 const { getUser } = vi.hoisted(() => ({ getUser: vi.fn() }));
-vi.mock('../db/client.js', () => ({ authClient: { auth: { getUser } } }));
+vi.mock('../auth/service.js', () => ({ identityService: { session: getUser } }));
 import { userAuth } from './userAuth.js';
 
 beforeEach(() => vi.clearAllMocks());
 async function authenticate(user: Record<string, unknown>) {
-  getUser.mockResolvedValue({ data: { user }, error: null });
+  getUser.mockResolvedValue({ user });
   const req = { header: () => 'Bearer real-token', log: { child: () => ({}) } } as unknown as Request;
   const next = vi.fn();
   await userAuth(req, {} as Response, next as NextFunction);

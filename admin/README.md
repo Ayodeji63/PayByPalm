@@ -77,7 +77,7 @@ Re-enable by generating and installing a new key. Payment history is retained.
 
 ## Administrator access and sessions
 
-`ADMIN_USER_IDS` is a private server-side list of immutable, verified Supabase
+`ADMIN_USER_IDS` is a private server-side list of immutable, verified PayByPalm
 account UUIDs. Customer metadata or frontend claims cannot grant admin rights.
 To look up another existing verified account, run:
 
@@ -89,7 +89,7 @@ Update the allowlist privately and restart the server. Lookup alone grants
 nothing. The current account remains a normal wallet customer outside this app.
 Access/refresh tokens are encrypted in an HTTP-only, SameSite=Strict cookie;
 JavaScript cannot read them. Production requires HTTPS/Secure cookies. Sessions
-last at most eight hours, are rechecked against Supabase and the server allowlist
+last at most eight hours, are rechecked against the central PayByPalm identity service and the server allowlist
 on each request, and are checked against `admin_sessions` for immediate revocation.
 Logout revokes that admin session; it does not sign the customer out everywhere.
 Mutations require the configured Origin. Shared database-backed budgets limit
@@ -153,7 +153,6 @@ prefixes. Use the existing Supabase project whose admin migration is applied.
 | `TRUST_PROXY_HOPS` | `1` |
 | `NODEJS_HELPERS` | `0` (Express owns request/body handling) |
 | `SUPABASE_URL` | Existing project's URL |
-| `SUPABASE_ANON_KEY` | Existing project's anon key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Existing project's private service-role key |
 | `ADMIN_USER_IDS` | The UUID allowlist from the admin's local `.env`, **not an email address** |
 | `SESSION_ENCRYPTION_KEY` | The admin's private 64-hex-character encryption key |
@@ -356,3 +355,7 @@ business grant after confirmation. This works with existing merchants such as Ay
 Stores and does not reprovision their terminals. Apply
 [0024_merchant_portal.sql](../supabase/migrations/0024_merchant_portal.sql) first.
 See [merchant setup and reporting rules](../merchant/README.md).
+
+## Better Auth and Resend cutover
+
+Follow [AUTH_MIGRATION.md](../AUTH_MIGRATION.md) before deploying the authentication replacement. The admin now verifies credentials through `PAYMENT_API_BASE_URL`; it keeps its own encrypted cookie, UUID allowlist and durable session revocation. Resend keys and the auth database password belong only on the backend. Apply database migrations in numeric order; canonical copies of 0020/0023 also live in `supabase/migrations/`. Do not reapply 0024 after authentication migration 0025.

@@ -11,7 +11,8 @@
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:8080';
 
-const STORAGE_KEY = 'paybypalm.session';
+// New namespace intentionally signs out legacy Supabase sessions at cutover.
+const STORAGE_KEY = 'paybypalm.identity.session';
 let sessionRevision = 0;
 export const getSessionRevision = (): number => sessionRevision;
 
@@ -279,4 +280,11 @@ export interface EnrolSessionView {
   status: 'pending' | 'claimed' | 'captured' | 'completed' | 'expired';
   expiresAt: string;
   userDisplayName?: string;
+}
+
+/** Revoke exactly the captured session, even if another account signs in meanwhile. */
+export async function revokeSession(token: string): Promise<void> {
+  await fetch(`${BASE_URL}/auth/logout`, { method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: '{}', keepalive: true, signal: AbortSignal.timeout(10000) });
 }

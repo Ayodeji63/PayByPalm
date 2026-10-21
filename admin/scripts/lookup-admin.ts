@@ -9,23 +9,7 @@ if (!email) {
 const db = createClient(c.SUPABASE_URL, c.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
-let found = false;
-for (let page = 1; page <= 100; page++) {
-  const r = await db.auth.admin.listUsers({ page, perPage: 100 });
-  if (r.error) throw new Error("Could not query Supabase Auth.");
-  const user = r.data.users.find((u) => u.email?.toLowerCase() === email);
-  if (user) {
-    if (!user.email_confirmed_at)
-      throw new Error(
-        "This account must verify its email before admin access.",
-      );
-    console.log(`Verified account UUID: ${user.id}`);
-    found = true;
-    break;
-  }
-  if (r.data.users.length < 100) break;
-}
-if (!found) {
-  console.error("No verified matching account was found.");
-  process.exitCode = 1;
-}
+const result = await db.rpc('lookup_verified_identity', { p_email: email });
+if (result.error) throw new Error('Identity lookup is unavailable. Apply authentication migration 0025.');
+if (result.data?.length !== 1) { console.error('No verified matching account was found.'); process.exitCode=1; }
+else console.log(`Verified account UUID: ${result.data[0].id}`);

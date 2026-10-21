@@ -2,10 +2,10 @@
  * Enrolment flow — linking a palm to a wallet, once.
  *
  *   terminal  POST /enrol/sessions          -> 'pending'   (QR goes on screen)
- *   phone     POST /enrol/sessions/:id/claim -> 'claimed'  (user JWT names the user)
+ *   phone     POST /enrol/sessions/:id/claim -> 'claimed'  (user session token names the user)
  *   terminal  POST /enrol/sessions/:id/palm  -> 'completed'(palm registered)
  *
- * The identity comes from the PHONE, authenticated with a Supabase JWT. The
+ * The identity comes from the PHONE, authenticated with a PayByPalm session token. The
  * terminal never asserts who the user is — it only proves a device and captures
  * an image. That is what stops a terminal operator from enrolling their own palm
  * against someone else's wallet.

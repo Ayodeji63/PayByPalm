@@ -6,7 +6,7 @@
   "packageManager": "pnpm@9.15.9",
   "description": "PayByPalm API \u2014 palm-biometric payment for a closed-loop campus wallet",
   "engines": {
-    "node": ">=20 <25"
+    "node": ">=22 <25"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -21,22 +21,29 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "cards:test:preflight": "tsx scripts/card-test-preflight.ts",
     "cards:live:preflight": "tsx scripts/card-live-preflight.ts",
-    "cards:reconcile": "tsx scripts/reconcile-card-links.ts"
+    "cards:reconcile": "tsx scripts/reconcile-card-links.ts",
+    "auth:prepare": "tsx scripts/auth-prepare.ts",
+    "auth:preflight": "tsx scripts/auth-connection-check.ts",
+    "test:auth:database": "python3 scripts/auth-test-bootstrap.py"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
     "bcryptjs": "^2.4.3",
+    "better-auth": "1.7.12",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^5.0.1",
+    "kysely": "0.29.7",
+    "pg": "8.23.1",
     "pino": "^9.5.0",
-    "zod": "^3.23.8"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^22.7.5",
+    "@types/pg": "^8.23.1",
     "tsx": "^4.19.1",
     "typescript": "^5.6.3",
     "vitest": "^2.1.3"

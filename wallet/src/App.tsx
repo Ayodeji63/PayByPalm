@@ -22,6 +22,7 @@ import Dashboard from './routes/Dashboard.js';
  * Lazy-loaded routes — only fetched when needed.
  */
 const SetupPin = lazy(() => import('./routes/SetupPin.js'));
+const PasswordRecovery = lazy(() => import('./routes/PasswordRecovery.js'));
 const ConfirmEmail = lazy(() => import('./routes/ConfirmEmail.js'));
 const Verify = lazy(() => import('./routes/Verify.js'));
 const Scan = lazy(() => import('./routes/Scan.js'));
@@ -121,6 +122,8 @@ export default function App() {
         }
       />
 
+      <Route path="/auth/forgot" element={<Suspense fallback={<Loading />}><PasswordRecovery /></Suspense>} />
+      <Route path="/auth/reset" element={<Suspense fallback={<Loading />}><PasswordRecovery /></Suspense>} />
       <Route path="/auth/confirm" element={<Suspense fallback={<Loading />}><ConfirmEmail /></Suspense>} />
 
       <Route path="/setup-pin" element={<AuthedFull><SetupPin /></AuthedFull>} />

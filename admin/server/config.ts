@@ -16,7 +16,7 @@ export const configSchema = z
       ),
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(1).default(0),
     SUPABASE_URL: z.string().url(),
-    SUPABASE_ANON_KEY: z.string().min(1),
+    SUPABASE_ANON_KEY: z.string().optional(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
     ADMIN_USER_IDS: z
       .string()

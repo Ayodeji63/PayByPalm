@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { requireUser,userAuth } from '../middleware/userAuth.js';
 import { userRateLimit } from '../middleware/abuseLimits.js';
 import { validate } from '../middleware/validate.js';

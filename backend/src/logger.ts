@@ -35,6 +35,8 @@ export const logger = pino({
       'authorization_ciphertext', '*.authorization_ciphertext',
       'authorization_code', '*.authorization_code', 'signature', '*.signature',
       'PAYSTACK_SECRET_KEY', 'CARD_TOKEN_ENCRYPTION_KEY',
+      'AUTH_SECRET', 'AUTH_DATABASE_URL', 'RESEND_API_KEY',
+      '*.AUTH_SECRET', '*.AUTH_DATABASE_URL', '*.RESEND_API_KEY',
       'refreshToken', '*.refreshToken',
       'err.body',
       'pin_hash',

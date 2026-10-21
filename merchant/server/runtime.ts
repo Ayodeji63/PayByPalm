@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { centralAuth } from "./identity.js";
 import { createApp } from "./app.js";
 import { readConfig } from "./config.js";
 
@@ -18,6 +19,6 @@ export function configuredApp(serveFrontend = true) {
     options,
   );
   const auth = () =>
-    createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY, options);
+    centralAuth(config.PAYMENT_API_BASE_URL);
   return { config, app: createApp({ config, db, auth, serveFrontend }) };
 }

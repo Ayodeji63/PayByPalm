@@ -25,7 +25,7 @@ function load(relativePath, globals = {}) {
   const exports = {};
   vm.runInNewContext(compiled, {
     exports, localStorage: storage(), sessionStorage: storage(),
-    DOMException, Error, setTimeout, URL, URLSearchParams, ...globals,
+    DOMException, Error, setTimeout, URL, URLSearchParams, AbortSignal, ...globals,
   });
   return exports;
 }
@@ -197,23 +197,23 @@ test('invalid confirmation sessions cannot create a session', async () => {
   await assert.rejects(authProvider(api).confirmEmail('invalid-refresh'), error => error.code === 'invalid_confirmation');
   assert.equal(api.loadSession(), null);
 });
-test('confirmed signup exchanges the link session and loads the real profile', async () => {
+test('verified signup never signs in from a verification token', async () => {
   let verification;
   const api = load('../src/lib/api.ts', { fetch: async (url, options) => {
     if (url.endsWith('/auth/signup')) return response(201, { email: signupInput.email, verificationRequired: true });
-    if (url.endsWith('/auth/confirm')) { verification = JSON.parse(options.body); return response(200, { session }); }
+    if (url.endsWith('/auth/confirm')) { verification = JSON.parse(options.body); return response(200, { verified: true }); }
     return response(200, { id: 'user-A', balanceMinor: 0 });
   } });
   const auth = authProvider(api); await auth.signUp(signupInput); await auth.confirmEmail('link-refresh');
-  assert.deepEqual(verification, { refreshToken: 'link-refresh' });
-  assert.equal(api.loadSession().accessToken, session.accessToken);
+  assert.deepEqual(verification, { token: 'link-refresh' });
+  assert.equal(api.loadSession(), null);
 });
-test('logout cancels a pending verification result', async () => {
+test('a late verification cannot restore a session after logout', async () => {
   const pending = deferred();
   const api = load('../src/lib/api.ts', { fetch: async () => pending.promise });
   const auth = authProvider(api); const verifying = auth.confirmEmail('link-refresh');
   auth.signOut(); pending.resolve(response(200, { session }));
-  await assert.rejects(verifying, /cancelled/); assert.equal(api.loadSession(), null);
+  await verifying; assert.equal(api.loadSession(), null);
 });
 
 test('pending sale references survive reloads and cannot silently drop corrupt state', () => {
@@ -248,7 +248,7 @@ function renderDashboard(balanceMinor, palmEnrolled = false) {
     '../lib/auth.js': { useAuth: () => ({ me: { id: 'user', fullName: 'Test User', balanceMinor, phone: '08010001234', palmEnrolled }, refresh: async () => {}, consentGiven: false, setConsentGiven:()=>{} }) },
     '../lib/money.js': load('../src/lib/money.ts'),
     '../lib/serverCards.js': { useServerCards: () => [], editLinkedCard: async () => {} },
-    '../components/ui.js': { PalmIcon: () => null, Skeleton: () => null },
+    '../components/ui.js': { PalmIcon: () => null, PalmScanIcon: () => null, Skeleton: () => null },
     '../components/BankCard.js': { BankCard: () => null },
     '../components/sheets.js': { TransactionSheet: () => null },
     '../components/transitions.js': { PageTransition: ({ children }) => children },
@@ -526,7 +526,7 @@ test('PIN setup checks confirmation and waits for the authenticated save', async
 
 const confirmation = () => load('../src/lib/emailConfirmation.ts');
 test('confirmation parser accepts signup links and rejects recovery, passwordless and malformed links', () => {
-  assert.equal(confirmation().readEmailConfirmation('#type=signup&refresh_token=valid'), 'valid');
+  assert.equal(confirmation().readEmailConfirmation('#token=valid'), 'valid');
   for (const hash of ['', '#type=signup', '#type=recovery&refresh_token=x', '#type=magiclink&refresh_token=x', '#type=signup&refresh_token=x&error_code=otp_expired']) {
     assert.throws(() => confirmation().readEmailConfirmation(hash));
   }

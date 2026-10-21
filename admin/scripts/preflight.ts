@@ -54,8 +54,8 @@ for (const [name, args] of [
   failed ||= !ok;
 }
 for (const id of c.ADMIN_USER_IDS) {
-  const r = await db.auth.admin.getUserById(id);
-  const ok = !!r.data.user?.email_confirmed_at;
+  const r = await db.rpc('lookup_verified_identity', {p_id:id});
+  const ok = r.data?.length === 1 && !r.error;
   console.log(
     `${ok ? "PASS" : "FAIL"}: configured administrator exists with verified email`,
   );

@@ -7,7 +7,7 @@
 
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { db } from '../db/client.js';
 import { AppError, unauthorized } from '../errors.js';
 import { getProfile } from '../db/queries.js';
