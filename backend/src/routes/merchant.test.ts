@@ -254,17 +254,17 @@ describe("merchant reporting boundaries", () => {
     expect(m.calls).toHaveLength(1);
   });
   it("isolates payment rows by both merchant and active mode", async () => {
-    const result = await (await get("transactions")).json();
+    const result = await (await get("transactions")).json() as { transactions: { domain: string }[] };
     expect(result.transactions).toHaveLength(1);
-    expect(result.transactions[0].domain).toBe("test");
+    expect(result.transactions[0]!.domain).toBe("test");
     expect(JSON.stringify(result)).not.toMatch(
       /private-payer|private-card-token|Other merchant/,
     );
     m.mode = "live";
-    const live = await (await get("transactions")).json();
+    const live = await (await get("transactions")).json() as { paymentMode: string; transactions: { domain: string }[] };
     expect(live.paymentMode).toBe("live");
     expect(live.transactions).toHaveLength(1);
-    expect(live.transactions[0].domain).toBe("live");
+    expect(live.transactions[0]!.domain).toBe("live");
   });
   it("rechecks grants and rejects access immediately after revocation", async () => {
     expect((await get("transactions")).status).toBe(200);
@@ -333,9 +333,9 @@ describe("merchant reporting boundaries", () => {
     expect((await get("export")).status).toBe(413);
   });
   it("returns paginated safe terminal fields without keys or another merchant", async () => {
-    const r = await (await get("terminals")).json();
+    const r = await (await get("terminals")).json() as { terminals: { label: string }[] };
     expect(r.terminals).toHaveLength(1);
-    expect(r.terminals[0].label).toBe("Counter A");
+    expect(r.terminals[0]!.label).toBe("Counter A");
     expect(JSON.stringify(r)).not.toMatch(/private-key|Other counter/);
   });
   it("fails closed when membership storage is down", async () => {
@@ -359,8 +359,8 @@ describe("merchant Paystack settlement isolation", () => {
       paymentMode: "test",
       settlements: [],
     });
-    expect(m.paystack.mock.calls[0][0]).toBe("/subaccount/ACCT_testA");
-    const q = new URL(m.paystack.mock.calls[1][0], "https://api.paystack.co");
+    expect(m.paystack.mock.calls[0]![0]).toBe("/subaccount/ACCT_testA");
+    const q = new URL(m.paystack.mock.calls[1]![0], "https://api.paystack.co");
     expect(q.pathname).toBe("/settlement");
     expect(q.searchParams.get("subaccount")).toBe("101");
     expect(q.searchParams.get("page")).toBe("1");
@@ -405,7 +405,7 @@ describe("merchant Paystack settlement isolation", () => {
           bank_account_number: "private-bank-number",
         },
       ]);
-    const result = await (await get("settlements")).json();
+    const result = await (await get("settlements")).json() as { settlements: unknown[] };
     expect(result.settlements[0]).toMatchObject({
       status: "pending",
       amountMinor: 4900,
