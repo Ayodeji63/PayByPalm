@@ -135,6 +135,12 @@ export const isTencentSearchMiss = (code?: number): boolean => code === 1001013 
  * Never interpret transport, auth, quality, or missing-user errors as a miss. */
 export const isTencentCompareDirectionAbsent = (code?: number, httpStatus?: number): boolean =>
   (httpStatus === undefined || httpStatus === 200 || httpStatus === 400) && (code === 1001025 || code === 2080017);
+/** Candidate exclusion during a 1:1 sweep only. The live compare endpoint also
+ * returns the documented no-match business codes (observed in palm_audit).
+ * Retain transport/auth/quality/registration errors as failures, not exclusions. */
+export const isTencentCompareMiss = (code?: number, httpStatus?: number): boolean =>
+  (httpStatus === undefined || httpStatus === 200 || httpStatus === 400) &&
+  (isTencentSearchMiss(code) || isTencentCompareDirectionAbsent(code, httpStatus));
 /** Only valid for a GetPalm absence check, never for arbitrary operations. */
 export const isTencentPalmAbsent = (code?: number, httpStatus?: number): boolean =>
   (httpStatus === undefined || httpStatus === 200) && (code === 1001012 || code === 2080009);

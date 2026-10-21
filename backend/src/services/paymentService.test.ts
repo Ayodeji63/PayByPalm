@@ -18,12 +18,12 @@ const settled={...auth,status:'settled',settled_at:new Date().toISOString()};
 const log={info:vi.fn(),warn:vi.fn()} as any;
 beforeEach(()=>{vi.clearAllMocks();m.ready.mockReset();m.settings.PALM_PROVIDER="mock";m.settings.PAYSTACK_MODE="test";m.settings.TENCENT_CAPTURE_MODE="legacy";m.settings.TENCENT_H5_IMAGE_ONLY_APPROVED=false;m.single.mockReset();m.profile.mockResolvedValue(profile);m.search.mockResolvedValue({userId:'payer',score:92});m.compare.mockResolvedValue({isMatch:true,score:92});m.candidates.mockResolvedValue([{id:'binding',user_id:'payer',tencent_palm_id:'palm-id'}]);m.consume.mockResolvedValue({userId:'payer',capture:{}});m.compareCapture.mockResolvedValue({isMatch:true,score:92});m.charge.mockResolvedValue(undefined);});
 describe('direct card payment policy',()=>{
- it.each(['legacy','h5'])('checks the next enrolled user after a missing hand without charging during %s authentication',async mode=>{
+ it.each(['legacy','h5'].flatMap(mode=>[2080017,2080010].map(providerCode=>({mode,providerCode}))))('checks the next enrolled user after candidate miss $providerCode without charging during $mode authentication',async ({mode,providerCode})=>{
   m.settings.PALM_PROVIDER='tencent';m.settings.TENCENT_CAPTURE_MODE=mode;
   m.candidates.mockResolvedValue([{id:'opposite-binding',user_id:'other-payer',tencent_palm_id:'other-palm'},{id:'binding',user_id:'payer',tencent_palm_id:'palm-id'}]);
   m.consume.mockResolvedValue({userId:'payer',capture:{}});
   const compare=mode==='h5'?m.compareCapture:m.compare;
-  compare.mockRejectedValueOnce(new PalmProviderError('hand absent',{providerCode:2080017,httpStatus:200})).mockResolvedValueOnce({isMatch:true,score:95});
+  compare.mockRejectedValueOnce(new PalmProviderError('candidate did not match',{providerCode,httpStatus:200})).mockResolvedValueOnce({isMatch:true,score:95});
   m.single.mockResolvedValueOnce({data:pending}).mockResolvedValueOnce({data:{id:'card',last4:'4081'}}).mockResolvedValueOnce({data:auth});
   const outcome=mode==='h5'?await authenticateSdkTransaction('txn',terminal,{captureId:'capture',payload:'opaque'},log):await authenticateTransaction('txn',terminal,'image',undefined,log);
   expect(outcome).toMatchObject({decision:'accept',cardLast4:'4081'});
@@ -73,6 +73,31 @@ describe('direct card payment policy',()=>{
 
 describe('complete 1:1 candidate sweep',()=>{
  const candidates=Array.from({length:12},(_,i)=>({id:`binding-${i}`,user_id:`user-${i}`,tencent_palm_id:`palm-${i}`}));
+ it.each([1001013,2080010])('continues past provider no-match %s with the genuine payer at any position',async providerCode=>{
+  for(const matchIndex of [0,1,11]){
+   const compare=vi.fn(async(userId:string)=>{
+    if(userId===`user-${matchIndex}`)return {isMatch:true,score:95};
+    throw new PalmProviderError('user not found in search',{providerCode,httpStatus:200});
+   });
+   expect(await matchPalmCandidates(candidates,compare)).toMatchObject({userId:`user-${matchIndex}`,outcome:{decision:'accept'}});
+   expect(compare.mock.calls.map(([userId])=>userId)).toEqual(candidates.map(c=>c.user_id));
+  }
+ });
+ it('returns a completed no-match rather than an exception when every candidate returns 2080010',async()=>{
+  const compare=vi.fn().mockRejectedValue(new PalmProviderError('user not found in search',{providerCode:2080010,httpStatus:400}));
+  expect(await matchPalmCandidates(candidates,compare)).toMatchObject({userId:null,outcome:{decision:'reject',reason:'no_match'}});
+  expect(compare).toHaveBeenCalledTimes(12);
+ });
+ it('does not mistake a no-match envelope for a successful match or hide ambiguous payers',async()=>{
+  const compare=vi.fn().mockResolvedValueOnce({isMatch:true,score:95}).mockRejectedValueOnce(new PalmProviderError('user not found in search',{providerCode:2080010,httpStatus:200})).mockResolvedValue({isMatch:true,score:96});
+  expect(await matchPalmCandidates(candidates,compare)).toMatchObject({userId:null,outcome:{decision:'reject',reason:'ambiguous_match'}});
+  expect(compare).toHaveBeenCalledTimes(12);
+ });
+ it.each([401,403,429,500,502,503])('keeps no-match codes fatal on provider HTTP %s',async httpStatus=>{
+  const failure=new PalmProviderError('provider failed',{providerCode:2080010,httpStatus});
+  const compare=vi.fn().mockResolvedValueOnce({isMatch:true,score:95}).mockRejectedValueOnce(failure);
+  await expect(matchPalmCandidates(candidates,compare)).rejects.toBe(failure);
+ });
  it.each([1001025,2080017])('continues after direction code %s before and after a unique positive match',async code=>{
   for(const index of [0,1]){
    const compare=vi.fn(async(user:string)=>{
@@ -99,18 +124,18 @@ describe('complete 1:1 candidate sweep',()=>{
   const failure=new PalmProviderError('unavailable',{providerCode:2080017,httpStatus});
   await expect(matchPalmCandidates(candidates,vi.fn().mockRejectedValue(failure))).rejects.toBe(failure);
  });
- it('does not suppress unrelated errors carrying a lookalike provider code',async()=>{
-  const failure=Object.assign(new Error('unrelated'),{providerCode:2080017});
+ it.each([2080017,2080010])('does not suppress unrelated errors carrying lookalike code %s',async providerCode=>{
+  const failure=Object.assign(new Error('unrelated'),{providerCode});
   await expect(matchPalmCandidates(candidates,vi.fn().mockRejectedValue(failure))).rejects.toBe(failure);
  });
  it.each([null,undefined])('rejects an empty comparison after a positive match: %j',async value=>{
   const compare=vi.fn().mockResolvedValueOnce({isMatch:true,score:95}).mockResolvedValueOnce(value);
   await expect(matchPalmCandidates(candidates,compare)).rejects.toMatchObject({code:'palm_comparison_invalid'});
  });
- it('enforces the sweep deadline even when a direction-missing response arrives late',async()=>{
+ it.each([2080017,2080010])('enforces the sweep deadline even when candidate miss %s arrives late',async providerCode=>{
   const clock=vi.spyOn(Date,'now').mockReturnValue(0);
   try{
-   const compare=vi.fn(async()=>{clock.mockReturnValue(45001);throw new PalmProviderError('hand absent',{providerCode:2080017});});
+   const compare=vi.fn(async()=>{clock.mockReturnValue(45001);throw new PalmProviderError('candidate miss',{providerCode});});
    await expect(matchPalmCandidates(candidates,compare)).rejects.toMatchObject({code:'palm_comparison_incomplete'});expect(compare).toHaveBeenCalledTimes(1);
   }finally{clock.mockRestore();}
  });

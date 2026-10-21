@@ -17,7 +17,7 @@ import { chargeCardPayment } from './cardPaymentService.js';
 import { requirePaystack, paystackDomain } from './paystack.js';
 import { consumePalmCapture, getActivePalmCandidates, issuePalmCapture, type CaptureSubmission, type PalmCandidate } from './palmCaptureService.js';
 import type { CompareResult } from '../palm/provider.js';
-import { isTencentCompareDirectionAbsent } from '../palm/tencentErrors.js';
+import { isTencentCompareMiss } from '../palm/tencentErrors.js';
 
 export interface TransactionRow {
   id: string;
@@ -120,18 +120,18 @@ export async function matchPalmCandidates(
   for (const candidate of candidates) {
     if (Date.now() >= deadline) throw new AppError(503, 'palm_comparison_incomplete', 'The palm check took too long. No payment was authorized. Please try again.');
     let result: CompareResult | undefined;
-    let directionAbsent = false;
+    let candidateMiss = false;
     try {
       result = await compare(candidate.user_id);
     } catch (error) {
       // The audited provider has already retained the original code/request ID.
-      // An account enrolled with the opposite hand is not a possible match for
-      // this capture; continue the sweep instead of blocking every other user.
-      if (!(error instanceof PalmProviderError) || !isTencentCompareDirectionAbsent(error.providerCode, error.providerHttpStatus)) throw error;
-      directionAbsent = true;
+      // A definitive no-match or missing hand excludes this candidate only.
+      // Check every other user, even if a previous candidate already matched.
+      if (!(error instanceof PalmProviderError) || !isTencentCompareMiss(error.providerCode, error.providerHttpStatus)) throw error;
+      candidateMiss = true;
     }
     if (Date.now() >= deadline) throw new AppError(503, 'palm_comparison_incomplete', 'The palm check took too long. Please scan again.');
-    if (directionAbsent) continue;
+    if (candidateMiss) continue;
     if (!result || typeof result.isMatch !== 'boolean' || !Number.isFinite(result.score) || result.score < 0 || result.score > 100) {
       throw new AppError(502, 'palm_comparison_invalid', 'The palm service returned an invalid comparison. Please scan again.');
     }

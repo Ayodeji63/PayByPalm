@@ -24,6 +24,23 @@ Enrolment uses the atomic `complete_h5_palm_enrolment` RPC from migration 0021 i
 both modes, despite its historical name. That already-applied migration and all
 existing registrations/cards/payment history are preserved.
 
+### No-match responses during the 1:1 sweep
+
+A no-match response excludes one candidate, not every enrolled account. Continue
+past Tencent codes `2080010` / `1001013` (no match) and `2080017` / `1001025`
+(that hand is not registered for the candidate), on business responses with HTTP
+200 or 400. Tencent's [error table](https://api-docs.intl.palm.tencent.com/docs/kyc-api/)
+describes `2080010` as a search miss; our hosted `palm_audit` records also show it
+on `compare` calls on 21 October 2026. Preserve the original code and Tencent
+request ID in that audit, and finish checking the remaining registered users.
+
+The completed sweep must still produce exactly one provider-confirmed match at
+the existing score threshold. Zero matches reject normally; multiple matches
+reject as ambiguous. Authentication, throttling, transport, liveness, quality,
+missing-user, malformed-result and timeout failures still abort authorization.
+This behavior applies to both original-camera and H5 comparisons; it does not
+enable native 1:N search or require re-enrollment.
+
 ## Capture and payment flow
 
 1. A registered terminal creates a sale using the existing stable sale reference.
