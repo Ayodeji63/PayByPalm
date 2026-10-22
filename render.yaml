@@ -30,8 +30,18 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      - key: SUPABASE_ANON_KEY
+      # Better Auth uses the private PostgreSQL connection; Resend delivers mail.
+      # Existing values stay private and are preserved during Blueprint sync.
+      - key: AUTH_DATABASE_URL
         sync: false
+      - key: AUTH_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: AUTH_BASE_URL
+        value: https://paybypalm-backend.onrender.com
 
       # Set mode and its matching secret together in Render. The application
       # defaults to test when unset; Blueprint sync must not overwrite the choice.
@@ -45,9 +55,10 @@ services:
         sync: false
 
       # Public production wallet origin, without a trailing slash. Used for CORS
-      # and terminal enrolment links. This is public configuration, not a secret.
+      # and verification, recovery and terminal enrolment links.
+      # This is public configuration, not a secret.
       - key: WALLET_BASE_URL
-        value: https://pay-by-palm.vercel.app
+        value: https://www.paybypalm.app
       - key: EXTRA_CORS_ORIGINS
         value: "https://www.paybypalm.app,https://paybypalm.app"
 
