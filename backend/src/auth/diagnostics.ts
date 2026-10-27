@@ -5,6 +5,7 @@ const reasons: Record<string, string> = {
   '3D000': 'database_not_found',
   '3F000': 'auth_schema_missing',
   '42P01': 'auth_tables_missing',
+  '42883': 'signup_database_helper_missing',
   '42501': 'database_permission_denied',
   '53300': 'database_connection_limit',
   '57014': 'database_query_timeout',

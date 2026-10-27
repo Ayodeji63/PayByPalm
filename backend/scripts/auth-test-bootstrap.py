@@ -14,7 +14,7 @@ try:
   time.sleep(.5)
  sql((root/'supabase/tests/local_supabase_stub.sql').read_text())
  for path in sorted((root/'supabase/migrations').glob('*.sql')):
-  if path.name.startswith('0025'):continue
+  if path.name >= '0025':continue
   sql(path.read_text())
  sql((root/'supabase/seed.sql').read_text())
  port=subprocess.check_output(['docker','port',container,'5432/tcp'],text=True).strip().rsplit(':',1)[1]

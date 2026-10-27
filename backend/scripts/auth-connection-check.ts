@@ -16,6 +16,14 @@ else {
   if(r.rows[0].prepared){
    const state=await pool.query(`select count(*)::int as identities,count(*) filter(where "emailVerified" and not disabled)::int as verified_identities from pbp_auth."user"`);
    console.log(state.rows[0]);
+   const helper=await pool.query(`select to_regprocedure('public.canonical_sms_phone(text)') is not null as available`);
+   if(!helper.rows[0].available){
+    console.log('PENDING: signup phone helper migration 0026. Existing login can work while new signup fails.');process.exitCode=1;
+   }else{
+    const canonical=await pool.query(`select public.canonical_sms_phone('+2348010001234') as phone`);
+    if(canonical.rows[0].phone!=='08010001234'){console.log('FAIL: signup phone helper validation. Apply repair migration 0026.');process.exitCode=1;}
+    else console.log({signupPhoneHelper:'ready'});
+   }
   } else {console.log('PENDING: authentication cutover migration 0025. See AUTH_MIGRATION.md before applying.');process.exitCode=1;}
  }catch(error){
   const code=(error as {code?:string}).code??'connection_error';

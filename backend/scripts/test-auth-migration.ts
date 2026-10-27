@@ -17,6 +17,7 @@ let engine: ReturnType<typeof createIdentity>["engine"];
 const legacy = '11111111-1111-4111-8111-111111111111';
 const headers = (token:string) => new Headers({authorization:`Bearer ${token}`});
 const migration = await readFile(new URL('../../supabase/migrations/0025_resend_auth.sql',import.meta.url),'utf8');
+const signupRepair = await readFile(new URL('../../supabase/migrations/0026_auth_signup_phone_helper.sql',import.meta.url),'utf8');
 try {
   await pool.query(`insert into auth.users(id,email,email_confirmed_at,encrypted_password,raw_user_meta_data)
     values($1,'legacy@example.com',now(),$2,'{"full_name":"Existing Customer","phone":"08010001234"}')`, [legacy,await bcrypt.hash('existing-password',10)]);
@@ -50,6 +51,14 @@ try {
   await pool.query(`update pbp_auth.session set \"expiresAt\"=now()-interval '1 second' where token=$1`,[login.token]);
   assert.equal(await engine.api.getSession({headers:headers(login.token!)}),null);
   assert.equal(await engine.api.getSession({headers:headers('old-supabase-token')}),null);
+  // Hosted databases can have old migration drift: reads succeed while the
+  // deferred PL/pgSQL dependency fails only when a new profile is provisioned.
+  await pool.query('drop function public.canonical_sms_phone(text)');
+  await assert.rejects(engine.api.signUpEmail({body:{name:'Missing Helper',email:'missing-helper@example.com',password:'new-password',phone:'08010001239'}}));
+  assert.equal((await pool.query(`select count(*)::int n from pbp_auth."user" where email='missing-helper@example.com'`)).rows[0].n,0);
+  await pool.query(signupRepair);
+  await pool.query(signupRepair);
+  assert.deepEqual(await snapshot(),saved);
   const signup = await engine.api.signUpEmail({body:{name:'New Customer',email:'new@example.com',password:'new-password',phone:'08010001235'}});
   assert.equal(signup.token,null);
   await assert.rejects(engine.api.signInEmail({body:{email:'new@example.com',password:'new-password'}}));
@@ -91,5 +100,5 @@ try {
   assert.equal(retry.token,null);
   await assert.rejects(engine.api.signUpEmail({body:{name:'Bad Profile',email:'bad@example.com',password:'new-password',phone:'bad-phone'}}));
   assert.equal((await pool.query(`select count(*)::int n from pbp_auth."user" where email='bad@example.com'`)).rows[0].n,0);
-  console.log('PASS: UUID/password migration, atomic profiles/accounts, verified-only login, opaque sessions, logout, reset/revocation, single-use recovery, rerunnable migration, legacy rejection and private tables. No external emails sent.');
+  console.log('PASS: UUID/password migration, missing phone helper repair, atomic profiles/accounts, verified-only login, opaque sessions, logout, reset/revocation, single-use recovery, rerunnable migrations, legacy rejection and private tables. No external emails sent.');
 } finally { await pool.end(); }

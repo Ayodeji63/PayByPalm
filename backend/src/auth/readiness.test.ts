@@ -12,7 +12,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.settings.AUTH_SECRET = 'inert';
   mocks.pool.mockReturnValue({ query: mocks.query, end: mocks.end });
-  mocks.query.mockResolvedValue({ rows: [] });
+  mocks.query.mockResolvedValue({ rows: [{ canonical: '08010001234' }] });
   mocks.end.mockResolvedValue(undefined);
 });
 
@@ -35,6 +35,21 @@ it('distinguishes a missing migration and still closes the connection', async ()
   await checkAuthReadiness();
   expect(mocks.error).toHaveBeenCalledWith({ reason: 'auth_tables_missing' }, 'Authentication readiness failed');
   expect(mocks.end).toHaveBeenCalledOnce();
+});
+
+it('detects a missing signup helper even when private tables are readable', async () => {
+  mocks.query.mockResolvedValueOnce({ rows: [] }).mockRejectedValueOnce({ code: '42883' });
+  await checkAuthReadiness();
+  expect(mocks.error).toHaveBeenCalledWith({ reason: 'signup_database_helper_missing' }, 'Authentication readiness failed');
+  expect(mocks.info).not.toHaveBeenCalled();
+  expect(mocks.end).toHaveBeenCalledOnce();
+});
+
+it('does not report readiness if the signup helper cannot canonicalize a valid phone', async () => {
+  mocks.query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ canonical: null }] });
+  await checkAuthReadiness();
+  expect(mocks.error).toHaveBeenCalledWith({ reason: 'signup_phone_helper_invalid' }, 'Authentication readiness failed');
+  expect(mocks.info).not.toHaveBeenCalled();
 });
 
 it('does not log a password or driver object on authentication failure', async () => {
