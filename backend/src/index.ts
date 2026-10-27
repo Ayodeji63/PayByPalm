@@ -31,6 +31,7 @@ import { startCardPaymentReconciliation } from './services/cardPaymentService.js
 import { startCardReconciliation } from './services/cardLinkService.js';
 import { walletRouter } from './routes/wallet.js';
 import { merchantRouter } from './routes/merchant.js';
+import { checkAuthReadiness } from './auth/readiness.js';
 
 export function createApp(): express.Express {
   const app = express();
@@ -115,6 +116,8 @@ if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
       },
       'PayByPalm API listening',
     );
+    // Port binding stays independent of the PostgreSQL connection probe.
+    void checkAuthReadiness();
   });
 
   const shutdown = (signal: string) => {

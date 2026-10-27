@@ -1,6 +1,8 @@
 import { config } from '../config.js';
 import { AppError, unauthorized } from '../errors.js';
 import { createIdentity, deliverAuthEmail, withDeliveryStatus } from './engine.js';
+import { logger } from '../logger.js';
+import { authFailureReason } from './diagnostics.js';
 
 let instance: ReturnType<typeof createIdentity> | undefined;
 function identity() {
@@ -21,6 +23,7 @@ function invalid(error: unknown, fallback: 'login' | 'token' | 'service'): never
   if (fallback === 'login' && ['INVALID_EMAIL_OR_PASSWORD', 'INVALID_PASSWORD'].includes(code ?? '')) throw unauthorized('Incorrect email or password.');
   if (fallback === 'token' && ['INVALID_TOKEN', 'TOKEN_EXPIRED', 'INVALID_VERIFICATION_TOKEN', 'VERIFICATION_TOKEN_EXPIRED'].includes(code ?? ''))
     throw new AppError(400, 'invalid_confirmation', 'This link is invalid or expired. Request a new link.');
+  logger.error({ operation: fallback, reason: authFailureReason(error) }, 'Authentication operation failed');
   throw new AppError(503, 'auth_unavailable', 'Authentication is temporarily unavailable. Please try again.');
 }
 export const identityService = {

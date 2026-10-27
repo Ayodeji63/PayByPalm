@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-const mocks=vi.hoisted(()=>({api:{signUpEmail:vi.fn(),sendVerificationEmail:vi.fn(),signInEmail:vi.fn(),getSession:vi.fn(),verifyEmail:vi.fn(),signOut:vi.fn(),requestPasswordReset:vi.fn(),resetPassword:vi.fn()},query:vi.fn()}));
+const mocks=vi.hoisted(()=>({api:{signUpEmail:vi.fn(),sendVerificationEmail:vi.fn(),signInEmail:vi.fn(),getSession:vi.fn(),verifyEmail:vi.fn(),signOut:vi.fn(),requestPasswordReset:vi.fn(),resetPassword:vi.fn()},query:vi.fn(),error:vi.fn()}));
+vi.mock('../logger.js',()=>({logger:{error:mocks.error}}));
 vi.mock('../config.js',()=>({config:{AUTH_DATABASE_URL:'postgres://inert:inert@localhost/test',AUTH_SECRET:'inert-secret',AUTH_BASE_URL:'https://api.example.test',WALLET_BASE_URL:'https://wallet.example.test',RESEND_API_KEY:'inert-resend',RESEND_FROM_EMAIL:'auth@example.test'}}));
 vi.mock('./engine.js',()=>({createIdentity:()=>({engine:{api:mocks.api},pool:{query:mocks.query}}),deliverAuthEmail:vi.fn(),withDeliveryStatus:(run:()=>Promise<unknown>)=>run()}));
 import { identityService } from './service.js';
@@ -27,6 +28,8 @@ it('checks disabled state even for an existing session',async()=>{
 it('fails closed on database outages without leaking the driver error',async()=>{
  mocks.query.mockRejectedValue(new Error('password=secret-marker'));
  await expect(identityService.session('opaque-session')).rejects.toMatchObject({status:503,code:'auth_unavailable'});
+ expect(mocks.error).toHaveBeenCalledWith({operation:'service',reason:'unexpected_auth_error'},'Authentication operation failed');
+ expect(JSON.stringify(mocks.error.mock.calls)).not.toContain('secret-marker');
 });
 it.each(['INVALID_EMAIL_OR_PASSWORD','INVALID_PASSWORD'])('maps wrong credentials to 401',async code=>{
  mocks.api.signInEmail.mockRejectedValue({body:{code,message:'private-diagnostic'}});

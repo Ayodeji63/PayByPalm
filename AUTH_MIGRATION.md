@@ -40,6 +40,14 @@ The migration moves application foreign keys to `pbp_auth."user"`, provisions ne
 
 Existing wallet sessions and admin/merchant cookies must sign in again. Old Supabase verification/reset links do not work with the new engine: request a fresh link through PayByPalm. New verification links confirm email only and then ask the user to sign in. Password reset links are single use and revoke prior sessions. Normal refresh extends the same opaque database-backed session; the compatibility API fields `accessToken` and `refreshToken` both carry that session token, not a Supabase JWT.
 
+## Authentication connection troubleshooting
+
+`/health` checks the application database through the Supabase HTTP API. It does not prove the separate `AUTH_DATABASE_URL` PostgreSQL connection works. After port binding, the backend logs `Authentication database ready` or `Authentication readiness failed`. This probe checks private table access without retrieving identities, and does not delay port binding.
+
+Read the fixed `reason` field in Render logs: `auth_settings_missing` includes missing setting names; `database_password_rejected` means the PostgreSQL credentials were rejected; `auth_tables_missing` or `auth_schema_missing` means migration 0025 is absent from that database; `database_certificate_untrusted` means TLS trust failed; and `database_permission_denied` means the connection role cannot access the private tables. Request failures also log a fixed reason. Raw driver messages, connection strings, SQL parameters and email addresses are never included in these auth diagnostics.
+
+If local `pnpm auth:preflight` succeeds while Render fails, privately compare Render's `AUTH_DATABASE_URL` with the working value in `backend/.env`. Preserve its project-specific Session pooler username, host, port and encoded password. Do not regenerate `AUTH_SECRET` or change payment encryption keys to resolve a database connection issue.
+
 ## Validation
 
 ```bash
