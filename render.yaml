@@ -60,7 +60,8 @@ services:
       - key: WALLET_BASE_URL
         value: https://www.paybypalm.app
       - key: EXTRA_CORS_ORIGINS
-        value: "https://www.paybypalm.app,https://paybypalm.app"
+        # Keep the original terminal origin until existing Pi launchers migrate.
+        value: "https://www.paybypalm.app,https://paybypalm.app,https://pay-by-palm.vercel.app"
 
       # Production biometric provider. The corresponding credential is stored
       # only in Render as TENCENT_PALM_API_KEY.

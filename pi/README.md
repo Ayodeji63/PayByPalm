@@ -15,6 +15,12 @@ key only: never a Supabase service-role key, Tencent key, or customer login.
 - The frontend's build must use the reachable HTTPS API URL in `VITE_API_BASE_URL`.
   `localhost:8080` would point at the Pi itself. Backend `WALLET_BASE_URL` must be
   the public wallet URL so phones can open enrolment QR links.
+- Set `WALLET_BASE_URL=https://www.paybypalm.app` on the backend. Keep
+  `https://paybypalm.app` and `https://pay-by-palm.vercel.app` in its comma-separated
+  `EXTRA_CORS_ORIGINS` while existing Pi launchers still use the original Vercel
+  address. Otherwise the browser rejects terminal health, identity and sale
+  requests before they reach the payment routes. Keep any other intended origins.
+  Updating this Render setting does not require regenerating terminal keys.
 - Use a dedicated kiosk account/browser profile. Do not sign customer wallets into it.
 
 ## 1. Install on the Pi
@@ -52,7 +58,7 @@ On the Pi, substitute that merchant ID below:
 
 ```bash
 python3 ~/.local/share/paybypalm/pi/provision-terminal.py \
-  --url https://pay-by-palm.vercel.app/terminal \
+  --url https://www.paybypalm.app/terminal \
   --merchant-id YOUR_MERCHANT_UUID \
   --label 'Main counter'
 ```
@@ -61,7 +67,7 @@ We should have an interface for this a proper interface different entirely from 
 ```bash 
 
 python3 provision-terminal.py \
-  --url https://pay-by-palm.vercel.app/terminal \
+  --url https://www.paybypalm.app/terminal \
   --merchant-id 4e087f88-0575-4b2e-a44d-2d7296809760 \
   --label 'Ayo Stores — Counter 1'
 
