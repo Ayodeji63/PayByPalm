@@ -98,6 +98,12 @@ describe('complete 1:1 candidate sweep',()=>{
   const compare=vi.fn().mockResolvedValueOnce({isMatch:true,score:95}).mockRejectedValueOnce(failure);
   await expect(matchPalmCandidates(candidates,compare)).rejects.toBe(failure);
  });
+ it('does not authorize a partial match when Tencent rejects the credential scope',async()=>{
+  const failure=new PalmProviderError('credential not allowed for path',{providerCode:2060205,httpStatus:200});
+  const compare=vi.fn().mockResolvedValueOnce({isMatch:true,score:95}).mockRejectedValueOnce(failure);
+  await expect(matchPalmCandidates(candidates,compare)).rejects.toBe(failure);
+  expect(compare).toHaveBeenCalledTimes(2);
+ });
  it.each([1001025,2080017])('continues after direction code %s before and after a unique positive match',async code=>{
   for(const index of [0,1]){
    const compare=vi.fn(async(user:string)=>{

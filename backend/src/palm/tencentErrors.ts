@@ -30,6 +30,7 @@ const kinds = {
   credential: failure(503, 'palm_credential_unavailable', 'The palm provider rejected its credentials. Contact the terminal administrator.'),
   thirdParty: failure(503, 'palm_third_party_authentication_failed', 'The palm provider could not complete third-party authentication. Contact the terminal administrator.'),
   credentialConflict: failure(409, 'palm_credential_conflict', 'The palm provider reported an existing credential. Contact the terminal administrator.'),
+  credentialScope: failure(503, 'palm_credential_scope_denied', 'The palm service credential does not permit this operation. Contact the terminal administrator.'),
   notFound: failure(409, 'palm_data_not_found', 'The palm provider could not find the required registration data. Check palm enrollment in your wallet.'),
   noMatch: failure(422, 'palm_no_match', 'No registered palm matched this scan. Reposition your hand and try again.'),
   auxiliaryMissing: failure(409, 'palm_auxiliary_image_missing', 'A required palm registration image is missing. Contact support before enrolling again.'),
@@ -103,6 +104,8 @@ export const TENCENT_ERROR_CODES: Readonly<Record<number, TencentFailure>> = Obj
   2060002: describe(kinds.rate, 'Provider request limit reached'),
   2060200: describe(kinds.credential, 'Provider credential not found'),
   2060201: describe(kinds.credentialConflict, 'Provider credential already exists'),
+  // Tencent Open API §6.2.2: SDK token scope does not cover this API path.
+  2060205: describe(kinds.credentialScope, 'Provider credential not allowed for this API path'),
   2080000: describe(kinds.version, 'Algorithm version unavailable'),
   2080001: describe(kinds.imageType, 'Image type unsupported'),
   2080002: describe(kinds.digest, 'Image checksum failed'),

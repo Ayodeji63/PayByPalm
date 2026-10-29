@@ -35,6 +35,12 @@ describe('published Tencent RGB error identities',()=>{
     expect(classifyTencentError(999,'unknown diagnostic').code).toBe('palm_provider_error');
     expect(classifyTencentError(9999999,'unknown diagnostic',403).code).toBe('palm_provider_error');
   });
+  it('reports credential path restrictions as an administrator configuration issue, never a palm miss',()=>{
+    expect(classifyTencentError(2060205,'openapi credential not allowed for this path',200))
+      .toMatchObject({status:503,code:'palm_credential_scope_denied'});
+    expect(isTencentCompareMiss(2060205,200)).toBe(false);
+    expect(isTencentPalmAbsent(2060205,200)).toBe(false);
+  });
   it('identifies only the observed detection diagnostic without guessing the private SDK return-code meaning',()=>{
     const diagnostic='grpc invoke failed. err: rpc error: code = Code(268566619) desc = call palm decection sdk err: call PalmDet fail, ret=-21';
     expect(classifyTencentError(999,diagnostic,200)).toMatchObject({status:502,code:'palm_image_detection_failed',description:'Observed palm detection SDK failure'});
