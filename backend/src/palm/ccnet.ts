@@ -13,7 +13,7 @@ const candidate = z.object({ user_id: z.string().min(1).max(128), palm_side: sid
 const identification = z.object({ candidates: z.array(candidate).max(2), matched: z.boolean(), threshold: score,
   identified_user_id: z.string().nullable(), identified_palm_side: side.nullable() });
 const verification = candidate.extend({ matched: z.boolean(), threshold: score });
-const enrollment = z.object({ user_id: z.string(), palm_side: side, status: z.enum(['created', 'replaced']), sample_count: z.literal(3) });
+const enrollment = z.object({ user_id: z.string(), palm_side: side, status: z.enum(['created', 'replaced']), sample_count: z.literal(3), minimum_pair_similarity: score.optional() });
 
 export function ccnetScore(cosine: number): number {
   if (!Number.isFinite(cosine) || cosine < -1 || cosine > 1) throw invalid();
@@ -88,7 +88,7 @@ export function createCcnetProvider(): PalmProvider {
       const result = await call(`/v1/users/${encodeURIComponent(input.subjectId)}/palms/${input.palmSide}`, 'PUT', form, true);
       const parsed = enrollment.safeParse(result.data);
       if (!parsed.success || parsed.data.user_id !== input.subjectId || parsed.data.palm_side !== input.palmSide) throw invalid();
-      return { palmId: input.subjectId, meta: result.meta };
+      return { palmId: input.subjectId, meta: {...result.meta,sampleCount:3,minimumPairSimilarity:parsed.data.minimum_pair_similarity} };
     },
     async compare(_userId, imageB64, reference) {
       const binding = requireBinding(reference);
@@ -98,7 +98,7 @@ export function createCcnetProvider(): PalmProvider {
       if (!parsed.success || parsed.data.user_id !== binding.subjectId || parsed.data.palm_side !== binding.palmSide ||
         parsed.data.matched !== (parsed.data.cosine_similarity >= parsed.data.threshold)) throw invalid();
       return { isMatch: parsed.data.matched, score: ccnetScore(parsed.data.cosine_similarity),
-        meta: { ...result.meta, providerIsMatch: parsed.data.matched } };
+        meta: { ...result.meta, providerIsMatch: parsed.data.matched, cosineSimilarity:parsed.data.cosine_similarity } };
     },
     async identify(imageB64, bindings) {
       if (bindings.length > 1000 || new Set(bindings.map(b => `${b.subjectId}:${b.palmSide}`)).size !== bindings.length) throw invalid();
@@ -119,7 +119,7 @@ export function createCcnetProvider(): PalmProvider {
         seen.add(id); previous = item.cosine_similarity;
         return { ...binding, score: ccnetScore(item.cosine_similarity), cosineSimilarity: item.cosine_similarity };
       });
-      return { candidates, meta: { ...result.meta, providerIsMatch: answer.matched } };
+      return { candidates, meta: { ...result.meta, providerIsMatch: answer.matched, cosineSimilarity:first?.cosine_similarity } };
     },
     async delete(_userId, reference) {
       const binding = requireBinding(reference); let meta: ProviderMeta = {};

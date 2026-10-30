@@ -10,8 +10,9 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
+    "test:retake:browser": "node tests/capture-retry-browser.mjs",
     "guard:secrets": "node scripts/guard-secrets.mjs",
-    "test:security": "node --test tests/auth-security.test.mjs tests/leds.test.mjs tests/palm-tracker.test.mjs tests/palm-sdk.test.mjs tests/camera-capture.test.mjs"
+    "test:security": "node --test tests/auth-security.test.mjs tests/leds.test.mjs tests/palm-tracker.test.mjs tests/palm-sdk.test.mjs tests/camera-capture.test.mjs tests/capture-retry.test.mjs"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^1.0.1",

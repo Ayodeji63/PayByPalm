@@ -359,3 +359,6 @@ See [merchant setup and reporting rules](../merchant/README.md).
 ## Better Auth and Resend cutover
 
 Follow [AUTH_MIGRATION.md](../AUTH_MIGRATION.md) before deploying the authentication replacement. The admin now verifies credentials through `PAYMENT_API_BASE_URL`; it keeps its own encrypted cookie, UUID allowlist and durable session revocation. Resend keys and the auth database password belong only on the backend. Apply database migrations in numeric order; canonical copies of 0020/0023 also live in `supabase/migrations/`. Do not reapply 0024 after authentication migration 0025.
+
+The **Live operations** page monitors terminal capture, enrollment, verification,
+identification and payment status. See [setup, rollout and retention](LIVE_OPERATIONS.md).

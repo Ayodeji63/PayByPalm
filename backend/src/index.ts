@@ -21,6 +21,7 @@ import { errorHandler, notFoundHandler } from './middleware/errors.js';
 import { requestId } from './middleware/requestId.js';
 import { runWithMockContext } from './palm/mockContext.js';
 import { authRouter } from './routes/auth.js';
+import { terminalEventsRouter } from './routes/terminalEvents.js';
 import { enrolRouter } from './routes/enrol.js';
 import { healthRouter } from './routes/health.js';
 import { terminalRouter } from './routes/terminal.js';
@@ -79,6 +80,7 @@ export function createApp(): express.Express {
   app.use(merchantRouter);
   app.use(cardsRouter);
   app.use(terminalRouter);
+  app.use(terminalEventsRouter);
   app.use(enrolRouter);
   app.use(transactionsRouter);
 

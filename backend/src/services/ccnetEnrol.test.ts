@@ -58,3 +58,21 @@ it('blocks another CCNet enrollment when the active provider already has a bindi
 it('does not reveal another terminal enrollment session',async()=>{
  await expect(getSessionView(session.id,undefined,'other-terminal')).rejects.toMatchObject({status:404});
 });
+
+it('clears only the rejected attempt so fresh frames can use the same claimed session',async()=>{
+ const {AppError}=await import('../errors.js');m.register.mockRejectedValue(new AppError(422,'palm_capture_rejected','Retake'));
+ m.rpc.mockImplementation(async(name:string)=>({data:name==='reset_rejected_ccnet_capture'?true:'reserved',error:null}));
+ await expect(registerPalmForSession(session.id,terminal,{imagesB64:images,palmSide:'right'})).rejects.toMatchObject({code:'palm_capture_rejected'});
+ expect(m.rpc).toHaveBeenCalledWith('reset_rejected_ccnet_capture',expect.objectContaining({p_session:session.id,p_fingerprint:expect.stringMatching(/^[a-f0-9]{64}$/)}));
+ expect(m.rpc).not.toHaveBeenCalledWith('complete_ccnet_enrolment',expect.anything());
+});
+it('preserves captures when resetting a definite rejection fails',async()=>{
+ const {AppError}=await import('../errors.js');m.register.mockRejectedValue(new AppError(422,'palm_capture_rejected','Retake'));
+ m.rpc.mockImplementation(async(name:string)=>({data:name==='reset_rejected_ccnet_capture'?false:'reserved',error:null}));
+ await expect(registerPalmForSession(session.id,terminal,{imagesB64:images,palmSide:'right'})).rejects.toMatchObject({code:'enrolment_retake_pending',status:503});
+});
+it('never resets the fingerprint after an unknown upstream outcome',async()=>{
+ const {AppError}=await import('../errors.js');m.register.mockRejectedValue(new AppError(503,'palm_reader_unavailable','Offline'));
+ await expect(registerPalmForSession(session.id,terminal,{imagesB64:images,palmSide:'right'})).rejects.toMatchObject({code:'palm_reader_unavailable'});
+ expect(m.rpc).not.toHaveBeenCalledWith('reset_rejected_ccnet_capture',expect.anything());
+});

@@ -6,6 +6,7 @@
  * every log line for that request — including the palm provider call.
  */
 
+import { operationContext } from '../services/operationEvents.js';
 import { randomUUID } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { logger } from '../logger.js';
@@ -41,5 +42,5 @@ export function requestId(req: Request, res: Response, next: NextFunction): void
     );
   });
 
-  next();
+  operationContext.run({requestId:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.id)?req.id:randomUUID()}, next);
 }

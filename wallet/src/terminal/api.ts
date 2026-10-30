@@ -35,7 +35,7 @@ export class TerminalApiError extends Error {
   }
 }
 
-async function send<T>(path: string, method: 'GET' | 'POST', body?: unknown): Promise<T> {
+async function send<T>(path: string, method: 'GET' | 'POST', body?: unknown, signal?: AbortSignal): Promise<T> {
   const key = resolveTerminalKey();
   const headers: Record<string, string> = {};
   if (key) headers['X-Terminal-Key'] = key;
@@ -46,6 +46,7 @@ async function send<T>(path: string, method: 'GET' | 'POST', body?: unknown): Pr
     response = await fetch(`${BASE_URL}${path}`, {
       method,
       headers,
+      signal,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
@@ -78,6 +79,7 @@ async function send<T>(path: string, method: 'GET' | 'POST', body?: unknown): Pr
 }
 
 export const terminalApi = {
+  captureEvents: (events: import('./captureTelemetry.js').CaptureEvent[]) => send<void>('/terminal/events','POST',{events},AbortSignal.timeout(5000)),
   identity: () =>
     send<{ terminalId: string; terminalLabel: string; merchantName: string; captureMode?: 'legacy' | 'h5' | 'ccnet' }>(
       '/terminal/me',

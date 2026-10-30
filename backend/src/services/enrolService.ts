@@ -341,6 +341,12 @@ async function registerCcnet(session: EnrolSessionRow, terminal: AuthedTerminal,
     const completed = await db.rpc('complete_ccnet_enrolment', { ...args, p_owner: owner });
     if (completed.error) throw new AppError(503, 'enrolment_completion_pending', 'Palm linking could not finish. Retry the same captures; do not start another enrollment.');
     return { status: 'completed', userDisplayName: maskName(profile.full_name), alreadyCompleted: false };
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'palm_capture_rejected' && error.status === 422) {
+      const reset = await db.rpc('reset_rejected_ccnet_capture', {p_session:session.id,p_owner:owner,p_fingerprint:fingerprint});
+      if (reset.error || reset.data !== true) throw new AppError(503,'enrolment_retake_pending','The capture was rejected, but its retry state could not be reset. Keep these captures and retry linking.');
+    }
+    throw error;
   } finally {
     images.fill('');
     // An uncertain upstream write may still be running. Keep the short database

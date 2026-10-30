@@ -5,8 +5,8 @@
  * Right 40%: the amount, positioning prompt and capture action.
  *
  * The original camera UI is the default; H5 remains a backend opt-in.
- * Both use backend-coordinated 1:1
- * comparisons; no terminal payment requests native provider 1:N search.
+ * CCNet uses one filtered gallery search; legacy readers retain their
+ * backend-coordinated comparisons.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -14,6 +14,7 @@ import { formatNaira } from '../../lib/money.js';
 import type { AuthenticateOutcome } from '../api.js';
 import { terminalApi, TerminalApiError } from '../api.js';
 import { beginLEDOperation,type LEDOperation } from '../leds.js';
+import { reportCaptureEvent } from '../captureTelemetry.js';
 import { useAutoCapture, useCamera } from '../useCamera.js';
 import { CameraPane, TButton } from '../ui.js';
 import { H5PalmCapture } from '../H5PalmCapture.js';
@@ -49,10 +50,13 @@ function LegacyCapture({
 }: CaptureProps) {
   const { videoRef, status, retry, captureBest, illuminationWarning } = useCamera(true);
   const [busy, setBusy] = useState(false);
+  const [retryMessage,setRetryMessage]=useState<string|null>(null);
   const { state: autoCaptureState, landmarks } = useAutoCapture(
     videoRef,
     status === 'ready' && !busy,
   );
+  useEffect(()=>{reportCaptureEvent({scope:'payment',scopeId:transactionId,stage:'scan_started'});},[transactionId]);
+  useEffect(()=>{reportCaptureEvent({scope:'payment',scopeId:transactionId,stage:'guidance',guidance:autoCaptureState});},[transactionId,autoCaptureState]);
   const autoCaptureFired = useRef(false);
   const captureInProgress=useRef(false);
   const operation=useRef<LEDOperation|null>(null);
@@ -66,26 +70,30 @@ function LegacyCapture({
 
   async function scan() {
     if (captureInProgress.current || busy || status !== 'ready') return;
-    captureInProgress.current=true;
+    captureInProgress.current=true; setRetryMessage(null);
+    reportCaptureEvent({scope:'payment',scopeId:transactionId,stage:'capture_started'});
     setBusy(true);
     const leds=beginLEDOperation();operation.current=leds;
     try {
-      const frame = await captureBest(leds);
+      const frame = await captureBest(leds,count=>reportCaptureEvent({scope:'payment',scopeId:transactionId,stage:'frame_captured',frameCount:count}));
       const started = performance.now();
       let outcome: AuthenticateOutcome;
       try { outcome = await terminalApi.authenticate(transactionId, frame.imageB64); }
       finally { frame.imageB64 = ''; performance.measure('palm.authenticate', { start: started, end: performance.now() }); }
       if(!leds.active())return;
       await leds.state(outcome.decision==='accept'?'OFF':'ERROR');
+      if(outcome.decision !== 'accept') {
+        setRetryMessage(outcome.message); reportCaptureEvent({scope:'payment',scopeId:transactionId,stage:'capture_retake'}); return;
+      }
       onOutcome(outcome);
     } catch (err) {
       if(!leds.active())return;
       await leds.state('ERROR');
-      onError(
+      if(err instanceof TerminalApiError && ['invalid_transaction_state','transaction_not_found','stale_authentication','transaction_expired','card_payment_not_configured','palm_reader_configuration','palm_capture_mode_changed','unauthorized'].includes(err.code)) { onError(err.message,err.code); return; }
+      setRetryMessage(
         err instanceof TerminalApiError
           ? `${err.message}${err.requestId ? ` Support reference: ${err.requestId}.` : ''}`
           : err instanceof Error?err.message:'The camera did not produce a usable image. Try again.',
-        err instanceof TerminalApiError ? err.code : undefined,
       );
     } finally {
       captureInProgress.current=false;
@@ -97,10 +105,10 @@ function LegacyCapture({
     if (autoCaptureState === 'loading' || autoCaptureState === 'place') {
       autoCaptureFired.current = false;
     }
-    if (autoCaptureState !== 'ready' || autoCaptureFired.current || busy) return;
+    if (autoCaptureState !== 'ready' || autoCaptureFired.current || busy || retryMessage) return;
     autoCaptureFired.current = true;
     void scan();
-  }, [autoCaptureState, busy]);
+  }, [autoCaptureState, busy, retryMessage]);
 
   const captureCaption =
     autoCaptureState === 'loading'
@@ -120,7 +128,7 @@ function LegacyCapture({
   return (
     <div className="flex h-full w-full flex-col p-5">
       <header className="flex h-[52px] shrink-0 items-center justify-between">
-        <TButton tone="ghost" size="sm" onClick={onCancel} disabled={busy}>
+        <TButton tone="ghost" size="sm" onClick={()=>{reportCaptureEvent({scope:'payment',scopeId:transactionId,stage:'capture_cancelled'});onCancel();}} disabled={busy}>
           ← Cancel
         </TButton>
         <span className="t-lg">{formatNaira(amountMinor)}</span>
@@ -141,12 +149,15 @@ function LegacyCapture({
         </div>
 
         {/* Controls — 40% */}
-        <div className="flex min-w-0 flex-1 flex-col justify-center">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col py-2">
+          <div className="min-h-0 flex-1 overflow-y-auto">
           {illuminationWarning&&<p role="status" className="t-sm text-warning">{illuminationWarning}</p>}
-          <p className="t-lg">Place your palm</p>
-          <p className="t-sm mt-3 text-ink-muted">Use the hand you enrolled. Keep your whole hand visible and hold it steady inside the guide.</p>
-          <TButton className="mt-8" disabled={busy || status !== 'ready'} onClick={() => void scan()}>
-            {busy ? 'Checking palm…' : 'Capture'}
+          <p className="t-lg">{retryMessage ? 'Retake palm' : 'Place your palm'}</p>
+          {!retryMessage && <p className="t-sm mt-3 text-ink-muted">Use the hand you enrolled. Keep your whole hand visible and hold it steady inside the guide.</p>}
+          {retryMessage&&<p role="alert" className="t-sm mt-3 text-danger">{retryMessage} Reposition your hand and retake.</p>}
+          </div>
+          <TButton className="mt-4 shrink-0" disabled={busy || status !== 'ready'} onClick={() => void scan()}>
+            {busy ? 'Checking palm…' : retryMessage ? 'Retake' : 'Capture'}
           </TButton>
         </div>
       </div>

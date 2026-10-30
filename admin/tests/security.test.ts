@@ -134,7 +134,7 @@ beforeEach(() => {
   );
 });
 describe("administrator boundaries", () => {
-  it.each(["/api/overview", "/api/auth/session"])(
+  it.each(["/api/overview", "/api/auth/session", "/api/operations"])(
     "rejects anonymous access to %s",
     async (path) => {
       expect((await send(path)).status).toBe(401);

@@ -64,6 +64,7 @@ for f in "$SUPA"/migrations/*.sql; do
   # Historical payment fixtures run before the CCNet-only charge cutover. The
   # current full schema and CCNet charge/race tests run in a separate database below.
   [ "$b" = "0027_ccnet_provider.sql" ] && continue
+  [ "$b" = "0028_live_operations_and_retakes.sql" ] && continue
 
   out=$(pg -v ON_ERROR_STOP=1 -q -f "/sql/$b" 2>&1) || fail "migration $b" "$out"
   echo "applied  $b"

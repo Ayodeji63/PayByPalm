@@ -8,7 +8,7 @@ export class ApiError extends Error {
     super(message + (reference ? " Reference: " + reference + "." : ""));
   }
 }
-export async function api<T>(path: string, body?: unknown): Promise<T> {
+export async function api<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   let response: Response;
   try {
     response = await fetch("/api" + path, {
@@ -17,6 +17,7 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
       headers: body === undefined ? {} : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
+      signal,
     });
   } catch {
     throw new ApiError(

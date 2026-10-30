@@ -58,6 +58,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
       palm_response_invalid: 'The palm reader returned an invalid result. No payment was authorized. Please scan again.',
       palm_binding_invalid: 'Palm enrollment needs administrator attention.',
       palm_status_unavailable: 'Could not check palm enrollment. Please try again.',
+      enrolment_retake_pending: 'The reader rejected the capture, but retry setup is still pending. Keep the same captures and retry linking.',
       enrolment_completion_pending: 'Palm linking could not finish. Retry the same captures after a minute; do not start another enrollment.',
       palm_sdk_setup_required: 'The palm reader requires database migration 0021. Ask the administrator to check setup.',
       palm_liveness_confirmation_required: 'Live palm payments require Tencent confirmation of the new capture and liveness integration. Contact the administrator.',

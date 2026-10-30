@@ -22,29 +22,34 @@ async function release() {
   if (access.status !== 0) fail('GitHub write access unavailable. Run gh auth login --web --git-protocol https, then gh auth setup-git, and retry. No database changes were made.');
   const databaseURL = process.env.AUTH_DATABASE_URL;
   if (!databaseURL) throw new ReleaseError('AUTH_DATABASE_URL must be configured in backend/.env.');
-  const sql = readFileSync(new URL('../../supabase/migrations/0027_ccnet_provider.sql', import.meta.url), 'utf8');
+  const migrations = [['0027','ccnet_provider'],['0028','live_operations_and_retakes']] as const;
   const pool = authPool(databaseURL);
   const client = await pool.connect();
   try {
     await client.query('begin');
     await client.query("set local lock_timeout='10s'; set local statement_timeout='60s'");
     await client.query("select pg_advisory_xact_lock(hashtextextended('paybypalm-ccnet-release',0))");
-    const recorded = await client.query<{ statements: string[] }>("select statements from supabase_migrations.schema_migrations where version='0027'");
-    if (recorded.rows.length) {
-      if (recorded.rows[0]!.statements.join('\n') !== sql) fail('Migration 0027 differs from the recorded version. Review the schema before continuing.');
-      console.log('Database: CCNet migration already applied.');
-    } else {
-      const prior = await client.query("select exists(select 1 from information_schema.columns where table_schema='public' and table_name='palm_bindings' and column_name='provider') as migrated");
-      if (prior.rows[0].migrated) fail('The provider schema already exists without this migration record. Review it before continuing.');
-      const claim = await client.query("select prosrc from pg_proc where oid='public.begin_card_payment(uuid,uuid,text,integer,integer)'::regprocedure");
-      const definition = String(claim.rows[0]?.prosrc ?? '').toLowerCase();
-      if (!['domain=p_domain', 'p_validity>60', 'for update', 'card_payment_attempts', 'is_default'].every(part => definition.includes(part)))
-        fail('The database must have the current verified-card/payment-mode migrations before CCNet rollout.');
-      // Keep migration and its Supabase ledger record in one transaction.
-      const body = sql.replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
-      await client.query(body);
-      await client.query("insert into supabase_migrations.schema_migrations(version,name,statements) values('0027','ccnet_provider',$1::text[])", [[sql]]);
-      console.log('Database: provider metadata, enrollment leases and charge guards prepared.');
+    for (const [version,name] of migrations) {
+      const sql = readFileSync(new URL(`../../supabase/migrations/${version}_${name}.sql`, import.meta.url), 'utf8');
+      const recorded = await client.query<{ statements: string[] }>(`select statements from supabase_migrations.schema_migrations where version='${version}'`);
+      if (recorded.rows.length) {
+        if (recorded.rows[0]!.statements.join('\n') !== sql) fail(`Migration ${version} differs from the recorded version. Review the schema before continuing.`);
+        console.log(`Database: migration ${version} already applied.`);
+      } else {
+        if (version === '0027') {
+          const prior = await client.query("select exists(select 1 from information_schema.columns where table_schema='public' and table_name='palm_bindings' and column_name='provider') as migrated");
+          if (prior.rows[0].migrated) fail('The provider schema already exists without this migration record. Review it before continuing.');
+          const claim = await client.query("select prosrc from pg_proc where oid='public.begin_card_payment(uuid,uuid,text,integer,integer)'::regprocedure");
+          const definition = String(claim.rows[0]?.prosrc ?? '').toLowerCase();
+          if (!['domain=p_domain', 'p_validity>60', 'for update', 'card_payment_attempts', 'is_default'].every(part => definition.includes(part)))
+            fail('The database must have the current verified-card/payment-mode migrations before CCNet rollout.');
+        }
+        // Keep migration and its Supabase ledger record in one transaction.
+        const body = sql.replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
+        await client.query(body);
+        await client.query(`insert into supabase_migrations.schema_migrations(version,name,statements) values('${version}','${name}',$1::text[])`, [[sql]]);
+        console.log(`Database: migration ${version} prepared.`);
+      }
     }
     await client.query('commit');
   } catch (error) {
@@ -53,6 +58,7 @@ async function release() {
   const pushed = git('push', 'origin', 'HEAD:main');
   if (pushed.status !== 0) fail('The migration is applied, but GitHub publishing failed. Keep the same release and rerun this command; do not bypass payment guards.');
   console.log('Code published. Import CCNet/secrets/paybypalm-render.env into the Render backend and choose Save, rebuild, and deploy.');
+  console.log('Deploy the matching wallet/Pi terminal and admin release. Add CCNet/secrets/paybypalm-admin-monitor.env to the admin server environment.');
 }
 release().catch((error: unknown) => {
   // Driver exceptions can include connection details. Print only our own messages.

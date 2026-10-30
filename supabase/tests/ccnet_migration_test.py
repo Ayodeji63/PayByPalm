@@ -17,8 +17,10 @@ def uid(): return str(uuid.uuid4())
 try:
     subprocess.run(['docker','run','-d','--name',container,'-e','POSTGRES_PASSWORD=disposable-test-only','-e','POSTGRES_DB=pbp','postgres:17-alpine'],check=True,capture_output=True)
     for _ in range(60):
-        if subprocess.run(['docker','exec',container,'pg_isready','-U','postgres'],capture_output=True).returncode==0: break
+        if subprocess.run(['docker','exec',container,'pg_isready','-h','127.0.0.1','-U','postgres'],capture_output=True).returncode==0: break
         time.sleep(0.2)
+    else:
+        raise AssertionError('Disposable PostgreSQL did not become ready')
     pg((root/'tests/local_supabase_stub.sql').read_text())
     for path in sorted((root/'migrations').glob('*.sql')):
         if path.name.startswith('0027'): break
@@ -30,11 +32,25 @@ try:
     insert into palm_bindings(id,user_id,tencent_palm_id) values('{legacy}','{user}','retained-tencent-history');
     update profiles set palm_enrolled=true where id='{user}';''')
     pg((root/'migrations/0027_ccnet_provider.sql').read_text())
+    pg((root/'migrations/0028_live_operations_and_retakes.sql').read_text())
     assert pg(f"select provider||':'||provider_subject_id from palm_bindings where id='{legacy}'")=='tencent:retained-tencent-history'
     assert pg("select has_function_privilege('anon','reserve_ccnet_enrolment(uuid,uuid,uuid,text,text,uuid)','EXECUTE')")=='f'
     assert pg("select has_function_privilege('service_role','begin_card_payment_previous(uuid,uuid,text,integer,integer)','EXECUTE')")=='f'
     def session():
         s=uid();pg(f"insert into enrol_sessions(id,terminal_id,user_id,status,expires_at,provider) values('{s}','{terminal}','{user}','claimed',clock_timestamp()+interval '5 minutes','ccnet');");return s
+    rejected=session(); rejected_owner=uid()
+    pg(f"select reserve_ccnet_enrolment('{rejected}','{terminal}','{user}',repeat('e',64),'right','{rejected_owner}')")
+    assert pg(f"select reset_rejected_ccnet_capture('{rejected}','{uid()}',repeat('e',64))")=='f','another attempt reset the lease'
+    assert pg(f"select reset_rejected_ccnet_capture('{rejected}','{rejected_owner}',repeat('e',64))")=='t'
+    assert pg(f"select status||':'||(capture_fingerprint is null)::text from enrol_sessions where id='{rejected}'")=='claimed:true'
+    # A different set of captures is now allowed without another phone claim.
+    retry_owner=uid()
+    pg(f"select reserve_ccnet_enrolment('{rejected}','{terminal}','{user}',repeat('f',64),'left','{retry_owner}')")
+    pg(f"select reset_rejected_ccnet_capture('{rejected}','{retry_owner}',repeat('f',64))")
+    assert pg("select has_table_privilege('authenticated','public.operation_events','SELECT')")=='f'
+    assert pg("select has_function_privilege('anon','public.append_operation_events(jsonb)','EXECUTE')")=='f'
+    pg("select append_operation_events('[{\"operation_id\":\"11111111-1111-4111-8111-111111111111\",\"request_id\":\"22222222-2222-4222-8222-222222222222\",\"operation\":\"capture\",\"stage\":\"frame_captured\",\"state\":\"observed\",\"occurred_at\":\"2026-10-30T12:00:00Z\",\"details\":{\"frameCount\":3,\"imagesB64\":\"must-not-persist\"}}]')")
+    assert pg("select details::text from operation_events limit 1")== '{"frameCount": 3}'
     s=session(); owner=uid()
     def reserve(owner): return pg(f"select reserve_ccnet_enrolment('{s}','{terminal}','{user}',repeat('a',64),'right','{owner}');",False)
     with ThreadPoolExecutor(2) as pool:

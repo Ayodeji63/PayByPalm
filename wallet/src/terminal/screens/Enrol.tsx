@@ -19,6 +19,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { terminalApi, TerminalApiError, type EnrolSessionView } from '../api.js';
 import { beginLEDOperation,confirmedEnrollment,type LEDOperation } from '../leds.js';
 import { leaseCamera } from '../cameraStream.js';
+import { reportCaptureEvent } from '../captureTelemetry.js';
 import { TIMINGS } from '../config.js';
 import { useAutoCapture, useCamera } from '../useCamera.js';
 import { CameraPane, Pane, PalmGlyph, TButton } from '../ui.js';
@@ -35,6 +36,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
   const [busy, setBusy] = useState(false);
   const [palmSide, setPalmSide] = useState<'left'|'right'>('right');
   const [progress, setProgress] = useState(0);
+  const [retake, setRetake] = useState(false);
   const pendingSamples = useRef<[string,string,string] | null>(null);
   useEffect(() => () => { pendingSamples.current?.fill(''); pendingSamples.current = null; }, []);
   useEffect(() => {
@@ -51,6 +53,8 @@ export function Enrol({ onExit }: { onExit: () => void }) {
     videoRef,
     legacyCapture && status === 'ready' && !busy,
   );
+  useEffect(()=>{if(phase==='capturing'&&session)reportCaptureEvent({scope:'enrollment',scopeId:session.sessionId,stage:'scan_started'});},[phase,session?.sessionId]);
+  useEffect(()=>{if(phase==='capturing'&&session)reportCaptureEvent({scope:'enrollment',scopeId:session.sessionId,stage:'guidance',guidance:autoCaptureState});},[phase,session?.sessionId,autoCaptureState]);
   const autoCaptureFired = useRef(false);
   const captureInProgress=useRef(false);
   const operation=useRef<LEDOperation|null>(null);
@@ -64,9 +68,12 @@ export function Enrol({ onExit }: { onExit: () => void }) {
     if(state==='CAPTURING'){const timer=window.setInterval(()=>void leds.state('CAPTURING'),5000);return ()=>window.clearInterval(timer);}
   },[phase,status,busy,session?.captureMode]);
 
+  const creatingSession=useRef(false);
   const newSession = useCallback(async () => {
+    if(creatingSession.current)return;
+    creatingSession.current=true;
     pendingSamples.current?.fill(''); pendingSamples.current = null;
-    setProgress(0);
+    setProgress(0); setRetake(false);
     setPhase('creating');
     setError(null);
     setDisplayName('');
@@ -77,7 +84,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
     } catch (err) {
       setError(err instanceof TerminalApiError ? err.message : 'Could not start enrolment.');
       setPhase('failed');
-    }
+    } finally { creatingSession.current=false; }
   }, []);
 
   useEffect(() => {
@@ -141,14 +148,16 @@ export function Enrol({ onExit }: { onExit: () => void }) {
   async function capture() {
     if (!session || captureInProgress.current || busy || status !== 'ready') return;
     captureInProgress.current=true;
+    reportCaptureEvent({scope:'enrollment',scopeId:session.sessionId,stage:retake?'capture_retake':'capture_started'});
     setBusy(true);
+    setRetake(false);
     setError(null);
     const leds=beginLEDOperation();operation.current=leds;
     try {
       let result;
       if (session.captureMode === 'ccnet') {
         if (!pendingSamples.current) {
-          const frames = await captureBurst(leds, setProgress);
+          const frames = await captureBurst(leds, count=>{setProgress(count);reportCaptureEvent({scope:'enrollment',scopeId:session.sessionId,stage:'frame_captured',frameCount:count});});
           pendingSamples.current = frames.map(frame => frame.imageB64) as [string,string,string];
           frames.forEach(frame => { frame.imageB64 = ''; });
         }
@@ -165,9 +174,12 @@ export function Enrol({ onExit }: { onExit: () => void }) {
     } catch (err) {
       if(!leds.active())return;
       await leds.state('ERROR');
-      if (err instanceof TerminalApiError && ['palm_capture_rejected', 'enrolment_retry_required', 'session_expired'].includes(err.code)) {
-        pendingSamples.current?.fill(''); pendingSamples.current = null; setPhase('failed');
-      }
+      if (err instanceof TerminalApiError && ['palm_capture_rejected','distinct_frames_required','image_too_large'].includes(err.code)) {
+        pendingSamples.current?.fill(''); pendingSamples.current = null; setProgress(0); setRetake(true);
+        reportCaptureEvent({scope:'enrollment',scopeId:session.sessionId,stage:'capture_retake'});
+      } else if (err instanceof TerminalApiError && ['enrolment_retry_required','session_expired','session_not_claimed'].includes(err.code)) {
+        pendingSamples.current?.fill(''); pendingSamples.current = null; setPhase('expired');
+      } else if (!(err instanceof TerminalApiError) && !pendingSamples.current) { setRetake(true); setProgress(0); }
       setError(
         err instanceof TerminalApiError ? err.message : err instanceof Error?err.message:'Could not read that palm. Try again.',
       );
@@ -181,6 +193,8 @@ export function Enrol({ onExit }: { onExit: () => void }) {
     if (autoCaptureState === 'loading' || autoCaptureState === 'place') {
       autoCaptureFired.current = false;
     }
+    // The Retake button starts fresh frames in the same claimed session.
+    // Unknown writes keep their original capture fingerprint for a safe retry.
     if (autoCaptureState !== 'ready' || autoCaptureFired.current || busy || error) return;
     autoCaptureFired.current = true;
     void capture();
@@ -201,6 +215,11 @@ export function Enrol({ onExit }: { onExit: () => void }) {
             ? 'Hand positioned — capturing now'
             : 'Hand guidance unavailable — use Capture';
 
+  function exit() {
+    if(session && (phase==='waiting'||phase==='capturing')) reportCaptureEvent({scope:'enrollment',scopeId:session.sessionId,stage:'capture_cancelled'});
+    onExit();
+  }
+
   // --- done ---------------------------------------------------------------
   if (phase === 'done') {
     return (
@@ -220,7 +239,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
         <p className="t-sm mt-3 text-ink-muted">
           {displayName ? `${displayName} can now pay with their hand alone.` : 'Enrolment complete.'}
         </p>
-        <TButton className="mt-8" onClick={onExit}>
+        <TButton className="mt-8" onClick={exit}>
           Done
         </TButton>
       </Pane>
@@ -236,7 +255,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
           {error ?? 'Nobody scanned the code in time.'}
         </p>
         <div className="mt-8 flex gap-4">
-          <TButton tone="secondary" onClick={onExit}>
+          <TButton tone="secondary" onClick={exit}>
             Back
           </TButton>
           <TButton onClick={() => void newSession()}>Generate new code</TButton>
@@ -259,7 +278,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
     return (
       <div className="flex h-full w-full flex-col p-5">
         <header className="flex h-[52px] shrink-0 items-center justify-between">
-          <TButton tone="ghost" size="sm" onClick={onExit} disabled={busy}>
+          <TButton tone="ghost" size="sm" onClick={exit} disabled={busy}>
             ← Cancel
           </TButton>
           <p className="t-sm max-w-[500px] truncate text-ink-muted">{displayName || 'Enrolling'} · {secondsLeft}s</p>
@@ -278,11 +297,12 @@ export function Enrol({ onExit }: { onExit: () => void }) {
             />
           </div>
 
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto py-2">
-            <p className="t-lg shrink-0">Link your palm</p>
-            <p className="t-sm mt-3 text-ink-muted">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col py-2">
+            <div className="min-h-0 flex-1 overflow-y-auto">
+            <p className="t-lg shrink-0">{retake ? 'Retake palm' : 'Link your palm'}</p>
+            {!error && <p className="t-sm mt-3 text-ink-muted">
               Show your whole open hand. Hold it steady inside the guide.
-            </p>
+            </p>}
             {session?.captureMode === 'ccnet' && <>
               <div className="mt-3 flex shrink-0 gap-2" role="group" aria-label="Palm side">
                 {(['left','right'] as const).map(side => <TButton key={side} size="sm" tone={palmSide === side ? 'primary' : 'secondary'} disabled={busy || !!pendingSamples.current} onClick={() => setPalmSide(side)} aria-pressed={palmSide === side}>{side === 'left' ? 'Left hand' : 'Right hand'}</TButton>)}
@@ -290,14 +310,14 @@ export function Enrol({ onExit }: { onExit: () => void }) {
               <p className="t-sm mt-2 text-ink-muted" role="status">{busy ? progress < 3 ? `Capturing ${progress} of 3…` : 'Linking palm…' : pendingSamples.current ? 'Retry the same captures to finish linking.' : 'Three automatic captures.'}</p>
             </>}
             {illuminationWarning&&<p role="status" className="t-sm mt-4 text-warning">{illuminationWarning}</p>}
-            {error && <p role="alert" className="t-sm mt-4 text-danger">{error}</p>}
-
+            {error && <p role="alert" className="t-sm mt-3 text-danger">{retake ? 'Palm not clear. Reposition and retake. Your session is still open.' : error}</p>}
+            </div>
             <TButton
               className="mt-4 shrink-0"
               disabled={busy || status !== 'ready'}
               onClick={() => void capture()}
             >
-              {busy ? 'Reading…' : pendingSamples.current ? 'Retry linking' : 'Capture'}
+              {busy ? 'Reading…' : pendingSamples.current ? 'Retry linking' : retake ? 'Retake' : 'Capture'}
             </TButton>
           </div>
         </div>
@@ -309,7 +329,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
   return (
     <div className="flex h-full w-full flex-col p-6">
       <header className="flex h-[48px] shrink-0 items-center justify-between">
-        <TButton tone="ghost" size="sm" onClick={onExit}>
+        <TButton tone="ghost" size="sm" onClick={exit}>
           ← Cancel
         </TButton>
         <p className="t-sm text-ink-muted">

@@ -19,6 +19,9 @@
  * thread it through.
  */
 export interface ProviderMeta {
+  sampleCount?: number;
+  minimumPairSimilarity?: number;
+  cosineSimilarity?: number;
   timings?: Record<string, number>;
   /** The provider's own request identifier. The only handle support can trace a call with. */
   requestId?: string;

@@ -1,5 +1,6 @@
 /** Direct-to-card rail. A persisted attempt precedes the only charge POST.
  * Unknown outcomes are reconciled with GET; never automatically charge again. */
+import {operations,operationContext} from './operationEvents.js';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { AppError, fromPostgresError } from '../errors.js';
@@ -30,6 +31,7 @@ function bound(a:CardPaymentAttempt,t:any,email:string):boolean {
 }
 async function finish(a:CardPaymentAttempt,status:string,id?:string):Promise<void>{
  const r=await db.rpc('finish_card_payment',{p_reference:a.reference,p_status:status,p_provider_id:id??null});failure(r.error);
+ operations.emit('payment','payment_status',status==='success'?'succeeded':status==='failed'?'failed':'observed',{result:status==='success'?'settled':status,amountMinor:Number(a.amount_minor)},{...operationContext.getStore(),scopeId:a.transaction_id,userId:a.user_id});
 }
 export async function verifyCardPayment(a:CardPaymentAttempt):Promise<void>{
  if(a.domain!==paystackDomain()||['success','failed'].includes(a.status))return;

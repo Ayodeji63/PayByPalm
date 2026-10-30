@@ -12,6 +12,7 @@ import { Icon } from "./icons";
 import type { Merchant, Overview, Provision, Terminal, User } from "./types";
 import "./style.css";
 import {PayoutSetup} from "./PayoutSetup";
+import {LiveOperations} from "./LiveOperations";
 import {MerchantAccess} from "./MerchantAccess";
 
 const go = (path: string) => {
@@ -1014,12 +1015,14 @@ function App() {
   const section =
     base === "terminals"
       ? "terminals"
+      : base === "operations" ? "operations"
       : base === "activity"
         ? "activity"
         : "merchants";
   const titles: Record<string, [string, string]> = {
     merchants: ["Merchants", "Build the network, one business at a time."],
     terminals: ["Terminals", "Every device, connected to the right merchant."],
+    operations: ["Live operations", "Follow palm captures and checkout as they happen."],
     activity: ["Activity", "A record of changes made in this admin workspace."],
   };
   let [title, subtitle] = titles[section];
@@ -1081,7 +1084,7 @@ function App() {
         </a>
         <span className="workspace-label">Administration</span>
         <nav aria-label="Main navigation">
-          {(["merchants", "terminals", "activity"] as const).map((name) => (
+          {(["merchants", "terminals", "operations", "activity"] as const).map((name) => (
             <a
               key={name}
               href={"#/" + name}
@@ -1089,8 +1092,8 @@ function App() {
               className={section === name ? "nav-active" : ""}
             >
               <Icon name={name} />
-              <span>{name[0].toUpperCase() + name.slice(1)}</span>
-              {name !== "activity" && data && (
+              <span>{name === "operations" ? "Live operations" : name[0].toUpperCase() + name.slice(1)}</span>
+              {(name === "merchants" || name === "terminals") && data && (
                 <span className="nav-count">{data[name].length}</span>
               )}
             </a>
@@ -1161,7 +1164,7 @@ function App() {
               </button>
               {!entityId &&
                 base !== "provisioned" &&
-                section !== "activity" && (
+                section !== "activity" && section !== "operations" && (
                   <Button
                     icon="plus"
                     onClick={() => go("/" + section + "/new")}
@@ -1303,6 +1306,8 @@ function App() {
                 Refresh the inventory or return to the terminal list.
               </Empty>
             )
+          ) : section === "operations" ? (
+            <LiveOperations terminals={data.terminals} merchants={data.merchants} />
           ) : section === "activity" ? (
             <div className="panel activity-panel">
               <div className="panel-heading">

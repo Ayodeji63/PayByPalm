@@ -234,8 +234,8 @@ export function useCamera(active: boolean) {
     }finally{capturingRef.current=false; if(fullRef.current) { fullRef.current.width=0; fullRef.current.height=0; }}
   }, [captureFrame]);
 
-  const captureBest = useCallback(async (leds: LEDOperation): Promise<CapturedFrame> => {
-    const frames = await captureBurst(leds);
+  const captureBest = useCallback(async (leds: LEDOperation, progress?: (count:number)=>void): Promise<CapturedFrame> => {
+    const frames = await captureBurst(leds,progress);
     const largest = Math.max(...frames.map(frame => frame.bytes));
     const usable = frames.filter(frame => frame.bytes > largest * 0.4);
     const best = (usable.length ? usable : frames).reduce((a, b) => a.sharpness > b.sharpness ? a : b);

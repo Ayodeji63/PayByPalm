@@ -10,6 +10,7 @@
  * and can never be used in place of a user session token.
  */
 
+import { observeOperationRequest, operationContext } from '../services/operationEvents.js';
 import { createHash } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { db } from '../db/client.js';
@@ -76,6 +77,8 @@ export async function terminalAuth(
     label: data.label as string,
   };
   req.log = req.log.child({ terminalId: data.id });
+  const context=operationContext.getStore();if(context) {context.terminalId=req.terminal.id;context.merchantId=req.terminal.merchantId;}
+  observeOperationRequest(req,_res);
 
   // Fire and forget: a heartbeat is useful for spotting a dead kiosk, but a slow
   // write here must never add latency to a payment.

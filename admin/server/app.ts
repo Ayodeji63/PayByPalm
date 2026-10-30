@@ -16,6 +16,7 @@ import {
 } from "./session.js";
 
 import {Failure} from "./failure.js";
+import {mountOperations} from "./operations.js";
 import {mountPayoutRoutes} from "./payouts.js";
 import {mountMerchantAccess} from "./merchantAccess.js";
 
@@ -459,6 +460,7 @@ export function createApp({
     });
   });
   const writes = budget("write", 30, 60, (_req, res) => res.locals.admin.id);
+  mountOperations(app,{config,db});
   mountPayoutRoutes(app,{config,db,writes,dbFailure});
   mountMerchantAccess(app,db,writes);
   app.post("/api/merchants", writes, async (req, res) => {

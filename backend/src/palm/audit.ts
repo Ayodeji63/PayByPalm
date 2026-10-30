@@ -13,6 +13,9 @@
  * Images are never recorded. Only the outcome.
  */
 
+import { randomUUID } from 'node:crypto';
+import { operations, operationContext } from '../services/operationEvents.js';
+import { AppError } from '../errors.js';
 import { db } from '../db/client.js';
 import { logger } from '../logger.js';
 import { PalmProviderError } from '../errors.js';
@@ -81,9 +84,14 @@ export function withAudit(inner: PalmProvider): PalmProvider {
     describe: (result: T) => { score: number | null; isMatch: boolean | null; userId?: string | null },
   ): Promise<T> {
     const startedAt = Date.now();
+    const span=randomUUID(), kind=endpoint==='compare'?'verification' as const:endpoint==='search'?'identification' as const:'enrollment' as const;
+    const context={...operationContext.getStore(),...(userId?{userId}: {})};
+    operations.emit(kind,endpoint,'started',{provider:inner.name},context,span);
     try {
       const result = await call();
       const d = describe(result);
+      const meta=(result as {meta?: import('./provider.js').ProviderMeta}).meta;
+      operations.emit(kind,endpoint,d.isMatch===false?'rejected':'succeeded',{provider:inner.name,upstreamRequestId:meta?.requestId,candidateCount:Array.isArray((result as {candidates?:unknown}).candidates)?(result as {candidates:unknown[]}).candidates.length:undefined,score:d.score,providerMatched:d.isMatch,sampleCount:meta?.sampleCount,minimumPairSimilarity:meta?.minimumPairSimilarity,cosineSimilarity:meta?.cosineSimilarity,timings:meta?.timings,durationMs:Date.now()-startedAt},{...context,...(d.userId?{userId:d.userId}:{})},span);
       await record({
         endpoint, provider: inner.name, provider_request_id: extractRequestId(result),
         timings: (result as {meta?: {timings?: Record<string, number>}})?.meta?.timings ?? null,
@@ -96,6 +104,7 @@ export function withAudit(inner: PalmProvider): PalmProvider {
       });
       return result;
     } catch (err) {
+      operations.emit(kind,endpoint,err instanceof AppError && err.status<500?'rejected':'failed',{provider:inner.name,errorCode:err instanceof AppError?err.code:'upstream_error',durationMs:Date.now()-startedAt},context,span);
       await record({
         endpoint, provider: inner.name, provider_request_id: requestIdOf(err), timings: null,
         tencent_request_id: inner.name === 'tencent' ? requestIdOf(err) : null,

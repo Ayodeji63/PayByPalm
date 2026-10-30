@@ -1,3 +1,4 @@
+import { observeOperationRequest, operationContext } from '../services/operationEvents.js';
 /**
  * Wallet authentication — centrally validated, revocable Better Auth sessions.
  *
@@ -56,6 +57,8 @@ export async function userAuth(req: Request, _res: Response, next: NextFunction)
   }
 
   req.user = { id: data.user.id, email: data.user.email ?? null };
+  const context=operationContext.getStore();if(context)context.userId=data.user.id;
+  observeOperationRequest(req,_res);
   req.log = req.log.child({ userId: data.user.id });
   next();
 }

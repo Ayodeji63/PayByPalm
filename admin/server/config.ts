@@ -27,6 +27,8 @@ export const configSchema = z
           .filter(Boolean),
       )
       .pipe(z.array(z.string().uuid()).min(1)),
+    CCNET_BASE_URL: z.preprocess(v=>v===''?undefined:v,z.string().url().refine(v=>{try{const u=new URL(v);return !u.username&&!u.password&&u.pathname==='/'&&!u.search&&!u.hash&&(u.protocol==='https:'||(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)));}catch{return false;}},'Use a CCNet HTTPS origin, or loopback HTTP').optional()),
+    CCNET_MONITOR_API_KEY: z.preprocess(v=>v===''?undefined:v,z.string().min(32).optional()),
     PAYMENT_API_BASE_URL: z.string().url().default("https://paybypalm-backend.onrender.com").refine(v=>{
       const u=new URL(v);
       return (u.protocol==='https:'||(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)))&&u.pathname==='/'&&!u.search&&!u.hash&&!u.username&&!u.password;
