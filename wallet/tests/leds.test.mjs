@@ -52,7 +52,8 @@ test('payment and enrollment previews stay white even while the hand model loads
   const rendered=exports[name]({amountMinor:100});
   if(name==='Capture')rendered.type(rendered.props); // Render the mock-only legacy camera child.
   // First effects are operation ownership cleanup and the camera LED lifecycle.
-  effects[0]();const cleanup=effects[1]();
+  const cameraLight = effects.find(effect => effect.toString().includes('beginLEDOperation'));
+  assert.ok(cameraLight); const cleanup=cameraLight();
   assert.deepEqual(events,['CAPTURING'],`${name}: ${guidance}`);
   assert.equal(intervals[0].ms,5000);intervals[0].fn();
   assert.deepEqual(events,['CAPTURING','CAPTURING']);cleanup();

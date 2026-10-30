@@ -43,7 +43,15 @@ export const configSchema = z
     PAYSTACK_SECRET_KEY: z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/).optional(),
     CARD_TOKEN_ENCRYPTION_KEY: z.string().regex(/^[A-Za-z0-9+/]{43}=$/, 'must be a base64 encoded 32-byte key').optional(),
 
-    PALM_PROVIDER: z.enum(['tencent', 'mock']).default('mock'),
+    PALM_PROVIDER: z.enum(['ccnet', 'tencent', 'mock']).default('mock'),
+    CCNET_BASE_URL: optionalSetting(z.string().url().refine(value => {
+      try { const u = new URL(value);
+      return !u.username && !u.password && u.pathname === '/' && !u.search && !u.hash &&
+        (u.protocol === 'https:' || (u.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(u.hostname))); } catch { return false; }
+    }, 'Use an HTTPS origin, or loopback HTTP')),
+    CCNET_API_KEY: optionalSetting(z.string().min(32)),
+    CCNET_MATCH_TIMEOUT_MS: intFromEnv(5000).refine(n => n >= 500 && n <= 15000),
+    CCNET_ENROLL_TIMEOUT_MS: intFromEnv(20000).refine(n => n >= 1000 && n <= 60000),
     TENCENT_BASE_URL: z.string().url().default('https://open.intl.palm.tencent.com'),
     TENCENT_PALM_API_KEY: z.string().optional(),
     // Keep H5 available for later testing; the Pi uses our original camera UI.
@@ -57,7 +65,7 @@ export const configSchema = z
     PALM_STEP_UP_SCORE: intFromEnv(70),
     MAX_CANDIDATES: intFromEnv(4),
 
-    ENROL_SESSION_TTL_SECONDS: intFromEnv(90),
+    ENROL_SESSION_TTL_SECONDS: intFromEnv(300),
     AUTH_VALIDITY_SECONDS: intFromEnv(60).refine((n) => n > 0 && n <= 60, 'must be between 1 and 60 seconds'),
 
     WALLET_BASE_URL: z.string().url('WALLET_BASE_URL must be a full URL'),
@@ -70,6 +78,9 @@ export const configSchema = z
     message: 'Mock payment authorization is forbidden in production',
     path: ['PALM_PROVIDER'],
   })
+  .refine(c => c.PALM_PROVIDER !== 'tencent', { message: 'Tencent is disabled for this rollout; use ccnet. Its modules and history are retained.', path: ['PALM_PROVIDER'] })
+  .refine(c => c.PALM_PROVIDER !== 'ccnet' || (!!c.CCNET_BASE_URL && !!c.CCNET_API_KEY), { message: 'CCNET_BASE_URL and CCNET_API_KEY are required for CCNet', path: ['CCNET_BASE_URL'] })
+  .refine(c => c.PALM_PROVIDER !== 'ccnet' || c.PALM_ACCEPT_SCORE >= 85, { message: 'CCNet payment acceptance must be at least 85', path: ['PALM_ACCEPT_SCORE'] })
   // The real key is only needed when the real provider is selected. This is what
   // lets the entire app run — and be demoed — with no Tencent access at all.
   .refine((c) => c.PALM_PROVIDER !== 'tencent' || !!c.TENCENT_PALM_API_KEY, {

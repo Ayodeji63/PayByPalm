@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { terminalApi, TerminalApiError, type EnrolSessionView } from '../api.js';
 import { beginLEDOperation,confirmedEnrollment,type LEDOperation } from '../leds.js';
+import { leaseCamera } from '../cameraStream.js';
 import { TIMINGS } from '../config.js';
 import { useAutoCapture, useCamera } from '../useCamera.js';
 import { CameraPane, Pane, PalmGlyph, TButton } from '../ui.js';
@@ -27,17 +28,25 @@ type Phase = 'creating' | 'waiting' | 'capturing' | 'done' | 'expired' | 'failed
 
 export function Enrol({ onExit }: { onExit: () => void }) {
   const [phase, setPhase] = useState<Phase>('creating');
-  const [session, setSession] = useState<{ sessionId: string; linkUrl: string; expiresAt: string; captureMode: 'h5' | 'legacy' } | null>(null);
+  const [session, setSession] = useState<{ sessionId: string; linkUrl: string; expiresAt: string; captureMode: 'h5' | 'legacy' | 'ccnet' } | null>(null);
   const [displayName, setDisplayName] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [palmSide, setPalmSide] = useState<'left'|'right'>('right');
+  const [progress, setProgress] = useState(0);
+  const pendingSamples = useRef<[string,string,string] | null>(null);
+  useEffect(() => () => { pendingSamples.current?.fill(''); pendingSamples.current = null; }, []);
+  useEffect(() => {
+    if (phase !== 'waiting' || session?.captureMode !== 'ccnet') return;
+    const camera = leaseCamera(); void camera.ready.catch(() => undefined); return camera.release;
+  }, [phase, session?.captureMode]);
 
   // The camera is only opened once there is someone to photograph. Holding the
   // device open through the whole QR wait would light the indicator at an idle
   // kiosk for no reason.
-  const legacyCapture = phase === 'capturing' && session?.captureMode === 'legacy';
-  const { videoRef, status, retry, captureBest, illuminationWarning } = useCamera(legacyCapture);
+  const legacyCapture = phase === 'capturing' && (session?.captureMode === 'legacy' || session?.captureMode === 'ccnet');
+  const { videoRef, status, retry, captureBest, captureBurst, illuminationWarning } = useCamera(legacyCapture);
   const { state: autoCaptureState, landmarks } = useAutoCapture(
     videoRef,
     legacyCapture && status === 'ready' && !busy,
@@ -56,6 +65,8 @@ export function Enrol({ onExit }: { onExit: () => void }) {
   },[phase,status,busy,session?.captureMode]);
 
   const newSession = useCallback(async () => {
+    pendingSamples.current?.fill(''); pendingSamples.current = null;
+    setProgress(0);
     setPhase('creating');
     setError(null);
     setDisplayName('');
@@ -134,14 +145,29 @@ export function Enrol({ onExit }: { onExit: () => void }) {
     setError(null);
     const leds=beginLEDOperation();operation.current=leds;
     try {
-      const frame = await captureBest(leds);
-      const result = await confirmedEnrollment(leds,()=>terminalApi.registerPalm(session.sessionId, frame.imageB64));
+      let result;
+      if (session.captureMode === 'ccnet') {
+        if (!pendingSamples.current) {
+          const frames = await captureBurst(leds, setProgress);
+          pendingSamples.current = frames.map(frame => frame.imageB64) as [string,string,string];
+          frames.forEach(frame => { frame.imageB64 = ''; });
+        }
+        result = await confirmedEnrollment(leds, () => terminalApi.registerPalmSamples(session.sessionId, pendingSamples.current!, palmSide));
+        pendingSamples.current?.fill(''); pendingSamples.current = null;
+      } else {
+        const frame = await captureBest(leds);
+        try { result = await confirmedEnrollment(leds, () => terminalApi.registerPalm(session.sessionId, frame.imageB64)); }
+        finally { frame.imageB64 = ''; }
+      }
       if(!leds.active())return;
       setDisplayName(result.userDisplayName);
       setPhase('done');
     } catch (err) {
       if(!leds.active())return;
       await leds.state('ERROR');
+      if (err instanceof TerminalApiError && ['palm_capture_rejected', 'enrolment_retry_required', 'session_expired'].includes(err.code)) {
+        pendingSamples.current?.fill(''); pendingSamples.current = null; setPhase('failed');
+      }
       setError(
         err instanceof TerminalApiError ? err.message : err instanceof Error?err.message:'Could not read that palm. Try again.',
       );
@@ -236,7 +262,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
           <TButton tone="ghost" size="sm" onClick={onExit} disabled={busy}>
             ← Cancel
           </TButton>
-          <p className="t-sm text-ink-muted">Enrolling · {secondsLeft}s</p>
+          <p className="t-sm max-w-[500px] truncate text-ink-muted">{displayName || 'Enrolling'} · {secondsLeft}s</p>
         </header>
 
         <div className="flex min-h-0 flex-1 gap-4">
@@ -252,23 +278,26 @@ export function Enrol({ onExit }: { onExit: () => void }) {
             />
           </div>
 
-          <div className="flex min-w-0 flex-1 flex-col justify-center">
-            <p className="t-lg">
-              Place your palm{displayName ? `, ${displayName}` : ''}
-            </p>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto py-2">
+            <p className="t-lg shrink-0">Link your palm</p>
             <p className="t-sm mt-3 text-ink-muted">
-              Show one open palm to the camera. The live points confirm detection, then the
-              terminal captures automatically when your hand is centred and steady.
+              Show your whole open hand. Hold it steady inside the guide.
             </p>
+            {session?.captureMode === 'ccnet' && <>
+              <div className="mt-3 flex shrink-0 gap-2" role="group" aria-label="Palm side">
+                {(['left','right'] as const).map(side => <TButton key={side} size="sm" tone={palmSide === side ? 'primary' : 'secondary'} disabled={busy || !!pendingSamples.current} onClick={() => setPalmSide(side)} aria-pressed={palmSide === side}>{side === 'left' ? 'Left hand' : 'Right hand'}</TButton>)}
+              </div>
+              <p className="t-sm mt-2 text-ink-muted" role="status">{busy ? progress < 3 ? `Capturing ${progress} of 3…` : 'Linking palm…' : pendingSamples.current ? 'Retry the same captures to finish linking.' : 'Three automatic captures.'}</p>
+            </>}
             {illuminationWarning&&<p role="status" className="t-sm mt-4 text-warning">{illuminationWarning}</p>}
             {error && <p role="alert" className="t-sm mt-4 text-danger">{error}</p>}
 
             <TButton
-              className="mt-8"
+              className="mt-4 shrink-0"
               disabled={busy || status !== 'ready'}
               onClick={() => void capture()}
             >
-              {busy ? 'Reading…' : 'Capture'}
+              {busy ? 'Reading…' : pendingSamples.current ? 'Retry linking' : 'Capture'}
             </TButton>
           </div>
         </div>
@@ -303,7 +332,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
             Open the app on your phone, tap Scan, and point it at this code. Then place your palm
             on the reader.
           </p>
-          <p className="t-sm mt-6 text-ink-faint">First-time customers only.</p>
+          <p className="t-sm mt-6 text-ink-faint">Link this reader once. Existing accounts and cards stay available.</p>
         </div>
       </div>
     </div>

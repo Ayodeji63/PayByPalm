@@ -58,7 +58,7 @@ enrolRouter.get(
   terminalRateLimit('terminal-read', 120, 60),
   validate({ params: idParam }),
   async (req, res) => {
-    res.json(await getSessionView(req.params.id as string));
+    res.json(await getSessionView(req.params.id as string, undefined, requireTerminal(req).id));
   },
 );
 
@@ -77,7 +77,7 @@ enrolRouter.get(
   validate({ params: idParam }),
   async (req, res) => {
     const sessionId = req.params.id as string;
-    await enrolStream(req, res, requireTerminal(req).id, sessionId, signal => getSessionView(sessionId, signal));
+    await enrolStream(req, res, requireTerminal(req).id, sessionId, signal => getSessionView(sessionId, signal, requireTerminal(req).id));
   },
 );
 
@@ -147,11 +147,11 @@ enrolRouter.post(
   palmJson,
   validate({
     params: idParam,
-    body: z.union([sdkPayloadSchema, z.object({ imageB64: imageSchema }).strict()]),
+    body: z.union([z.object({ imagesB64: z.tuple([imageSchema, imageSchema, imageSchema]), palmSide: z.enum(['left','right']) }).strict(), sdkPayloadSchema, z.object({ imageB64: imageSchema }).strict()]),
   }),
   async (req, res) => {
     const terminal = requireTerminal(req);
-    const outcome = await registerPalmForSession(req.params.id as string, terminal, 'captureId' in req.body ? req.body : req.body.imageB64);
+    const outcome = await registerPalmForSession(req.params.id as string, terminal, ('captureId' in req.body || 'imagesB64' in req.body) ? req.body : req.body.imageB64);
     res.json(outcome);
   },
 );

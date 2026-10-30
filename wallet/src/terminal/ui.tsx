@@ -93,6 +93,7 @@ export function TButton({
   disabled,
   className = '',
   size = 'lg',
+  'aria-pressed': ariaPressed,
 }: {
   children: ReactNode;
   tone?: Tone;
@@ -101,12 +102,14 @@ export function TButton({
   className?: string;
   /** 'lg' for anything the customer acts on; 'sm' still clears 48px. */
   size?: 'lg' | 'sm';
+  'aria-pressed'?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      aria-pressed={ariaPressed}
       className={`flex items-center justify-center gap-3 rounded-2xl transition-none disabled:opacity-40 ${
         size === 'lg' ? 'min-h-[72px] px-8 t-lg' : 'min-h-[48px] px-5 t-sm'
       } ${TONES[tone]} ${className}`}

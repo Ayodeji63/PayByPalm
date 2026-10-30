@@ -152,3 +152,5 @@ describe('complete 1:1 candidate sweep',()=>{
  it('rejects malformed scores',async()=>{await expect(matchPalmCandidates(candidates,async()=>({isMatch:true,score:NaN}))).rejects.toMatchObject({code:'palm_comparison_invalid'});});
  it('does not compare an empty pool',async()=>{const compare=vi.fn();expect(await matchPalmCandidates([],compare)).toMatchObject({userId:null,outcome:{reason:'no_candidates'}});expect(compare).not.toHaveBeenCalled();});
 });
+
+vi.mock('../logger.js',()=>({logger:{info:vi.fn(),warn:vi.fn(),error:vi.fn()}}));

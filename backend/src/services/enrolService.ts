@@ -11,6 +11,9 @@
  * against someone else's wallet.
  */
 
+import { createHash, randomUUID } from 'node:crypto';
+import { activeProviderBinding } from './ccnetBindings.js';
+import type { PalmSide } from '../palm/provider.js';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { getProfile, maskName } from '../db/queries.js';
@@ -29,6 +32,7 @@ export interface EnrolSessionRow {
   status: SessionStatus;
   expires_at: string;
   created_at: string;
+  provider?: string;
 }
 
 export interface SessionView {
@@ -65,7 +69,7 @@ async function expireIfStale(session: EnrolSessionRow, signal?: AbortSignal): Pr
   if (!isOpen) return session;
   if (Date.parse(session.expires_at) > Date.now()) return session;
 
-  const query = db.from('enrol_sessions').update({ status: 'expired' }).eq('id', session.id);
+  const query = db.from('enrol_sessions').update({ status: 'expired' }).eq('id', session.id).eq('status', session.status);
   await (signal ? query.abortSignal(signal) : query);
   return { ...session, status: 'expired' };
 }
@@ -76,12 +80,12 @@ async function expireIfStale(session: EnrolSessionRow, signal?: AbortSignal): Pr
 
 export async function createSession(
   terminal: AuthedTerminal,
-): Promise<{ sessionId: string; expiresAt: string; linkUrl: string; captureMode: 'h5' | 'legacy' }> {
+): Promise<{ sessionId: string; expiresAt: string; linkUrl: string; captureMode: 'h5' | 'legacy' | 'ccnet' }> {
   const expiresAt = new Date(Date.now() + config.ENROL_SESSION_TTL_SECONDS * 1000).toISOString();
 
   const { data, error } = await db
     .from('enrol_sessions')
-    .insert({ terminal_id: terminal.id, status: 'pending', expires_at: expiresAt })
+    .insert({ terminal_id: terminal.id, provider: config.PALM_PROVIDER, status: 'pending', expires_at: expiresAt })
     .select('*')
     .single();
 
@@ -90,7 +94,7 @@ export async function createSession(
 
   return {
     sessionId: session.id,
-    captureMode: config.PALM_PROVIDER === 'tencent' && config.TENCENT_CAPTURE_MODE === 'h5' ? 'h5' : 'legacy',
+    captureMode: config.PALM_PROVIDER === 'ccnet' ? 'ccnet' : config.PALM_PROVIDER === 'tencent' && config.TENCENT_CAPTURE_MODE === 'h5' ? 'h5' : 'legacy',
     expiresAt: session.expires_at,
     // This is what goes into the QR code the terminal renders.
     linkUrl: `${config.WALLET_BASE_URL}/scan/${session.id}`,
@@ -101,8 +105,10 @@ export async function createSession(
 // Terminal: poll
 // ---------------------------------------------------------------------------
 
-export async function getSessionView(sessionId: string, signal?: AbortSignal): Promise<SessionView> {
-  const session = await expireIfStale(await load(sessionId, signal), signal);
+export async function getSessionView(sessionId: string, signal?: AbortSignal, terminalId?: string): Promise<SessionView> {
+  const loaded = await load(sessionId, signal);
+  if (terminalId && loaded.terminal_id !== terminalId) throw notFound('This enrollment session does not exist.');
+  const session = await expireIfStale(loaded, signal);
 
   const view: SessionView = {
     sessionId: session.id,
@@ -127,6 +133,7 @@ export async function getSessionView(sessionId: string, signal?: AbortSignal): P
 export async function claimSession(sessionId: string, userId: string): Promise<SessionView> {
   const session = await expireIfStale(await load(sessionId));
 
+  if (config.PALM_PROVIDER === 'ccnet' && session.provider !== 'ccnet') throw conflict('palm_capture_mode_changed', 'This QR uses the previous reader. Ask for a new enrollment code.');
   if (session.status === 'expired') {
     throw conflict('session_expired', 'This QR code has expired. Ask the terminal for a new one.');
   }
@@ -142,21 +149,22 @@ export async function claimSession(sessionId: string, userId: string): Promise<S
 
   // ENROLMENT IS ONE-TIME. This is the guard the whole flow hangs on, and it is
   // checked against the database rather than anything the client sent.
-  if (profile.palm_enrolled) {
+  if (config.PALM_PROVIDER === 'ccnet' ? await activeProviderBinding(userId) : profile.palm_enrolled) {
     throw conflict(
       'already_enrolled',
       'Your palm is already linked. Unlink it under Profile before enrolling again.',
     );
   }
 
-  const { error } = await db
+  const { data: claimed, error } = await db
     .from('enrol_sessions')
     .update({ user_id: userId, status: 'claimed' })
     .eq('id', sessionId)
     // Only from 'pending' — two phones scanning the same QR must not both win.
-    .eq('status', 'pending');
+    .eq('status', 'pending').select('id').maybeSingle();
 
-  if (error) throw new AppError(500, 'db_error', `Could not claim session: ${error.message}`);
+  if (error) throw new AppError(500, 'db_error', 'Could not claim session.');
+  if (!claimed) throw conflict('session_already_claimed', 'This enrollment session has already been used.');
 
   return {
     sessionId,
@@ -192,13 +200,15 @@ export async function beginEnrolCapture(sessionId: string, terminal: AuthedTermi
 export async function registerPalmForSession(
   sessionId: string,
   terminal: AuthedTerminal,
-  rawImage: string | CaptureSubmission,
+  rawImage: string | CaptureSubmission | CcnetSamples,
 ): Promise<RegisterOutcome> {
   const session = await expireIfStale(await load(sessionId));
 
   if (session.terminal_id !== terminal.id) {
     throw notFound('This enrolment session does not exist.');
   }
+
+  if (config.PALM_PROVIDER === 'ccnet') return registerCcnet(session, terminal, rawImage);
 
   // Idempotent: a retried request after a flaky response must not enrol twice.
   if (session.status === 'completed') {
@@ -235,6 +245,7 @@ export async function registerPalmForSession(
     const image = normaliseImage(rawImage);
     ({ palmId } = await palm.register(profile.id, image.data));
   } else {
+    if ('imagesB64' in rawImage) throw conflict('palm_capture_mode_changed', 'The reader configuration changed. Start a new scan.');
     if (config.TENCENT_CAPTURE_MODE !== 'h5') throw conflict('palm_capture_mode_changed', 'The reader configuration changed. Start a new enrolment scan.');
     const verified = await consumePalmCapture(terminal.id, session.id, 'enrol', rawImage);
     if (verified.userId !== profile.id) throw conflict('palm_capture_wrong_user', 'The palm capture belongs to a different enrolment. Please scan again.');
@@ -271,6 +282,8 @@ export async function registerPalmForSession(
 export async function revokePalm(userId: string): Promise<{ revoked: boolean }> {
   await getProfile(userId);
 
+  if (config.PALM_PROVIDER === 'ccnet') return revokeCcnet(userId);
+
   await palm.delete(userId);
 
   await clearLocalPalmBinding(userId);
@@ -300,4 +313,54 @@ export async function clearLocalPalmBinding(userId: string): Promise<void> {
   if (profileError) {
     throw new AppError(503, 'palm_unlink_incomplete', 'The palm provider was cleared but local cleanup is incomplete. Retry unlinking.');
   }
+}
+
+export interface CcnetSamples { imagesB64: [string, string, string]; palmSide: PalmSide }
+async function registerCcnet(session: EnrolSessionRow, terminal: AuthedTerminal, raw: string | CaptureSubmission | CcnetSamples): Promise<RegisterOutcome> {
+  if (typeof raw !== 'object' || !('imagesB64' in raw) || raw.imagesB64.length !== 3 || !['left','right'].includes(raw.palmSide))
+    throw new AppError(422, 'palm_samples_required', 'Three fresh captures and a palm side are required.');
+  if (!session.user_id || session.provider !== 'ccnet') throw conflict('session_not_claimed', 'Claim a new enrollment QR before capturing.');
+  const images = raw.imagesB64.map(value => {
+    const image = normaliseImage(value);
+    if (image.bytes > 512 * 1024) throw new AppError(422, 'image_too_large', 'Each capture must be at most 512 KiB.');
+    return image.data;
+  }) as [string,string,string];
+  const hashes = images.map(value => createHash('sha256').update(Buffer.from(value, 'base64')).digest('hex'));
+  if (new Set(hashes).size !== 3) throw new AppError(422, 'distinct_frames_required', 'Capture three independent camera frames.');
+  const fingerprint = createHash('sha256').update(JSON.stringify([raw.palmSide, ...hashes])).digest('hex');
+  const owner = randomUUID();
+  const args = { p_session: session.id, p_terminal: terminal.id, p_user: session.user_id, p_fingerprint: fingerprint };
+  const reserved = await db.rpc('reserve_ccnet_enrolment', { ...args, p_side: raw.palmSide, p_owner: owner });
+  if (reserved.error) throw conflict(reserved.error.code === 'PC004' ? 'registration_in_progress' : 'enrolment_retry_required',
+    reserved.error.code === 'PC004' ? 'Enrollment is still being checked. Please wait and retry the same captures.' : 'The enrollment changed or expired. Retry the original captures or start a new QR session.');
+  const profile = await getProfile(session.user_id);
+  if (reserved.data === 'completed') return { status: 'completed', userDisplayName: maskName(profile.full_name), alreadyCompleted: true };
+  try {
+    if (!palm.registerSamples) throw new AppError(503, 'palm_reader_configuration', 'The palm reader is not configured.');
+    await palm.registerSamples(profile.id, { subjectId: session.id, palmSide: raw.palmSide, imagesB64: images });
+    const completed = await db.rpc('complete_ccnet_enrolment', { ...args, p_owner: owner });
+    if (completed.error) throw new AppError(503, 'enrolment_completion_pending', 'Palm linking could not finish. Retry the same captures; do not start another enrollment.');
+    return { status: 'completed', userDisplayName: maskName(profile.full_name), alreadyCompleted: false };
+  } finally {
+    images.fill('');
+    // An uncertain upstream write may still be running. Keep the short database
+    // lease until expiry; retries remain tied to the exact same captures.
+  }
+}
+async function revokeCcnet(userId: string): Promise<{ revoked: boolean }> {
+  const revoked = await db.rpc('revoke_ccnet_palms', { p_user: userId });
+  if (revoked.error) throw new AppError(503, 'palm_unlink_incomplete', 'Could not revoke your palm. Please retry.');
+  const sessions = await db.from('enrol_sessions').select('id,palm_side,registration_until').eq('user_id', userId)
+    .eq('provider', 'ccnet').not('capture_fingerprint', 'is', null).is('templates_deleted_at', null);
+  if (sessions.error) throw new AppError(503, 'palm_unlink_incomplete', 'Your palm is disabled. Retry unlinking to finish template cleanup.');
+  for (const session of sessions.data ?? []) {
+    if (session.registration_until && Date.parse(session.registration_until) > Date.now()) throw new AppError(503, 'palm_unlink_incomplete', 'Your palm is disabled. Wait a minute and retry unlinking to finish an in-flight enrollment.');
+    await palm.delete(userId, { id: session.id, userId, subjectId: session.id, palmSide: session.palm_side });
+    const bindingCleaned = await db.from('palm_bindings').update({ templates_deleted_at: new Date().toISOString() })
+      .eq('user_id', userId).eq('provider', 'ccnet').eq('provider_subject_id', session.id);
+    if (bindingCleaned.error) throw new AppError(503, 'palm_unlink_incomplete', 'Your palm is disabled. Retry unlinking to confirm cleanup.');
+    const cleaned = await db.from('enrol_sessions').update({ templates_deleted_at: new Date().toISOString() }).eq('id', session.id);
+    if (cleaned.error) throw new AppError(503, 'palm_unlink_incomplete', 'Your palm is disabled. Retry unlinking to confirm cleanup.');
+  }
+  return { revoked: true };
 }

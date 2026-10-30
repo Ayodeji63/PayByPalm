@@ -16,6 +16,8 @@ import type { Logger } from '../logger.js';
 import { chargeCardPayment } from './cardPaymentService.js';
 import { requirePaystack, paystackDomain } from './paystack.js';
 import { consumePalmCapture, getActivePalmCandidates, issuePalmCapture, type CaptureSubmission, type PalmCandidate } from './palmCaptureService.js';
+import { ccnetBindings, sameBindings } from './ccnetBindings.js';
+import type { ProviderBinding } from '../palm/provider.js';
 import type { CompareResult } from '../palm/provider.js';
 import { isTencentCompareMiss } from '../palm/tencentErrors.js';
 
@@ -29,6 +31,8 @@ export interface TransactionRow {
   matched_user_id: string | null;
   match_score: number | null;
   match_mode: 'compare' | 'search' | null;
+  palm_provider?: string | null;
+  palm_binding_id?: string | null;
   failure_reason: string | null;
   created_at: string;
   authenticated_at: string | null;
@@ -149,7 +153,7 @@ async function pendingTransaction(transactionId: string, terminal: AuthedTermina
 
 export async function beginPaymentCapture(transactionId: string, terminal: AuthedTerminal) {
   await pendingTransaction(transactionId, terminal);
-  if (config.PALM_PROVIDER === 'mock' || config.TENCENT_CAPTURE_MODE !== 'h5') return { captureMode: 'legacy' as const };
+  if (config.PALM_PROVIDER !== 'tencent' || config.TENCENT_CAPTURE_MODE !== 'h5') return { captureMode: 'legacy' as const };
   requireApprovedCaptureMode();
   const candidates = await getActivePalmCandidates();
   if (!candidates.length) throw conflict('no_enrolled_palms', 'No palms are linked yet. Enrol a palm before starting a payment.');
@@ -193,6 +197,20 @@ export async function authenticateTransaction(
   const txn = await pendingTransaction(transactionId, terminal);
   if (config.PALM_PROVIDER === 'tencent' && config.TENCENT_CAPTURE_MODE === 'h5') throw conflict('palm_sdk_required', 'This terminal is configured to use the Tencent palm reader. Start a new scan.');
   const image = normaliseImage(rawImage);
+  if (config.PALM_PROVIDER === 'ccnet') {
+    const candidates = await ccnetBindings();
+    if (!candidates.length) return finaliseAuthentication(txn, null, rejectWithout('no_candidates'), log);
+    if (!palm.identify) throw new AppError(503, 'palm_reader_configuration', 'The palm reader is not configured.');
+    const result = await palm.identify(image.data, candidates);
+    const current = await ccnetBindings();
+    if (!sameBindings(candidates, current)) throw conflict('palm_binding_changed', 'The eligible palms changed. Please scan again.');
+    const [first, second] = result.candidates;
+    const matched = result.meta?.providerIsMatch === true && first && first.score >= Math.max(85, thresholds.accept);
+    const ambiguous = second && second.userId !== first?.userId && second.score >= 85;
+    const outcome = ambiguous ? rejectWithout('ambiguous_match') : matched ? decide(first.score) : rejectWithout('no_match');
+    log.info({ candidates: candidates.length, decision: outcome.decision, timings: result.meta?.timings }, 'CCNet eligible-gallery search complete');
+    return finaliseAuthentication(txn, matched && !ambiguous ? await getProfile(first.userId) : null, outcome, log, matched && !ambiguous ? first : undefined);
+  }
   const candidates = await getActivePalmCandidates();
   const matched = await matchPalmCandidates(candidates, userId => palm.compare(userId, image.data));
   const current = await getActivePalmCandidates();
@@ -205,9 +223,9 @@ export async function authenticateTransaction(
 }
 
 async function finaliseAuthentication(
-  txn: TransactionRow, profile: Profile | null, outcome: PolicyOutcome, log: Logger,
+  txn: TransactionRow, profile: Profile | null, outcome: PolicyOutcome, log: Logger, binding?: ProviderBinding,
 ): Promise<AuthenticateOutcome> {
-  const mode = 'compare' as const;
+  const mode = config.PALM_PROVIDER === 'ccnet' ? 'search' as const : 'compare' as const;
   if(profile && !profile.palm_enrolled)return {decision:'reject',mode,score:outcome.score,reason:'no_active_palm',message:'Enrol your palm in PayByPalm before making a payment.'};
 
   // --- rejected -----------------------------------------------------------
@@ -242,6 +260,7 @@ async function finaliseAuthentication(
       matched_user_id: profile.id,
       match_score: outcome.score,
       match_mode: mode,
+      ...(binding ? { palm_provider: 'ccnet', palm_binding_id: binding.id } : {}),
     })
     .eq('id', txn.id)
     // Only from 'pending' — if two terminals raced, the loser must not overwrite.
@@ -318,6 +337,7 @@ export async function confirmTransaction(
     throw conflict('no_matched_user', 'This transaction has no authenticated payer.');
   }
 
+  if(config.PALM_PROVIDER === 'ccnet' && (txn.palm_provider !== 'ccnet' || !txn.palm_binding_id)) throw conflict('palm_binding_changed', 'Please scan your palm again with this reader.');
   if(decide(txn.match_score).decision!=='accept')throw conflict('payment_match_rejected','Please scan your palm again.');
   await chargeCardPayment(txn.id,terminal.id);
   const current=await loadForTerminal(txn.id,terminal);

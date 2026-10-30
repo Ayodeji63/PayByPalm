@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
 import { getPalmTracker, type PalmTracker } from './palmTracker.js';
+import { leaseCamera } from './cameraStream.js';
 import { TIMINGS } from './config.js';
 import { captureWithLight, type LEDOperation } from './leds.js';
 
@@ -30,9 +31,10 @@ const MEASURE_H = 144;
 const JPEG_QUALITY = 0.85;
 
 // Placement guidance uses a reduced preview in a worker; capture stays full-resolution.
-const LANDMARK_INTERVAL_MS = 450;
+const LANDMARK_INTERVAL_MS = 100;
 const STABLE_LANDMARK_DELTA = 0.009;
-const STABLE_LANDMARK_FRAMES = 4;
+const STABLE_LANDMARK_FRAMES = 3;
+const STABLE_DURATION_MS = 300;
 export function preloadPalmRecognition():void{
  try{void getPalmTracker().initialize().catch(()=>undefined);}catch{/* Manual capture remains available. */}
 }
@@ -107,6 +109,7 @@ export function useCamera(active: boolean) {
     if (!active) return;
 
     let cancelled = false;
+    const lease = leaseCamera();
     let timedOut = false;
     setStatus('starting');
 
@@ -117,25 +120,16 @@ export function useCamera(active: boolean) {
       if (cancelled) return;
       timedOut = true;
       setStatus('error');
+      lease.release();
     }, 12_000);
 
     (async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: 'environment' },
-            // This is the configuration already proven to negotiate correctly
-            // through Chromium + PipeWire on the PayByPalm Raspberry Pi.
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: {ideal:24,max:30},
-          },
-          audio: false,
-        });
+        const stream = await lease.ready;
 
         window.clearTimeout(startupTimer);
         if (cancelled || timedOut) {
-          stream.getTracks().forEach((track) => track.stop());
+          lease.release();
           return;
         }
 
@@ -148,6 +142,7 @@ export function useCamera(active: boolean) {
       } catch (err) {
         window.clearTimeout(startupTimer);
         if (cancelled) return;
+        lease.release();
         const name = err instanceof DOMException ? err.name : '';
         if (name === 'NotAllowedError' || name === 'SecurityError') setStatus('denied');
         else if (name === 'NotFoundError' || name === 'OverconstrainedError') setStatus('missing');
@@ -160,7 +155,11 @@ export function useCamera(active: boolean) {
       window.clearTimeout(startupTimer);
       // Release the camera. Without this the Pi's indicator stays lit and the
       // next screen cannot open the device.
-      streamRef.current?.getTracks().forEach((track) => track.stop());
+      lease.release();
+      if (videoRef.current) videoRef.current.srcObject = null;
+      if (fullRef.current) { fullRef.current.width = 0; fullRef.current.height = 0; }
+      if (scratchRef.current) { scratchRef.current.width = 0; scratchRef.current.height = 0; }
+      scratchRef.current = null; fullRef.current = null;
       streamRef.current = null;
     };
   }, [active, attempt]);
@@ -181,14 +180,18 @@ export function useCamera(active: boolean) {
     if (!fullRef.current) fullRef.current = document.createElement('canvas');
 
     const full = fullRef.current;
-    full.width = video.videoWidth;
-    full.height = video.videoHeight;
+    const scale = Math.min(1, 960 / Math.max(video.videoWidth, video.videoHeight));
+    full.width = Math.round(video.videoWidth * scale);
+    full.height = Math.round(video.videoHeight * scale);
     const ctx = full.getContext('2d');
     if (!ctx) return null;
     ctx.drawImage(video, 0, 0, full.width, full.height);
 
-    const dataUrl = full.toDataURL('image/jpeg', JPEG_QUALITY);
-    const imageB64 = dataUrl.replace(/^data:image\/[a-zA-Z+.-]+;base64,/, '');
+    let quality = JPEG_QUALITY;
+    let imageB64 = '';
+    do { imageB64 = full.toDataURL('image/jpeg', quality).split(',')[1] ?? ''; quality -= 0.1; }
+    while (imageB64.length * 3 / 4 > 512 * 1024 && quality >= 0.35);
+    if (!imageB64 || imageB64.length * 3 / 4 > 512 * 1024) throw new Error('The capture is too large. Please try again.');
 
     return {
       imageB64,
@@ -204,35 +207,42 @@ export function useCamera(active: boolean) {
    * failed to grab — a terminal that silently sends nothing is worse than one
    * that says the camera is not ready.
    */
-  const captureBest = useCallback(async (leds:LEDOperation): Promise<CapturedFrame> => {
+  const captureBurst = useCallback(async (leds:LEDOperation, progress?: (count: number) => void): Promise<CapturedFrame[]> => {
+    const started = performance.now();
     if(capturingRef.current)throw new Error('Palm capture is already in progress.');
     capturingRef.current=true;
     setIlluminationWarning(null);
     try {
     const frames=await captureWithLight(leds,async()=>{
       const captured:CapturedFrame[]=[];
-      for(let i=0;i<TIMINGS.burstFrames;i++){
+      try { for(let i=0;i<TIMINGS.burstFrames;i++){
         if(!leds.active())throw new Error('Palm capture was cancelled.');
         const frame=captureFrame();if(frame)captured.push(frame);
+        progress?.(captured.length);
         if(i<TIMINGS.burstFrames-1)await new Promise(resolve=>setTimeout(resolve,TIMINGS.burstIntervalMs));
       }
+      } catch (error) { captured.forEach(frame => { frame.imageB64 = ''; }); throw error; }
       return captured;
     },TIMINGS.ledExposureSettleMs,setIlluminationWarning);
 
-    if (frames.length === 0) throw new Error('Camera did not produce a usable frame.');
-
-    // Discard near-empty grabs before ranking, so a black frame with freak edge
-    // noise cannot win.
-    const largest = Math.max(...frames.map((f) => f.bytes));
-    const usable = frames.filter((f) => f.bytes > largest * 0.4);
-
-    return (usable.length ? usable : frames).reduce((best, frame) =>
-      frame.sharpness > best.sharpness ? frame : best,
-    );
-    }finally{capturingRef.current=false;}
+    if (frames.length !== 3 || new Set(frames.map(frame => frame.imageB64)).size !== 3) {
+      frames.forEach(frame => { frame.imageB64 = ''; });
+      throw new Error('The camera did not deliver three fresh frames. Hold still and try again.');
+    }
+    performance.measure('palm.capture', { start: started, end: performance.now() });
+    return frames;
+    }finally{capturingRef.current=false; if(fullRef.current) { fullRef.current.width=0; fullRef.current.height=0; }}
   }, [captureFrame]);
 
-  return { videoRef, status, retry, captureBest, illuminationWarning };
+  const captureBest = useCallback(async (leds: LEDOperation): Promise<CapturedFrame> => {
+    const frames = await captureBurst(leds);
+    const largest = Math.max(...frames.map(frame => frame.bytes));
+    const usable = frames.filter(frame => frame.bytes > largest * 0.4);
+    const best = (usable.length ? usable : frames).reduce((a, b) => a.sharpness > b.sharpness ? a : b);
+    frames.forEach(frame => { if (frame !== best) frame.imageB64 = ''; });
+    return best;
+  }, [captureBurst]);
+  return { videoRef, status, retry, captureBest, captureBurst, illuminationWarning };
 }
 
 /** Detects and validates one open palm using MediaPipe's 21 hand landmarks. */
@@ -255,6 +265,9 @@ export function useAutoCapture(
     let timer: number | undefined;
     let previous: HandLandmark[] | null = null;
     let stableCount = 0;
+    let stableSince = 0;
+    let readyMarked = false;
+    let previousAt = 0;
 
     const distance = (a: HandLandmark, b: HandLandmark) =>
       Math.hypot(a.x - b.x, a.y - b.y);
@@ -276,7 +289,7 @@ export function useAutoCapture(
       }
       const hand = hands[0];
       if (hands.length !== 1 || !hand || hand.length !== 21) {
-        stableCount = 0;
+        stableCount = 0; stableSince = 0;
         previous = null;
         setLandmarks([]);
         setState('place');
@@ -296,7 +309,7 @@ export function useAutoCapture(
       const fullyVisible = minX > 0.025 && maxX < 0.975 && minY > 0.025 && maxY < 0.975;
       const sized = width > 0.22 && width < 0.88 && height > 0.38 && height < 0.95;
       if (!centred || !fullyVisible || !sized) {
-        stableCount = 0;
+        stableCount = 0; stableSince = 0;
         previous = hand;
         setState('position');
         return;
@@ -315,7 +328,7 @@ export function useAutoCapture(
           distance(wrist, hand[tip]!) > distance(wrist, hand[joint]!) * ratio,
       );
       if (!palmOpen) {
-        stableCount = 0;
+        stableCount = 0; stableSince = 0;
         previous = hand;
         setState('open');
         return;
@@ -326,8 +339,14 @@ export function useAutoCapture(
           hand.length
         : Number.POSITIVE_INFINITY;
       previous = hand;
-      stableCount = motion < STABLE_LANDMARK_DELTA ? stableCount + 1 : 0;
-      setState(stableCount >= STABLE_LANDMARK_FRAMES ? 'ready' : 'moving');
+      const now = performance.now();
+      if (stableCount > 0 && motion < STABLE_LANDMARK_DELTA && now - previousAt <= 500) { stableCount += 1; }
+      else { stableCount = 1; stableSince = now; }
+      previousAt = now;
+      const ready = stableCount >= STABLE_LANDMARK_FRAMES && now - stableSince >= STABLE_DURATION_MS;
+      if (ready && !readyMarked) { performance.mark('palm.stable'); readyMarked = true; }
+      if (!ready) readyMarked = false;
+      setState(ready ? 'ready' : 'moving');
     };
 
     void (async () => {

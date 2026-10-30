@@ -13,16 +13,16 @@ import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { withAudit } from './audit.js';
 import { createMockProvider } from './mock.js';
-import { createTencentProvider } from './tencent.js';
+import { createCcnetProvider } from './ccnet.js';
 import type { PalmProvider } from './provider.js';
 
 function build(): PalmProvider {
   const inner =
-    config.PALM_PROVIDER === 'tencent' ? createTencentProvider() : createMockProvider();
+    config.PALM_PROVIDER === 'ccnet' ? createCcnetProvider() : createMockProvider();
 
   if (inner.name === 'mock') {
     logger.warn(
-      'PALM_PROVIDER=mock — biometric matching is SIMULATED. Set PALM_PROVIDER=tencent for real matching.',
+      'PALM_PROVIDER=mock — biometric matching is SIMULATED. Set PALM_PROVIDER=ccnet for real matching.',
     );
   }
 

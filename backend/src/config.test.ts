@@ -17,7 +17,7 @@ describe('production payment configuration', () => {
     expect(result.success).toBe(false);
   });
   it('allows a configured real provider in production', () => {
-    const result = configSchema.safeParse({ ...process.env, NODE_ENV: 'production', PALM_PROVIDER: 'tencent', TENCENT_PALM_API_KEY: 'test-only' });
+    const result = configSchema.safeParse({ ...process.env, NODE_ENV: 'production', PALM_PROVIDER: 'ccnet', CCNET_BASE_URL: 'https://reader.example.test', CCNET_API_KEY: 'inert-reader-key-with-at-least-32-bytes' });
     expect(result.success).toBe(true);
   });
   it('requires an encryption key before enabling card linking', () => {
@@ -27,7 +27,7 @@ describe('production payment configuration', () => {
     expect(configSchema.safeParse({ ...process.env, PAYSTACK_MODE: 'test', PAYSTACK_SECRET_KEY: 'sk_live_fixture', CARD_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32).toString('base64') }).success).toBe(false);
   });
   it('defaults to test mode and allows a production-built staging server with test keys', () => {
-    const result = configSchema.safeParse({ ...process.env, NODE_ENV: 'production', PALM_PROVIDER: 'tencent', TENCENT_PALM_API_KEY: 'test-only', PAYSTACK_MODE: undefined, PAYSTACK_SECRET_KEY: 'sk_test_fixture', CARD_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32).toString('base64') });
+    const result = configSchema.safeParse({ ...process.env, NODE_ENV: 'production', PALM_PROVIDER: 'ccnet', CCNET_BASE_URL: 'https://reader.example.test', CCNET_API_KEY: 'inert-reader-key-with-at-least-32-bytes', PAYSTACK_MODE: undefined, PAYSTACK_SECRET_KEY: 'sk_test_fixture', CARD_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32).toString('base64') });
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.PAYSTACK_MODE).toBe('test');
   });
@@ -49,3 +49,6 @@ describe('authentication connection configuration',()=>{
   if(!result.success)expect(result.error.issues.map(issue=>issue.message).join(' ')).not.toContain('credential-marker');
  });
 });
+
+it('rejects Tencent as an active selection while keeping its implementation testable', () => { expect(configSchema.safeParse({...process.env, PALM_PROVIDER:'tencent', TENCENT_PALM_API_KEY:'inert'}).success).toBe(false); });
+it.each([50,84])('does not permit a CCNet payment threshold of %s', value => { expect(configSchema.safeParse({...process.env,PALM_PROVIDER:'ccnet',CCNET_BASE_URL:'https://reader.example.test',CCNET_API_KEY:'inert-reader-key-with-at-least-32-bytes',PALM_ACCEPT_SCORE:value}).success).toBe(false); });

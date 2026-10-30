@@ -25,6 +25,9 @@ import type {
 } from './provider.js';
 
 interface AuditRow {
+  provider: string;
+  provider_request_id: string | null;
+  timings: Record<string, number> | null;
   endpoint: PalmOperation;
   tencent_request_id: string | null;
   user_id: string | null;
@@ -82,8 +85,9 @@ export function withAudit(inner: PalmProvider): PalmProvider {
       const result = await call();
       const d = describe(result);
       await record({
-        endpoint,
-        tencent_request_id: extractRequestId(result),
+        endpoint, provider: inner.name, provider_request_id: extractRequestId(result),
+        timings: (result as {meta?: {timings?: Record<string, number>}})?.meta?.timings ?? null,
+        tencent_request_id: inner.name === 'tencent' ? extractRequestId(result) : null,
         user_id: d.userId !== undefined ? d.userId : userId,
         score: d.score,
         is_match: d.isMatch,
@@ -93,8 +97,8 @@ export function withAudit(inner: PalmProvider): PalmProvider {
       return result;
     } catch (err) {
       await record({
-        endpoint,
-        tencent_request_id: requestIdOf(err),
+        endpoint, provider: inner.name, provider_request_id: requestIdOf(err), timings: null,
+        tencent_request_id: inner.name === 'tencent' ? requestIdOf(err) : null,
         user_id: userId,
         score: null,
         is_match: null,
@@ -118,6 +122,13 @@ export function withAudit(inner: PalmProvider): PalmProvider {
       'compare', userId, () => inner.compareCapture!(userId, capture), r => ({ score: r.score, isMatch: r.isMatch }),
     ) } : {}),
 
+    ...(inner.registerSamples ? { registerSamples: (userId: string, input: import('./provider.js').SampleRegistration) => audited(
+      'register', userId, () => inner.registerSamples!(userId, input), () => ({ score: null, isMatch: true }),
+    ) } : {}),
+    ...(inner.identify ? { identify: (imageB64: string, bindings: import('./provider.js').ProviderBinding[]) => audited(
+      'search', null, () => inner.identify!(imageB64, bindings), r => ({ score: r.candidates[0]?.score ?? null, isMatch: r.meta?.providerIsMatch ?? false, userId: r.candidates[0]?.userId ?? null }),
+    ) } : {}),
+
     register: (userId, imageB64) =>
       audited<RegisterResult>(
         'register',
@@ -126,19 +137,19 @@ export function withAudit(inner: PalmProvider): PalmProvider {
         () => ({ score: null, isMatch: true }),
       ),
 
-    compare: (userId, imageB64) =>
+    compare: (userId, imageB64, binding) =>
       audited<CompareResult>(
         'compare',
         userId,
-        () => inner.compare(userId, imageB64),
+        () => inner.compare(userId, imageB64, binding),
         (r) => ({ score: r.score, isMatch: r.meta?.providerIsMatch ?? r.isMatch }),
       ),
 
-    delete: (userId) =>
+    delete: (userId, binding) =>
       audited<DeleteResult>(
         'delete',
         userId,
-        () => inner.delete(userId),
+        () => inner.delete(userId, binding),
         () => ({ score: null, isMatch: null }),
       ),
   };

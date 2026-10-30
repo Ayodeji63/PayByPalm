@@ -37,7 +37,7 @@ export const TIMINGS = {
   /** Result screen returns to idle so the next customer finds a clean terminal. */
   resultTimeoutMs: 5_000,
   /** Gap between the frames of a capture burst. */
-  burstIntervalMs: 200,
+  burstIntervalMs: 100,
   /** Frames per capture; the sharpest is sent. */
   burstFrames: 3,
   /** How often the enrolment screen polls its session. */

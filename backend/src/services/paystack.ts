@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { config } from '../config.js';
+import { logger } from '../logger.js';
 import { AppError } from '../errors.js';
 
 export const CARD_LINK_AMOUNT = 5000;
@@ -18,6 +19,7 @@ export function checkoutUrl(value: unknown): string {
 /** No automatic POST retry: a timeout can mean the provider accepted the request. */
 export async function paystack(path: string, body?: unknown): Promise<any> {
  requirePaystack();
+ const started = performance.now();
  try {
   const response=await fetch('https://api.paystack.co'+path,{
    method:body===undefined?'GET':'POST',redirect:'error',signal:AbortSignal.timeout(15000),
@@ -28,6 +30,7 @@ export async function paystack(path: string, body?: unknown): Promise<any> {
   if(!response.ok||result.status!==true||!result.data) throw new Error('provider rejected request');
   return result.data;
  } catch { throw new AppError(502,'payment_service_unavailable','The payment service could not confirm this request. Check its status before trying again.'); }
+ finally { logger.info({stage: 'paystack', operation: body === undefined ? 'read' : 'write', durationMs: Math.round((performance.now()-started)*100)/100}, 'Payment provider timing'); }
 }
 function key(): Buffer {
  const value=Buffer.from(config.CARD_TOKEN_ENCRYPTION_KEY??'','base64');

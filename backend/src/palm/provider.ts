@@ -19,6 +19,7 @@
  * thread it through.
  */
 export interface ProviderMeta {
+  timings?: Record<string, number>;
   /** The provider's own request identifier. The only handle support can trace a call with. */
   requestId?: string;
   /**
@@ -62,10 +63,13 @@ export interface PalmProvider {
   register(userId: string, imageB64: string): Promise<RegisterResult>;
 
   /** 1:1. Is this palm the palm we hold for this specific user? */
-  compare(userId: string, imageB64: string): Promise<CompareResult>;
+  compare(userId: string, imageB64: string, binding?: ProviderBinding): Promise<CompareResult>;
 
   /** Remove every enrolled palm direction for this user from the provider. */
-  delete(userId: string): Promise<DeleteResult>;
+  delete(userId: string, binding?: ProviderBinding): Promise<DeleteResult>;
+
+  registerSamples?(userId: string, input: SampleRegistration): Promise<RegisterResult>;
+  identify?(imageB64: string, bindings: ProviderBinding[]): Promise<IdentifyResult>;
 
   /** Server-issued user token. Never expose the application API key. */
   createSdkToken?(userId: string): Promise<SdkToken>;
@@ -74,4 +78,25 @@ export interface PalmProvider {
 }
 
 /** Provider operations, as recorded in palm_audit.endpoint. */
-export type PalmOperation = 'register' | 'compare' | 'delete' | 'sdk_token';
+export type PalmOperation = 'register' | 'compare' | 'search' | 'delete' | 'sdk_token';
+
+export type PalmSide = 'left' | 'right';
+export interface ProviderBinding {
+  id: string;
+  userId: string;
+  subjectId: string;
+  palmSide: PalmSide;
+}
+export interface SampleRegistration {
+  subjectId: string;
+  palmSide: PalmSide;
+  imagesB64: [string, string, string];
+}
+export interface IdentifiedCandidate extends ProviderBinding {
+  score: number;
+  cosineSimilarity: number;
+}
+export interface IdentifyResult {
+  candidates: IdentifiedCandidate[];
+  meta?: ProviderMeta;
+}

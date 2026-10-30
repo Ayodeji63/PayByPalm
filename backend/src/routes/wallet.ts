@@ -1,3 +1,5 @@
+import { config } from '../config.js';
+import { activeProviderBinding } from '../services/ccnetBindings.js';
 /**
  * Wallet routes — everything the phone app needs.
  *
@@ -35,7 +37,7 @@ walletRouter.get('/me', userAuth, userRateLimit('user-read', 240, 60), async (re
     fullName: profile.full_name,
     email: user.email,
     phone: profile.phone ?? '',
-    palmEnrolled: profile.palm_enrolled,
+    palmEnrolled: config.PALM_PROVIDER === 'ccnet' ? await activeProviderBinding(profile.id) : profile.palm_enrolled,
     hasPin: profile.pin_hash !== null,
     balanceMinor: null,
     cardBalanceAvailable: false,

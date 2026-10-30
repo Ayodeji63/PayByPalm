@@ -63,10 +63,18 @@ services:
         # Keep the original terminal origin until existing Pi launchers migrate.
         value: "https://www.paybypalm.app,https://paybypalm.app,https://pay-by-palm.vercel.app"
 
-      # Production biometric provider. The corresponding credential is stored
-      # only in Render as TENCENT_PALM_API_KEY.
+      # Local CCNet through its fixed HTTPS tunnel. Credentials stay on Render.
       - key: PALM_PROVIDER
-        value: tencent
+        value: ccnet
+      - key: CCNET_BASE_URL
+        sync: false
+      - key: CCNET_API_KEY
+        sync: false
+      - key: CCNET_MATCH_TIMEOUT_MS
+        value: "5000"
+      - key: CCNET_ENROLL_TIMEOUT_MS
+        value: "20000"
+      # Retained Tencent configuration is inactive; there is no automatic fallback.
       - key: TENCENT_CAPTURE_MODE
         value: legacy
       - key: TENCENT_BASE_URL

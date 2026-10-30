@@ -23,6 +23,6 @@ terminalRouter.get('/terminal/me', terminalAuth, terminalRateLimit('terminal-rea
     terminalId: terminal.id,
     terminalLabel: terminal.label,
     merchantName: terminal.merchantName,
-    captureMode: config.PALM_PROVIDER === 'tencent' && config.TENCENT_CAPTURE_MODE === 'h5' ? 'h5' : 'legacy',
+    captureMode: config.PALM_PROVIDER === 'ccnet' ? 'ccnet' : config.PALM_PROVIDER === 'tencent' && config.TENCENT_CAPTURE_MODE === 'h5' ? 'h5' : 'legacy',
   });
 });

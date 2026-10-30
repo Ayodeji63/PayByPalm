@@ -67,3 +67,5 @@ describe('camera modes and atomic enrolment',()=>{
   expect(m.register).not.toHaveBeenCalled();expect(m.rpc).not.toHaveBeenCalled();
  });
 });
+
+vi.mock('../logger.js',()=>({logger:{info:vi.fn(),warn:vi.fn(),error:vi.fn()}}));

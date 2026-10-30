@@ -26,6 +26,8 @@ import { Capture } from './screens/Capture.js';
 import { Confirm } from './screens/Confirm.js';
 import { Result } from './screens/Result.js';
 import { Enrol } from './screens/Enrol.js';
+import { preloadPalmRecognition } from './useCamera.js';
+import { leaseCamera } from './cameraStream.js';
 import { beginLEDOperation,type LEDOperation } from './leds.js';
 
 type Screen =
@@ -40,7 +42,7 @@ type Screen =
 interface Identity {
   merchantName: string;
   terminalLabel: string;
-  captureMode?: 'legacy' | 'h5';
+  captureMode?: 'legacy' | 'h5' | 'ccnet';
 }
 
 function recoveryError(err: unknown): string {
@@ -95,8 +97,21 @@ export default function TerminalApp() {
     void loadIdentity();
   }, [loadIdentity]);
 
+  useEffect(() => { if (configured && identity?.captureMode === 'ccnet') preloadPalmRecognition(); }, [configured, identity?.captureMode]);
+  useEffect(() => {
+    if (screen.name !== 'amount' || identity?.captureMode !== 'ccnet') return;
+    const camera = leaseCamera(); void camera.ready.catch(() => undefined);
+    return camera.release;
+  }, [screen.name, identity?.captureMode]);
+
   // Each selected reader initializes its own guidance. Do not warm both readers
   // on the idle screen: the optional H5 pipeline must stay unloaded in legacy mode.
+
+  useEffect(() => {
+    if (screen.name !== 'confirm') return;
+    const stable = performance.getEntriesByName('palm.stable').at(-1);
+    if (stable) { performance.measure('palm.stable_to_pay', {start: stable.startTime, end: performance.now()}); performance.clearMarks('palm.stable'); }
+  }, [screen.name]);
 
   // --- reachability ------------------------------------------------------
   // A terminal that has quietly lost the backend looks identical to one that is
@@ -168,7 +183,9 @@ export default function TerminalApp() {
   }
 
   /** The only path that moves money. */
+  const settling = useRef(false);
   async function settle(transactionId: string, _amountMinor: number) {
+    if (settling.current) return; settling.current = true;
     setBusy(true);
     setStepUpError(null);
     const leds=beginLEDOperation();ledOperation.current=leds;void leds.state('LOADING');
@@ -195,7 +212,7 @@ export default function TerminalApp() {
       setStepUpError(message);
       setScreen({ name: 'recovery' });
     } finally {
-      setBusy(false);
+      settling.current = false; setBusy(false);
     }
   }
 

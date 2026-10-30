@@ -79,7 +79,7 @@ async function send<T>(path: string, method: 'GET' | 'POST', body?: unknown): Pr
 
 export const terminalApi = {
   identity: () =>
-    send<{ terminalId: string; terminalLabel: string; merchantName: string; captureMode?: 'legacy' | 'h5' }>(
+    send<{ terminalId: string; terminalLabel: string; merchantName: string; captureMode?: 'legacy' | 'h5' | 'ccnet' }>(
       '/terminal/me',
       'GET',
     ),
@@ -118,7 +118,7 @@ export const terminalApi = {
     ),
 
   createEnrolSession: () =>
-    send<{ sessionId: string; expiresAt: string; linkUrl: string; merchantName: string; captureMode: 'h5' | 'legacy' }>(
+    send<{ sessionId: string; expiresAt: string; linkUrl: string; merchantName: string; captureMode: 'h5' | 'legacy' | 'ccnet' }>(
       '/enrol/sessions',
       'POST',
     ),
@@ -132,6 +132,9 @@ export const terminalApi = {
       'POST',
       { imageB64 },
     ),
+
+  registerPalmSamples: (sessionId: string, imagesB64: [string,string,string], palmSide: 'left'|'right') =>
+    send<{status: string; userDisplayName: string; alreadyCompleted: boolean}>(`/enrol/sessions/${sessionId}/palm`, 'POST', {imagesB64, palmSide}),
 
   beginEnrolCapture: (sessionId: string) =>
     send<PalmCaptureGrant>(`/enrol/sessions/${sessionId}/palm-capture`, 'POST', {}),

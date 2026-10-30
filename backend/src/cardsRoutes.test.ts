@@ -71,3 +71,5 @@ describe('card payment webhook routing',()=>{
   expect(r.status).toBe(200);expect(mocks.wakePayment).toHaveBeenCalledWith(reference);expect(mocks.wake).not.toHaveBeenCalled();
  });
 });
+
+vi.mock('./logger.js',()=>({logger:{info:vi.fn(),warn:vi.fn(),error:vi.fn()}}));

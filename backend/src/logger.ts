@@ -14,6 +14,8 @@ export const logger = pino({
   level: config.LOG_LEVEL,
   redact: {
     paths: [
+      'imagesB64', '*.imagesB64', 'req.body.imagesB64', 'body.imagesB64',
+      'CCNET_API_KEY', '*.CCNET_API_KEY',
       'imageB64',
       '*.imageB64',
       'req.body.imageB64',

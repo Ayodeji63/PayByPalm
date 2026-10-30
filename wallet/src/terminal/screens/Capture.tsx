@@ -19,7 +19,7 @@ import { CameraPane, TButton } from '../ui.js';
 import { H5PalmCapture } from '../H5PalmCapture.js';
 
 type CaptureProps = {
-  captureMode?: 'legacy' | 'h5';
+  captureMode?: 'legacy' | 'h5' | 'ccnet';
   transactionId: string;
   amountMinor: number;
   onOutcome: (outcome: AuthenticateOutcome) => void;
@@ -31,7 +31,7 @@ export function Capture(props: CaptureProps) {
   // Identity already selected the reader: open the original camera immediately,
   // without another network round trip or H5 preparation screen. Older API
   // responses still fall back to the capture-mode negotiation below.
-  const [legacy, setLegacy] = useState(props.captureMode === 'legacy');
+  const [legacy, setLegacy] = useState(props.captureMode === 'legacy' || props.captureMode === 'ccnet');
   if (legacy) return <LegacyCapture {...props} />;
   return <H5PalmCapture scopeId={props.transactionId}
     title={`Pay ${formatNaira(props.amountMinor)} with your palm`}
@@ -71,10 +71,10 @@ function LegacyCapture({
     const leds=beginLEDOperation();operation.current=leds;
     try {
       const frame = await captureBest(leds);
-      const outcome = await terminalApi.authenticate(
-        transactionId,
-        frame.imageB64,
-      );
+      const started = performance.now();
+      let outcome: AuthenticateOutcome;
+      try { outcome = await terminalApi.authenticate(transactionId, frame.imageB64); }
+      finally { frame.imageB64 = ''; performance.measure('palm.authenticate', { start: started, end: performance.now() }); }
       if(!leds.active())return;
       await leds.state(outcome.decision==='accept'?'OFF':'ERROR');
       onOutcome(outcome);

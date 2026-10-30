@@ -1,7 +1,7 @@
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 const state=vi.hoisted(()=>({attempt:null as any,cards:[] as any[],fetch:vi.fn(),rpc:vi.fn()}));
 vi.mock('../config.js',()=>({config:{PAYSTACK_SECRET_KEY:'sk_test_fixture',CARD_TOKEN_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64'),WALLET_BASE_URL:'https://wallet.example.test'}}));
-vi.mock('../logger.js',()=>({logger:{warn:vi.fn()}}));
+vi.mock('../logger.js',()=>({logger:{info:vi.fn(),warn:vi.fn()}}));
 vi.mock('../db/client.js',()=>({db:{
  rpc:state.rpc,
  from:()=>{

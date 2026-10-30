@@ -25,3 +25,5 @@ describe('payment configuration errors', () => {
     expect(() => requirePaystack('payment')).not.toThrow();
   });
 });
+
+vi.mock('../logger.js',()=>({logger:{info:vi.fn(),warn:vi.fn(),error:vi.fn()}}));

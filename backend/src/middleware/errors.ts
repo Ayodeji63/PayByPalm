@@ -51,6 +51,14 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
       merchant_setup_required: 'Merchant reports require database migration 0024. Ask the administrator to complete setup.',
       merchant_report_unavailable: 'Merchant reporting is temporarily unavailable. Please try again.',
       merchant_settlement_invalid: 'The settlement response could not be verified. Please retry or contact support.',
+      palm_reader_offline: 'The palm reader is offline. Check the PC and its HTTPS tunnel, then scan again.',
+      palm_reader_timeout: 'The palm check timed out. Please scan again.',
+      palm_reader_busy: 'The palm reader is busy or unavailable. Please try again.',
+      palm_reader_configuration: 'The palm reader needs administrator attention. Please contact support.',
+      palm_response_invalid: 'The palm reader returned an invalid result. No payment was authorized. Please scan again.',
+      palm_binding_invalid: 'Palm enrollment needs administrator attention.',
+      palm_status_unavailable: 'Could not check palm enrollment. Please try again.',
+      enrolment_completion_pending: 'Palm linking could not finish. Retry the same captures after a minute; do not start another enrollment.',
       palm_sdk_setup_required: 'The palm reader requires database migration 0021. Ask the administrator to check setup.',
       palm_liveness_confirmation_required: 'Live palm payments require Tencent confirmation of the new capture and liveness integration. Contact the administrator.',
       palm_sdk_unavailable: 'The Tencent palm reader is not configured. Please contact the administrator.',
@@ -79,6 +87,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
       pin_setup_failed: 'Your email is verified, but PIN setup failed. Please request a new confirmation link to finish setup.',
     };
     const message = publicSignupErrors[err.code] ?? (privateError ? 'Unable to complete the request. Please try again.' : err.message);
+    if (err.status === 503 && (err.code.startsWith('palm_') || err.code === 'enrolment_completion_pending')) res.setHeader('Retry-After', err.code === 'enrolment_completion_pending' ? '70' : '5');
     if (err.status === 429) res.setHeader('Retry-After', String(err.details?.retryAfter ?? 60));
     res.status(err.status).json({
       error: { code: err.code, message, ...(!privateError && err.details ? { details: err.details } : {}) },

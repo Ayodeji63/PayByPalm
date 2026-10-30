@@ -349,6 +349,7 @@ function terminalHarness(terminalApi, sessionStorage = storage()) {
     './config.js': { resolveTerminalKey: () => 'device-key', TIMINGS: {} },
     './ui.js': { KioskFrame: 'Frame', Pane: 'Pane', TButton: 'Button' },
     './useCamera.js': { preloadPalmRecognition: () => {} },
+    './cameraStream.js': { leaseCamera: () => ({ ready: Promise.resolve({}), release: () => {} }) },
   };
   for (const name of ['Idle', 'Amount', 'Capture', 'Confirm', 'StepUp', 'Result', 'Enrol']) {
     dependencies[`./screens/${name}.js`] = { [name]: name };
