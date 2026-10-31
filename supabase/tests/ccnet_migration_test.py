@@ -33,6 +33,7 @@ try:
     update profiles set palm_enrolled=true where id='{user}';''')
     pg((root/'migrations/0027_ccnet_provider.sql').read_text())
     pg((root/'migrations/0028_live_operations_and_retakes.sql').read_text())
+    pg((root/'migrations/0029_ccnet_checkout_threshold.sql').read_text())
     assert pg(f"select provider||':'||provider_subject_id from palm_bindings where id='{legacy}'")=='tencent:retained-tencent-history'
     assert pg("select has_function_privilege('anon','reserve_ccnet_enrolment(uuid,uuid,uuid,text,text,uuid)','EXECUTE')")=='f'
     assert pg("select has_function_privilege('service_role','begin_card_payment_previous(uuid,uuid,text,integer,integer)','EXECUTE')")=='f'
@@ -68,11 +69,22 @@ try:
     # Verified test-domain card fixtures; no provider network calls.
     pg(f"insert into linked_cards(id,user_id,domain,signature_hash,authorization_ciphertext,bank,brand,last4,exp_month,exp_year,is_default) values('{card}','{user}','test',repeat('c',64),'test-cipher','Test','visa','1234','12','2098',true);")
     pg(f"insert into card_link_attempts(user_id,request_id,reference,email,domain,status,card_id) values('{user}',gen_random_uuid(),'ccnet-card-link','test@example.invalid','test','verified','{card}');")
-    def transaction(provider='ccnet', reference=binding, score=85):
+    def transaction(provider='ccnet', reference=binding, score=50):
         t=pg(f"select id from create_terminal_transaction('{terminal}',gen_random_uuid(),5000,'CCNet test')")
         pg(f"update transactions set status='authenticated',matched_user_id='{user}',match_score={score},match_mode='search',payment_card_id='{card}',palm_provider='{provider}',palm_binding_id='{reference}' where id='{t}';")
         return t
-    def claim(t): return pg(f"select count(*) from begin_card_payment('{t}','{terminal}','test',60,85)",False)
+    def claim(t): return pg(f"select count(*) from begin_card_payment('{t}','{terminal}','test',60,50)",False)
+    # Both the authentication transition and charge claim enforce the 50 floor.
+    for score in (49,):
+        rejected=pg(f"select id from create_terminal_transaction('{terminal}',gen_random_uuid(),5000,'threshold rejection')")
+        result=pg(f"update transactions set status='authenticated',matched_user_id='{user}',match_score={score},match_mode='search',payment_card_id='{card}',palm_provider='ccnet',palm_binding_id='{binding}' where id='{rejected}'",False)
+        assert result.returncode, 'database accepted authentication below 50'
+    for score in (50,51,84):
+        accepted=transaction(score=score)
+        claimed=claim(accepted)
+        assert claimed.returncode==0 and claimed.stdout.strip()=='1',f'charge claim rejected score {score} at minimum 50: {claimed.stderr}'
+    stricter=transaction(score=50)
+    assert pg(f"select count(*) from begin_card_payment('{stricter}','{terminal}','test',60,51)",False).returncode,'caller threshold was ignored'
     t=transaction()
     with ThreadPoolExecutor(4) as pool: claims=list(pool.map(claim,[t]*4))
     assert all(r.returncode==0 for r in claims) and sum(int(r.stdout.strip()) for r in claims)==1,'double Pay granted multiple charge claims'
@@ -82,7 +94,7 @@ try:
     pg(f"select revoke_ccnet_palms('{user}');")
     assert claim(pending).returncode,'revoked binding authorized charge'
     assert pg(f"select revoked_at is null from palm_bindings where id='{legacy}'")=='t','Tencent history revoked'
-    assert pg(f"select count(*) from begin_card_payment('{t}','{terminal}','test',60,85)")=='0','existing attempt recovery acquired second POST claim'
+    assert pg(f"select count(*) from begin_card_payment('{t}','{terminal}','test',60,50)")=='0','existing attempt recovery acquired second POST claim'
     pg(f"select finish_card_payment((select reference from card_payment_attempts where transaction_id='{t}'),'success','123456789');")
     assert pg(f"select status from transactions where id='{t}'")=='settled','processing recovery broken by revocation'
     # Re-enrollment isolates a new subject and never resurrects the old authentication.

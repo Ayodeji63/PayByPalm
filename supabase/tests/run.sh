@@ -65,6 +65,7 @@ for f in "$SUPA"/migrations/*.sql; do
   # current full schema and CCNet charge/race tests run in a separate database below.
   [ "$b" = "0027_ccnet_provider.sql" ] && continue
   [ "$b" = "0028_live_operations_and_retakes.sql" ] && continue
+  [ "$b" = "0029_ccnet_checkout_threshold.sql" ] && continue
 
   out=$(pg -v ON_ERROR_STOP=1 -q -f "/sql/$b" 2>&1) || fail "migration $b" "$out"
   echo "applied  $b"

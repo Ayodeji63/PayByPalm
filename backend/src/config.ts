@@ -61,8 +61,8 @@ export const configSchema = z
     TENCENT_H5_IMAGE_ONLY_APPROVED: z.enum(['true', 'false']).default('false').transform(v => v === 'true'),
     MOCK_PALM_SCORE: intFromEnv(92),
 
-    PALM_ACCEPT_SCORE: intFromEnv(85),
-    PALM_STEP_UP_SCORE: intFromEnv(70),
+    PALM_ACCEPT_SCORE: intFromEnv(50).refine(n=>n>=1&&n<=100, 'must be between 1 and 100'),
+    PALM_STEP_UP_SCORE: intFromEnv(40).refine(n=>n>=0&&n<=100, 'must be between 0 and 100'),
     MAX_CANDIDATES: intFromEnv(4),
 
     ENROL_SESSION_TTL_SECONDS: intFromEnv(300),
@@ -80,7 +80,7 @@ export const configSchema = z
   })
   .refine(c => c.PALM_PROVIDER !== 'tencent', { message: 'Tencent is disabled for this rollout; use ccnet. Its modules and history are retained.', path: ['PALM_PROVIDER'] })
   .refine(c => c.PALM_PROVIDER !== 'ccnet' || (!!c.CCNET_BASE_URL && !!c.CCNET_API_KEY), { message: 'CCNET_BASE_URL and CCNET_API_KEY are required for CCNet', path: ['CCNET_BASE_URL'] })
-  .refine(c => c.PALM_PROVIDER !== 'ccnet' || c.PALM_ACCEPT_SCORE >= 85, { message: 'CCNet payment acceptance must be at least 85', path: ['PALM_ACCEPT_SCORE'] })
+  .refine(c => c.PALM_PROVIDER !== 'ccnet' || c.PALM_ACCEPT_SCORE >= 50, { message: 'CCNet payment acceptance must be at least 50', path: ['PALM_ACCEPT_SCORE'] })
   // The real key is only needed when the real provider is selected. This is what
   // lets the entire app run — and be demoed — with no Tencent access at all.
   .refine((c) => c.PALM_PROVIDER !== 'tencent' || !!c.TENCENT_PALM_API_KEY, {

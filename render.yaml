@@ -87,9 +87,9 @@ services:
       - key: MOCK_PALM_SCORE
         value: "92"
       - key: PALM_ACCEPT_SCORE
-        value: "85"
+        value: "50"
       - key: PALM_STEP_UP_SCORE
-        value: "70"
+        value: "40"
       - key: MAX_CANDIDATES
         value: "4"
 

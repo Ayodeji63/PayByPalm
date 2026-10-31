@@ -205,8 +205,8 @@ export async function authenticateTransaction(
     const current = await ccnetBindings();
     if (!sameBindings(candidates, current)) throw conflict('palm_binding_changed', 'The eligible palms changed. Please scan again.');
     const [first, second] = result.candidates;
-    const matched = result.meta?.providerIsMatch === true && first && first.score >= Math.max(85, thresholds.accept);
-    const ambiguous = second && second.userId !== first?.userId && second.score >= 85;
+    const matched = result.meta?.providerIsMatch === true && first && first.score >= Math.max(50, thresholds.accept);
+    const ambiguous = second && second.userId !== first?.userId && second.score >= Math.max(50, thresholds.accept);
     const outcome: PolicyOutcome = ambiguous
       ? {...rejectWithout('ambiguous_match'),score:first?.score??null}
       : matched ? decide(first.score)

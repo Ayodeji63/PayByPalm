@@ -22,7 +22,7 @@ async function release() {
   if (access.status !== 0) fail('GitHub write access unavailable. Run gh auth login --web --git-protocol https, then gh auth setup-git, and retry. No database changes were made.');
   const databaseURL = process.env.AUTH_DATABASE_URL;
   if (!databaseURL) throw new ReleaseError('AUTH_DATABASE_URL must be configured in backend/.env.');
-  const migrations = [['0027','ccnet_provider'],['0028','live_operations_and_retakes']] as const;
+  const migrations = [['0027','ccnet_provider'],['0028','live_operations_and_retakes'],['0029','ccnet_checkout_threshold']] as const;
   const pool = authPool(databaseURL);
   const client = await pool.connect();
   try {

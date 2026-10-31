@@ -9,10 +9,10 @@ never appear in the feed. An offline/setup warning means tracking is incomplete.
 
 ## Rollout
 
-1. Publish the matching backend and wallet release, with migrations **0027 and 0028**.
+1. Publish the matching backend and wallet release, with migrations **0027, 0028 and 0029**.
    The existing safe release helper (`cd backend` then
    `node --import tsx scripts/release-ccnet.ts`) checks GitHub
-   write access before migrating. Only run it with committed, tested changes. Both
+   write access before migrating. Only run it with committed, tested changes. All
    migration ledger entries and schema changes are committed atomically. Existing
    Tencent history is preserved; no live card charges are made by this helper.
 2. Start the PC's CCNet API and tunnel using `python3 scripts/local.py start` in
@@ -50,7 +50,7 @@ An uncertain timeout offers **Retry linking**, which keeps the original capture
 fingerprint to avoid overwriting a completed enrollment. Only expired/revoked
 sessions require a new QR. A mismatched payment scan likewise retakes against the
 same sale and never confirms/charges automatically. Standalone thresholds remain
-0.50; payment approval still requires at least 85/100 and an unambiguous positive
+0.50; payment approval still requires at least 50/100 and an unambiguous positive
 provider result.
 
 ## Scope and retention
@@ -108,3 +108,18 @@ Regression coverage: `tests/operationPresentation.test.ts` and
 `tests/operation-outcomes-browser.mjs`, plus backend CCNet-payment and operation-event
 unit tests. Browser cases cover missing, rejected and accepted decisions at desktop
 and mobile widths using fixture APIs only.
+
+
+## Checkout threshold 0.50
+
+Apply `supabase/migrations/0029_ccnet_checkout_threshold.sql` after 0027/0028.
+It lowers the database authorization/charge floor to 50 while preserving exact
+bindings, expiry, card ownership, charge idempotency and recovery. Existing applied
+migrations are unchanged. On Render set `PALM_ACCEPT_SCORE=50` and
+`PALM_STEP_UP_SCORE=40`, then deploy the matching backend. Private prepared Render
+settings include both values. Refresh/redeploy the admin app for the new policy copy.
+
+Checkout still requires a positive reader verdict and exactly one eligible user
+reaching the acceptance score. If two different eligible users score 50 or higher,
+checkout rejects the scan as ambiguous. A single 0.8471 candidate passes the score
+check; 0.8471 and 0.6333 together remain ambiguous. Acceptance never charges until Pay.

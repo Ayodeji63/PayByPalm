@@ -109,8 +109,8 @@ on a score.
 
 | Score | Decision | Effect |
 |---|---|---|
-| `>= PALM_ACCEPT_SCORE` (85) | `accept` | Confirm tap alone completes the payment |
-| `>= PALM_STEP_UP_SCORE` (70), below accept | `step_up` | Wallet PIN required at confirm |
+| `>= PALM_ACCEPT_SCORE` (50) | `accept` | An unambiguous positive reader result enables Pay; provider verification confirms payment |
+| `>= PALM_STEP_UP_SCORE` (40), below accept | `step_up` | Checkout requires a new scan; a PIN cannot override the match |
 | below `PALM_STEP_UP_SCORE`, or no match | `reject` | Retry; nothing is charged |
 
 These are **our** thresholds, deliberately independent of the provider's own `IsMatch` verdict —

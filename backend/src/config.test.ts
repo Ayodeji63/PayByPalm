@@ -51,4 +51,6 @@ describe('authentication connection configuration',()=>{
 });
 
 it('rejects Tencent as an active selection while keeping its implementation testable', () => { expect(configSchema.safeParse({...process.env, PALM_PROVIDER:'tencent', TENCENT_PALM_API_KEY:'inert'}).success).toBe(false); });
-it.each([50,84])('does not permit a CCNet payment threshold of %s', value => { expect(configSchema.safeParse({...process.env,PALM_PROVIDER:'ccnet',CCNET_BASE_URL:'https://reader.example.test',CCNET_API_KEY:'inert-reader-key-with-at-least-32-bytes',PALM_ACCEPT_SCORE:value}).success).toBe(false); });
+it.each([50,84])('permits a CCNet payment threshold of %s', value => { expect(configSchema.safeParse({...process.env,PALM_PROVIDER:'ccnet',CCNET_BASE_URL:'https://reader.example.test',CCNET_API_KEY:'inert-reader-key-with-at-least-32-bytes',PALM_ACCEPT_SCORE:value,PALM_STEP_UP_SCORE:40}).success).toBe(true); });
+it.each([0,49,101])('rejects out-of-policy CCNet payment threshold %s', value => { expect(configSchema.safeParse({...process.env,PALM_PROVIDER:'ccnet',CCNET_BASE_URL:'https://reader.example.test',CCNET_API_KEY:'inert-reader-key-with-at-least-32-bytes',PALM_ACCEPT_SCORE:value,PALM_STEP_UP_SCORE:40}).success).toBe(false); });
+it('defaults checkout to 50 without an inverted step-up band',()=>{const result=configSchema.parse({...process.env,PALM_ACCEPT_SCORE:undefined,PALM_STEP_UP_SCORE:undefined});expect(result.PALM_ACCEPT_SCORE).toBe(50);expect(result.PALM_STEP_UP_SCORE).toBe(40);});
