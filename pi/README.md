@@ -8,10 +8,10 @@ key only: never a Supabase service-role key, Tencent key, or customer login.
 
 - Use Raspberry Pi OS **with Desktop**, a working network, touchscreen and a camera
   Chromium can access. Run setup as the account that logs into the Pi desktop.
-- Deploy the updated wallet/backend and apply the pending Supabase migrations
-  through `0021`. Configure the backend's real Tencent provider for matching.
-  The original camera is the default (`TENCENT_CAPTURE_MODE=legacy` in Render).
-  H5 remains an explicit backend opt-in. Keep Paystack in test mode for this pilot.
+- Deploy the updated wallet/backend and apply the current CCNet migrations through
+  `0029`. Use `PALM_PROVIDER=ccnet`; the model and persistent SQLite run on the PC
+  behind its fixed ngrok HTTPS tunnel. Keep the existing Paystack mode and keys.
+  Tencent modules/history are retained but disabled for this rollout.
 - The frontend's build must use the reachable HTTPS API URL in `VITE_API_BASE_URL`.
   `localhost:8080` would point at the Pi itself. Backend `WALLET_BASE_URL` must be
   the public wallet URL so phones can open enrolment QR links.
@@ -136,14 +136,13 @@ starting new sales; automatic browser startup is not financial reconciliation.
 - **Enrol new user:** show QR, let the signed-in customer claim it on their phone,
   then capture their palm on the terminal.
 - **New sale:** enter amount, capture palm, confirm the linked-card debit. The backend
-  uses 1:1 calls across all active bindings. No terminal PIN/OTP is requested; weak palm
+  uses one eligible-gallery 1:N search and selects the highest qualifying match. No terminal PIN/OTP is requested; weak palm
   matches require another scan.
 - A scan alone does not debit money. Successful backend confirmation settles it.
 - An unknown payment outcome displays recovery. Retry/check that same sale; do not
   clear browser storage or reset the terminal to get around it.
 - Signup/PIN setup happens on customers' phones, not on the kiosk.
-- Payments debit the default linked card through Paystack. Keep test keys enabled
-  until direct-card terminal acceptance testing has passed. Card balances are not
+- Payments debit the default linked card through Paystack. Keep the existing backend payment mode and keys. Card balances are not
   exposed by this integration.
 
 ## Optional WS2812 camera ring
@@ -173,7 +172,7 @@ curl https://YOUR-API.onrender.com/health
 | API connection refused | Frontend API URL points at a reachable server, not localhost on the Pi |
 | API returns abuse_protection_unavailable | Apply migration 0012; verify database credentials and schema cache |
 | Camera unavailable | Camera visible to Chromium, secure HTTPS origin, supported hardware/driver |
-| Matches fail | Real Tencent configuration, enrolled palm, fixed camera position and lighting; thresholds need hardware calibration |
+| Matches fail | CCNet PC/tunnel readiness, backend credentials, enrolled palm, fixed camera position and lighting |
 
 For SSH management, run commands as the same desktop user. To stop automatic launch,
 remove `~/.config/autostart/paybypalm-kiosk.desktop` and stop the user service.

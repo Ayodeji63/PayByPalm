@@ -83,7 +83,8 @@ export function observeOperationRequest(req: Request,res:Response):void {
  res.json=function(body:unknown) {
   if(body&&typeof body==='object') {
    const result=body as Record<string,unknown>;
-   details=safeOperationDetails({score:result.score,decision:result.decision,amountMinor:result.amountMinor,result:result.status,
+   const confirmedReceipt=res.statusCode>=200&&res.statusCode<300&&kind==='payment'&&stage==='confirm'&&typeof result.transactionId==='string'&&uuid.test(result.transactionId)&&typeof result.settledAt==='string'&&Number.isFinite(Date.parse(result.settledAt));
+   details=safeOperationDetails({score:result.score,decision:result.decision,amountMinor:result.amountMinor,result:confirmedReceipt?'settled':result.status,
     errorCode: (result.error as {code?:unknown}|undefined)?.code ?? (result.decision==='reject'?result.reason:undefined)});
    const reference=result.sessionId??result.transactionId;
    if(typeof reference==='string' && uuid.test(reference)) context.scopeId=reference;

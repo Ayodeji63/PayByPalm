@@ -20,9 +20,9 @@ it('never borrows a later acceptance from another attempt on the same sale',()=>
 });
 it('keeps accepted authentication separate from confirmed payment',()=>{
  const accepted=event('decision',{stage:'authenticate',details:{decision:'accept',score:91}});
- expect(authenticationStatus(reader,[reader,provider,accepted])).toMatchObject({label:'Palm accepted',tone:'succeeded',score:91});
+ expect(authenticationStatus(reader,[reader,provider,accepted])).toMatchObject({label:'Palm accepted',tone:'observed',score:91});
  expect(authenticationStatus(reader,[reader,provider,accepted]).explanation).toContain('must still tap Pay');
- expect(operationStatus(event('pay',{operation:'payment',stage:'confirm'})).label).toBe('Pay request completed');
+ expect(operationStatus(event('pay',{operation:'payment',stage:'confirm'})).label).toBe('Confirmation received');
  expect(operationStatus(event('settled',{operation:'payment',stage:'payment_status',details:{result:'settled'}})).label).toBe('Payment confirmed');
 });
 it('reports pending, errors and ambiguous correlation without inventing an approval',()=>{

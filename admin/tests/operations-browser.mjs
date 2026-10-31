@@ -26,10 +26,10 @@ try{for(const width of [1440,390]){
  const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(origin+'/#/operations');await page.getByRole('heading',{name:'Operations monitor'}).waitFor();await page.getByText('12 palms',{exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Add terminal',exact:true}).count(),0);
  await page.getByRole('button',{name:'Pause',exact:true}).click();const count=polls;await page.waitForTimeout(2300);assert.equal(polls,count);
- await page.getByLabel('Operation',{exact:true}).selectOption('enrollment');assert.equal(await page.locator('.ops-table tbody tr').count(),3);
+ await page.getByLabel('Operation',{exact:true}).selectOption('enrollment');assert.equal(await page.locator('.ops-table tbody tr').count(),1);
  await page.getByRole('button',{name:/Details for enrollment/}).first().click();await page.getByRole('region',{name:'Operation details'}).waitFor();if(process.env.SCREENSHOTS!=='0')await page.screenshot({path:out+`operations-${width}.png`,fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Ledger overflow stays inside table');
- await page.getByLabel('Operation',{exact:true}).selectOption('all');await page.getByRole('button',{name:'Resume updates',exact:true}).click();await page.getByText(/settled/).first().waitFor();
+ await page.getByLabel('Operation',{exact:true}).selectOption('all');await page.getByRole('button',{name:'Resume updates',exact:true}).click();await page.locator('.ops-table').getByText('Payment confirmed',{exact:true}).waitFor();
  await page.getByRole('button',{name:'Sign out',exact:true}).first().click();await page.getByRole('heading',{name:'Welcome back'}).waitFor();assert.equal(await page.locator('.ops-table').count(),0);assert.deepEqual(errors,[]);
  console.log(`PASS: operations ${width}px, polling, pause/resume, filters, details, responsive layout and logout. Fixtures only.`);await context.close();
 }}finally{await browser.close();}

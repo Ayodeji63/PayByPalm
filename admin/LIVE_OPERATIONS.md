@@ -124,3 +124,30 @@ similarity reaching 50/100. Another eligible user above 50 does not reject the w
 For example, 0.8471 wins over 0.6333. Raw similarity determines rank even when both
 integer scores round down to the same value. An exact top similarity tie between
 different users asks for a retake. Acceptance never charges until Pay.
+
+
+## Important events, details and pagination
+
+The main register shows completed capture bursts and final enrollment, matching and
+payment outcomes. Guidance changes, partial frame progress, start messages and
+duplicate reader/provider entries are kept in the collapsed technical trace rather
+than repeated in the main list. A capture row retains its 3/3 progress and available
+reader measurements. Historical details and errors remain available; the retained
+metadata queue/storage limits still apply.
+
+Each page contains at most **10 important events**. Filters reset to page 1; Previous
+and Next navigate the loaded events, and Load older history fetches earlier backend
+records. The count explicitly describes loaded events rather than all-time activity.
+Selecting Details inserts the inspector above the register and moves keyboard focus
+to it. It includes the transaction status, matching decision, measurements, candidate
+similarities and timing when available. The technical trace covers related loaded
+session/transaction records; a capture's latest transaction reader result is labeled
+as such rather than claimed as a unique per-frame correlation.
+
+Only a verified settled payment is labeled **Payment confirmed** with green success.
+A cancellation is **Cancelled**. Palm acceptance, capture completion and enrollment
+completion are descriptive neutral milestones. Pending charge results stay processing;
+a later failed cancellation cannot overwrite a recorded confirmed payment.
+
+The PC/Pi shutdown-to-start walkthrough is in the CCNet checkout:
+`/home/dell/projects/PalmModels/CCNet/docs/START_AFTER_SHUTDOWN.md`.

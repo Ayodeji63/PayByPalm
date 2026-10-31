@@ -28,3 +28,14 @@ it('records the terminal rejection and its reason even when the HTTP request com
   expect(recorded).toHaveLength(2);expect(recorded[1].slice(0,3)).toEqual(['identification','authenticate','rejected']);expect(recorded[1][3]).toMatchObject({score:84,decision:'reject',errorCode:'low_score'});expect(JSON.stringify(recorded)).not.toContain('never-record');
  }finally{operations.emit=emit;}
 });
+
+it('records cancelled separately from a verified confirmation receipt',()=>{
+ const {emit}=operations;const recorded:any[]=[];operations.emit=((...args:any[])=>recorded.push(args)) as typeof emit;
+ try{
+  for(const [stage,body] of [['cancel',{transactionId:terminalId,status:'cancelled'}],['confirm',{transactionId:terminalId,settledAt:'2026-10-31T06:00:00Z',amountMinor:1000}]] as const){
+   const response=new EventEmitter() as any;response.statusCode=200;response.json=()=>response;
+   operationContext.run({requestId,terminalId},()=>observeOperationRequest({id:requestId,path:`/transactions/${terminalId}/${stage}`,method:'POST'} as any,response));response.json(body);response.emit('finish');
+  }
+  expect(recorded[1][3]).toMatchObject({result:'cancelled'});expect(recorded[3][3]).toMatchObject({result:'settled',amountMinor:1000});
+ }finally{operations.emit=emit;}
+});
