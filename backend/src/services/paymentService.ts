@@ -207,7 +207,10 @@ export async function authenticateTransaction(
     const [first, second] = result.candidates;
     const matched = result.meta?.providerIsMatch === true && first && first.score >= Math.max(85, thresholds.accept);
     const ambiguous = second && second.userId !== first?.userId && second.score >= 85;
-    const outcome = ambiguous ? rejectWithout('ambiguous_match') : matched ? decide(first.score) : rejectWithout('no_match');
+    const outcome: PolicyOutcome = ambiguous
+      ? {...rejectWithout('ambiguous_match'),score:first?.score??null}
+      : matched ? decide(first.score)
+      : {decision:'reject',score:first?.score??null,reason:result.meta?.providerIsMatch===true&&first?'low_score':'no_match'};
     log.info({ candidates: candidates.length, decision: outcome.decision, timings: result.meta?.timings }, 'CCNet eligible-gallery search complete');
     return finaliseAuthentication(txn, matched && !ambiguous ? await getProfile(first.userId) : null, outcome, log, matched && !ambiguous ? first : undefined);
   }

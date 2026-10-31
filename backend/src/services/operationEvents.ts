@@ -84,7 +84,7 @@ export function observeOperationRequest(req: Request,res:Response):void {
   if(body&&typeof body==='object') {
    const result=body as Record<string,unknown>;
    details=safeOperationDetails({score:result.score,decision:result.decision,amountMinor:result.amountMinor,result:result.status,
-    errorCode: (result.error as {code?:unknown}|undefined)?.code});
+    errorCode: (result.error as {code?:unknown}|undefined)?.code ?? (result.decision==='reject'?result.reason:undefined)});
    const reference=result.sessionId??result.transactionId;
    if(typeof reference==='string' && uuid.test(reference)) context.scopeId=reference;
   }

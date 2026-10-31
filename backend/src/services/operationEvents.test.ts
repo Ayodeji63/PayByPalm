@@ -1,7 +1,7 @@
 import { beforeEach,expect,it,vi } from 'vitest';
 vi.mock('../db/client.js',()=>({db:{}}));
 vi.mock('../logger.js',()=>({logger:{warn:vi.fn()}}));
-import {createOperationRecorder,operationContext,safeOperationDetails,observeOperationRequest} from './operationEvents.js';
+import {operations,createOperationRecorder,operationContext,safeOperationDetails,observeOperationRequest} from './operationEvents.js';
 import {EventEmitter} from 'node:events';
 const requestId='11111111-1111-4111-8111-111111111111',terminalId='22222222-2222-4222-8222-222222222222';
 it('records ordered spans with authenticated context and strips secret fields',async()=>{
@@ -18,3 +18,13 @@ it('allows only finite values, bounded error codes, approved enums and timings',
  expect(safeOperationDetails({score:NaN,cosineSimilarity:Infinity,errorCode:'Authorization secret',guidance:'ready',provider:'ccnet',palmSide:'bad',timings:{embed_ms:-1,search_ms:2,Authorization:'secret'}})).toEqual({guidance:'ready',provider:'ccnet',timings:{search_ms:2}});
 });
 it('disabled test recording never touches persistence',async()=>{const persist=vi.fn();const recorder=createOperationRecorder(persist,false);recorder.emit('payment','confirm','succeeded');await recorder.flush();expect(persist).not.toHaveBeenCalled();});
+
+it('records the terminal rejection and its reason even when the HTTP request completed normally',()=>{
+ const {emit}=operations;const recorded:any[]=[];operations.emit=((...args:any[])=>recorded.push(args)) as typeof emit;
+ try{
+  const response=new EventEmitter() as any;response.statusCode=200;response.json=()=>response;
+  operationContext.run({requestId,terminalId},()=>observeOperationRequest({id:requestId,path:`/transactions/${terminalId}/authenticate`,method:'POST'} as any,response));
+  response.json({decision:'reject',score:84,reason:'low_score',imagesB64:['never-record']});response.emit('finish');response.emit('close');
+  expect(recorded).toHaveLength(2);expect(recorded[1].slice(0,3)).toEqual(['identification','authenticate','rejected']);expect(recorded[1][3]).toMatchObject({score:84,decision:'reject',errorCode:'low_score'});expect(JSON.stringify(recorded)).not.toContain('never-record');
+ }finally{operations.emit=emit;}
+});

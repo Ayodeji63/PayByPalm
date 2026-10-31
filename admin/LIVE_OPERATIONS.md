@@ -85,3 +85,26 @@ deploy**. Deploy the matching wallet/Pi and admin versions together. The admin
 monitoring file goes in the admin server's environment, not in Render's payment
 backend environment. These files are private local artifacts and are never
 included in the code commit.
+
+
+## Reader completion versus terminal authentication
+
+**Search completed** and **Comparison completed** describe a successful reader API
+request. These are neutral processing states. They do not approve authentication
+or establish that a payment went through. The inspector separately shows the
+linked backend's **Palm rejected**, **Palm accepted**, pending or error result,
+including the actual score and rejection reason when recorded. A palm acceptance
+still requires the customer's Pay tap and provider-confirmed payment.
+
+If only reader events arrive, the inspector says **Decision unavailable** and the
+page warns that terminal decisions have not been received. Check the backend release
+and its operation-log persistence. A reachable database with no events does not
+establish that the deployed backend is emitting telemetry. Historical reader events
+cannot reconstruct an unrecorded terminal decision. Correlation uses the reader's
+upstream request link and the exact backend request, never a different scan of the
+same transaction. The payment threshold and authorization checks are unchanged.
+
+Regression coverage: `tests/operationPresentation.test.ts` and
+`tests/operation-outcomes-browser.mjs`, plus backend CCNet-payment and operation-event
+unit tests. Browser cases cover missing, rejected and accepted decisions at desktop
+and mobile widths using fixture APIs only.

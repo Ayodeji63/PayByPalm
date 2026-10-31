@@ -46,3 +46,8 @@ it('continues recovery of an existing processing payment regardless of its old p
  m.single.mockResolvedValueOnce({data:{...pending,status:'processing',palm_provider:'tencent'}}).mockResolvedValueOnce({data:{...pending,status:'settled',settled_at:new Date().toISOString()}});
  expect(await confirmTransaction('transaction',terminal)).toMatchObject({transactionId:'transaction'});expect(m.charge).toHaveBeenCalledOnce();
 });
+
+it('preserves the observed score and rejection reason when a completed reader search falls below payment policy',async()=>{
+ m.identify.mockResolvedValue({candidates:[{...binding,score:84,cosineSimilarity:0.8471496105194092}],meta:{providerIsMatch:true}});
+ expect(await authenticateTransaction('transaction',terminal,'cHJvYmU=',undefined,log)).toMatchObject({decision:'reject',score:84,reason:'low_score'});expect(m.update).not.toHaveBeenCalled();expect(m.charge).not.toHaveBeenCalled();
+});
