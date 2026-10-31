@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
-const { chromium }=createRequire(import.meta.url)('playwright');
+const { chromium }=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
 const origin=process.env.PBP_PREVIEW_ORIGIN||'http://127.0.0.1:4178';
 const browser=await chromium.launch({executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||undefined});
 const context=await browser.newContext({viewport:{width:390,height:844}});
@@ -12,7 +12,7 @@ let paymentMode='test', flipBeforePost=false;
 let cards=[],attempts=[],everLinked=false,refundStatus='pending',initializations=0,checks=0,failReads=false,enabled=true,missingMode=false;
 const card={id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',bank:'Actual Test Bank',brand:'visa',last4:'5678',exp_month:'11',exp_year:'2098',is_default:true,is_paused:false,created_at:'2026-10-18T00:00:00Z'};
 await context.addInitScript(()=>{
- localStorage.setItem('paybypalm.session',JSON.stringify({accessToken:'fixture-token',refreshToken:'fixture-refresh'}));
+ localStorage.setItem('paybypalm.identity.session',JSON.stringify({accessToken:'fixture-token',refreshToken:'fixture-refresh'}));
  localStorage.setItem('paybypalm.tokenized_cards',JSON.stringify([{last4:'9999',balanceMinor:25000000}]));
 });
 await context.route(/\/(me|cards(?:\/.*)?|transactions)(?:\?.*)?$/,async route=>{

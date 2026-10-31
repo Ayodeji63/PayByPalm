@@ -6,15 +6,20 @@
  */
 
 import { useState, type FormEvent } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { ApiError } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
 import { Field } from '../components/ui.js';
 import { PageTransition } from '../components/transitions.js';
+import { SessionStatus } from '../components/SessionStatus.js';
+import { postLoginPath } from '../lib/authNavigation.js';
 
 export default function Auth() {
   const location = useLocation();
-  const [mode, setMode] = useState<'signup' | 'signin'>((location.state as { mode?: string } | null)?.mode === 'signin' ? 'signin' : 'signup');
+  const { status } = useAuth();
+  const [mode, setMode] = useState<'signup' | 'signin'>((location.state as { mode?: string } | null)?.mode === 'signup' ? 'signup' : 'signin');
+  if (status === 'loading') return <SessionStatus blocking />;
+  if (status === 'authenticated') return <Navigate to={postLoginPath((location.state as { returnTo?: unknown } | null)?.returnTo)} replace />;
 
   return (
     <PageTransition>
@@ -265,7 +270,7 @@ function SignInForm({ onSwitch }: { onSwitch: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo ?? '/dashboard';
+  const returnTo = postLoginPath((location.state as { returnTo?: unknown } | null)?.returnTo);
   const isValid = email && password;
 
   async function onSubmit(e: FormEvent) {

@@ -16,6 +16,30 @@ pnpm dev
 
 Open http://localhost:5173.
 
+## Sign-in and card-return behavior
+
+Ordinary sign-in opens `/dashboard`, including when an expired session interrupted
+the Profile page. `/login` defaults to sign-in; the welcome page's explicit
+Create Account action still opens signup. Card-return links and enrollment QR
+links resume their original workflow after a required sign-in.
+
+Temporary `/me` or session-refresh outages preserve the saved session and offer
+**Retry account connection**. Confirmed invalid/expired credentials and explicit
+sign-out still clear the session and private card cache. Adding, pausing, resuming
+or changing a card keeps the customer on `/cards`. A verified card is shown there;
+failed return verification keeps its reference and offers a retry.
+
+The backend's `WALLET_BASE_URL` must be the exact deployed wallet origin, including
+the chosen hostname. Paystack returns to that origin's `/cards` route. Browser
+sessions do not carry between different origins; never put session tokens in a
+checkout URL to work around a hostname mismatch.
+
+Run `npm run test:security`, `npm run build`, and `npm run guard:secrets` for local
+checks. With the wallet dev server on port 5177 and Playwright available, run
+`npm run test:auth:browser`. `PBP_PREVIEW_ORIGIN`, `PLAYWRIGHT_MODULE` and
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE` can select an existing test server/tool installation.
+Browser authentication/card tests use intercepted fixture APIs and never charge cards.
+
 ## Four pages, deliberately
 
 | Route | What it does |

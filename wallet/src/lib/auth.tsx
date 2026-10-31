@@ -42,6 +42,7 @@ interface SignUpInput {
 interface AuthApi {
   me: Me | null;
   status: "loading" | "authenticated" | "anonymous";
+  sessionError: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (input: SignUpInput) => Promise<{ email: string }>;
   confirmEmail: (token: string) => Promise<void>;
@@ -73,12 +74,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loadSession() ? "loading" : "anonymous",
   );
   const [consentGiven, setConsentGivenState] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
   const setConsentGiven = useCallback((given: boolean) => {
     setConsentGivenState(given);
   }, []);
 
   const fetchMe = useCallback(async () => {
     const revision = getSessionRevision();
+    setSessionError(null);
     try {
       const next = await api.get<Me>("/me");
 
@@ -89,10 +92,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus("authenticated");
     } catch {
       if (revision !== getSessionRevision()) return;
-      clearSession();
-      setCardOwner(null);
-      setMe(null);
-      setStatus("anonymous");
+      // Only a confirmed authentication rejection ends a session. Network and
+      // account-service failures must not discard checkout or sign a user out.
+      setSessionError("We couldn't refresh your account. Check your connection and try again.");
     }
   }, []);
 
@@ -100,15 +102,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const previous = loadSession();
     if (previous) void revokeSession(previous.accessToken).catch(() => {});
     clearSession();
+    setSessionError(null);
     setCardOwner(null);
     setConsentGiven(false);
     setMe(null);
     setStatus("anonymous");
   }, [setConsentGiven]);
 
-  // api.ts calls this when a refresh attempt has already failed.
+  // api.ts calls this only after the server rejects the session credentials.
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      setSessionError(null);
       setCardOwner(null);
       setMe(null);
       setStatus("anonymous");
@@ -208,6 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       me,
       status,
+      sessionError,
       signIn,
       signUp,
       confirmEmail,
@@ -220,6 +225,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [
       me,
       status,
+      sessionError,
       signIn,
       signUp,
       confirmEmail,

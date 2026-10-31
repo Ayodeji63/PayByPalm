@@ -103,6 +103,57 @@ test('a rejected refreshed access token clears the session', async () => {
   assert.equal(api.loadSession(), null);
 });
 
+test('temporary account-refresh failures preserve the saved session', async () => {
+  for (const status of [429, 500, 503]) {
+    const api = load('../src/lib/api.ts', { fetch: async () => response(status, {}) });
+    api.saveSession(session);
+    await authProvider(api).refresh();
+    assert.equal(api.loadSession().accessToken, session.accessToken);
+  }
+});
+
+test('temporary token-refresh failures never trigger logout', async () => {
+  for (const outcome of [429, 503, 'offline', 'malformed']) {
+    let signedOut = 0;
+    const api = load('../src/lib/api.ts', { fetch: async url => {
+      if (!url.endsWith('/auth/refresh')) return response(401, {});
+      if (outcome === 'offline') throw new Error('Connection lost');
+      return response(outcome === 'malformed' ? 200 : outcome, {});
+    } });
+    api.saveSession(session); api.setUnauthorizedHandler(() => signedOut++);
+    await assert.rejects(api.api.get('/cards'), error => error.code === 'session_refresh_unavailable');
+    assert.equal(api.loadSession().accessToken, session.accessToken);
+    assert.equal(signedOut, 0);
+  }
+});
+
+test('a definitively rejected session still signs the customer out', async () => {
+  let signedOut = 0;
+  const api = load('../src/lib/api.ts', { fetch: async () => response(401, {}) });
+  api.saveSession(session); api.setUnauthorizedHandler(() => signedOut++);
+  await assert.rejects(api.api.get('/cards'), error => error.status === 401);
+  assert.equal(api.loadSession(), null); assert.equal(signedOut, 1);
+});
+
+test('successful token refresh retries the card request once with the new session', async () => {
+  const tokens = [];
+  const api = load('../src/lib/api.ts', { fetch: async (url, options) => {
+    if (url.endsWith('/auth/refresh')) return response(200, { session: { accessToken: 'new-A', refreshToken: 'new-refresh-A' } });
+    tokens.push(options.headers.Authorization);
+    return options.headers.Authorization === 'Bearer new-A' ? response(200, { cards: [] }) : response(401, {});
+  } });
+  api.saveSession(session);
+  await api.api.get('/cards');
+  assert.deepEqual(tokens, ['Bearer access-A', 'Bearer new-A']);
+  assert.equal(api.loadSession().accessToken, 'new-A');
+});
+
+test('normal sign-in opens Home while card callbacks and enrollment QR links resume', () => {
+  const { postLoginPath } = load('../src/lib/authNavigation.ts');
+  for (const path of [undefined, '/profile', '/activity', '/login', 'https://attacker.test/cards', '//attacker.test/cards', '/\\attacker.test/cards']) assert.equal(postLoginPath(path), '/dashboard');
+  for (const path of ['/cards', '/cards?reference=pbp_card_'+'a'.repeat(32), '/scan/aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa']) assert.equal(postLoginPath(path), path);
+});
+
 test('card caches do not cross users or survive logout', () => {
   const localStorage = storage();
   localStorage.setItem('paybypalm.tokenized_cards', JSON.stringify([{ id: 'unowned' }]));

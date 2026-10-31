@@ -55,15 +55,16 @@ export default function Cards() {
  const check=useCallback(async(ref:string)=>{
   setBusy(true);setError('');setNotice('Checking payment and refund status…');
   try{
-   await api.post('/cards/link/verify',{reference:ref});
-   await reload();setNotice('Status updated. Review your linking request below.');
+   const result=await api.post<CardLinkAttempt>('/cards/link/verify',{reference:ref});
+   const next=await reload();
+   setSearchParams({}, {replace:true});
+   setNotice(result.status==='verified'&&next.cards.some(card=>card.id===result.cardId)?'Card linked. Your saved card is shown below.':'Status updated. Review your linking request below.');
   }catch(failure){await reload().catch(()=>{});setNotice('');setError(failure instanceof Error?failure.message:'Could not check payment. Please try again.');}
   finally{setBusy(false);}
- },[reload]);
+ },[reload,setSearchParams]);
  useEffect(()=>{
   if(!reference||checked.current===reference)return;checked.current=reference;
-  setSearchParams({}, {replace:true});
-  if(!/^pbp_card_[a-f0-9]{32}$/.test(reference)){setError('Invalid card-link reference. Check your recent requests below.');return;}
+  if(!/^pbp_card_[a-f0-9]{32}$/.test(reference)){setError('Invalid card-link reference. Check your recent requests below.');setSearchParams({}, {replace:true});return;}
   void check(reference);
  },[reference,check,setSearchParams]);
  async function link(){
@@ -90,6 +91,7 @@ export default function Cards() {
   <PageHeader title="Payment cards" />
   <p className="mt-3 text-sm text-gray-600">Save a card through Paystack’s secure checkout. Your card number and CVV never pass through PayByPalm.</p>
   {(loadError||error)&&<p role="alert" className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-800">{loadError||error}</p>}
+  {reference&&error&&/^pbp_card_[a-f0-9]{32}$/.test(reference)&&<button type="button" className="mt-2 min-h-11 font-semibold text-blue-700" disabled={busy} onClick={()=>void check(reference)}>Retry card verification</button>}
   {notice&&<p role="status" className="mt-4 text-sm text-blue-800">{notice}</p>}
   {!data?<div className="mt-6">{loading&&<Skeleton className="h-32 w-full" />}<button type="button" className="mt-4 min-h-11 font-semibold text-blue-700" disabled={loading} onClick={()=>void reload().catch(()=>{})}>{loading?'Loading cards…':'Reload cards'}</button></div>:<>
    <p role="status" className={`mt-4 rounded-xl p-3 text-sm ${data.paymentMode==='test'?'bg-amber-50 text-amber-900':'bg-blue-50 text-blue-900'}`}>{data.paymentMode==='test'?'Test mode: use Paystack test cards. No real payment is collected.':'Live mode: use a real card. Payments charge real money.'}</p>

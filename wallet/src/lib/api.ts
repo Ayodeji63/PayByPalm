@@ -127,13 +127,18 @@ async function refreshSession(): Promise<Session | null> {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refreshToken: current.refreshToken }),
         });
-        if (!response.ok) return null;
+        if (response.status === 401 || response.status === 403) return null;
+        if (!response.ok) throw new ApiError(response.status, 'session_refresh_unavailable', 'Your session could not be checked. Please try again.');
         const data = (await response.json()) as { session: Session };
+        if (!data?.session?.accessToken || !data.session.refreshToken ||
+            typeof data.session.accessToken !== 'string' || typeof data.session.refreshToken !== 'string')
+          throw new ApiError(503, 'session_refresh_unavailable', 'Your session could not be checked. Please try again.');
         if (revision !== getSessionRevision()) return null;
         saveSession(data.session);
         return data.session;
-      } catch {
-        return null;
+      } catch (error) {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(0, 'session_refresh_unavailable', 'Your session could not be checked. Check your connection and try again.');
       } finally {
         // Cleared on the next tick so simultaneous callers all see this attempt.
         setTimeout(() => {

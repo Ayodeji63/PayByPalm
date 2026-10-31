@@ -12,7 +12,7 @@
 import { Suspense, lazy } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './lib/auth.js';
-import { Screen, Skeleton } from './components/ui.js';
+import { SessionStatus } from './components/SessionStatus.js';
 import { AppShell } from './components/AppShell.js';
 import Landing from './routes/Landing.js';
 import Auth from './routes/Auth.js';
@@ -36,15 +36,7 @@ const Receipt = lazy(() => import('./routes/Receipt.js'));
 const MerchantDashboard = lazy(() => import('./routes/MerchantDashboard.js'));
 
 function Loading() {
-  return (
-    <Screen>
-      <div className="space-y-4 py-12">
-        <Skeleton className="h-6 w-32" />
-        <Skeleton className="h-12 w-52" />
-        <Skeleton className="h-40 w-full rounded-3xl" />
-      </div>
-    </Screen>
-  );
+  return <SessionStatus blocking />;
 }
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -56,7 +48,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
       <Navigate
         to="/login"
         replace
-        state={{ returnTo: `${location.pathname}${location.search}${location.hash}` }}
+        state={{ mode: 'signin', returnTo: `${location.pathname}${location.search}${location.hash}` }}
       />
     );
   }
@@ -86,6 +78,7 @@ function AuthedShell({ children }: { children: React.ReactNode }) {
   return (
     <RequireAuth>
       <AppShell>
+        <SessionStatus />
         <Suspense fallback={<Loading />}>
           {children}
         </Suspense>
