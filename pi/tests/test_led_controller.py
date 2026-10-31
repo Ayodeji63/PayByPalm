@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from led_controller import LEDController, LEDState, MockStrip
@@ -22,6 +23,22 @@ def wait_for(predicate, timeout=1):
 
 
 class LEDTests(unittest.TestCase):
+    def test_pwm_pin_selection_reaches_hardware_without_changing_legacy_default(self):
+        for options, expected in [({}, 18), ({'pin': 12}, 12), ({'pin': 18}, 18)]:
+            strip = MockStrip()
+            with patch('led_controller.is_raspberry_pi', return_value=True), \
+                 patch('led_controller.WS2812Strip', return_value=strip) as driver:
+                with LEDController(**options) as leds:
+                    self.assertTrue(leds.start_palm_capture())
+                    driver.assert_called_once_with(pin=expected)
+
+    def test_pin_rejects_i2s_data_and_non_pwm_outputs_before_starting_worker(self):
+        for pin in (19, 21, 10, 32, True, '12', None):
+            with self.subTest(pin=pin), patch('led_controller.threading.Thread') as worker:
+                with self.assertRaises(ValueError):
+                    LEDController(pin=pin, mock=True)
+                worker.assert_not_called()
+
     def controller(self, **settings):
         strip = MockStrip()
         controller = LEDController(strip=strip, step_seconds=0.01, feedback_seconds=0.06, capture_timeout=0.12, **settings)

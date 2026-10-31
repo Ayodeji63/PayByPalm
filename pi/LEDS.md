@@ -8,6 +8,10 @@ No new Supabase migration is required for the LED feature.
 ## Wiring (power off before connecting)
 
 Identify terminals using the **PCB labels**, not wire colours.
+The table is the legacy/default wiring. **When using a MAX98357A I²S amplifier,
+use GPIO12 (physical pin 32) for ring DIN and set `"pin": 12` instead.** GPIO18
+is then reserved for the amplifier's BCLK. Follow [the combined audio/ring setup](AUDIO.md#max98357a-with-the-led-ring-pi-4)
+before powering both devices.
 
 | Ring terminal | Connection |
 | --- | --- |
@@ -23,7 +27,10 @@ use direct GPIO18 data, but 3.3 V signalling into a 5 V ring is not guaranteed.
 With a shifter, place the series resistor in the data path to DIN. Check the
 shifter's pinout and power connections separately before connecting it.
 
-PWM uses GPIO18/channel 0, 800 kHz, DMA 10, non-inverted. Onboard PWM audio must
+PWM uses GPIO18 (legacy default) or configured GPIO12/channel 0, 800 kHz, DMA 10,
+non-inverted. The selectable pins are BCM numbers, not physical header numbers.
+Do not select PCM/GPIO21 for the ring with I²S audio; PCM is needed by the amplifier.
+Onboard PWM audio must
 not compete with the LED driver. On current Raspberry Pi OS, edit
 `/boot/firmware/config.txt` (older images use `/boot/config.txt`) and change the
 onboard audio setting to `dtparam=audio=off`. The library also documents disabling
@@ -98,6 +105,11 @@ Edit the root-owned settings with `sudoedit /etc/paybypalm/led.json`:
   "step_seconds": 0.1
 }
 ```
+
+With MAX98357A audio, add `"pin": 12` to this object and physically move ring DIN
+to pin 32 while powered off. Omitting the setting preserves the existing GPIO18
+default. Only BCM GPIO12 and GPIO18 are accepted; both use PWM0. The standalone
+diagnostic reads the same pin setting from `/etc/paybypalm/led.json`.
 
 `capture_brightness` is an independent 0–255 brightness setting. Start at 40–60
 and examine actual camera frames for clipping, reflections and lost skin

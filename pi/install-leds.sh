@@ -46,4 +46,5 @@ PY
 install -d -o "$KIOSK_USER" -g "$KIOSK_GROUP" -m 0700 "$KIOSK_HOME/.config/paybypalm"
 install -o "$KIOSK_USER" -g "$KIOSK_GROUP" -m 0600 /dev/null "$KIOSK_HOME/.config/paybypalm/led-enabled"
 printf '%s\n' 'LED bridge installed. Run the normal pi/install.sh as the desktop user, then restart the kiosk.' \
- 'Settings: /etc/paybypalm/led.json. GPIO18/PWM requires onboard PWM audio disabled; see pi/LEDS.md.'
+ 'Settings: /etc/paybypalm/led.json. MAX98357A I2S audio requires ring pin=12 and rewiring to physical pin 32; see pi/AUDIO.md.' \
+ 'PWM LEDs require onboard PWM audio disabled. Existing LED settings are preserved; the legacy default remains GPIO18.'

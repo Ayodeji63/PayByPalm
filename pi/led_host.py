@@ -71,14 +71,14 @@ def main():
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format='%(levelname)s %(message)s')
     settings_path = Path('/etc/paybypalm/led.json')
     settings = json.loads(settings_path.read_text()) if settings_path.exists() else {}
-    allowed = {'brightness', 'capture_brightness', 'clockwise', 'step_seconds', 'mock'}
+    allowed = {'pin', 'brightness', 'capture_brightness', 'clockwise', 'step_seconds', 'mock'}
     if not isinstance(settings, dict) or not set(settings) <= allowed:
         raise ValueError('Invalid LED configuration')
     controller = None
     try:
         controller = LEDController(**settings)
     except Exception:
-        logging.error('LED initialization failed; check GPIO18, PWM audio conflict and hardware permissions')
+        logging.error('LED initialization failed; check configured GPIO, PWM audio conflict and hardware permissions')
     def stop(_signal, _frame):
         raise SystemExit(0)
     signal.signal(signal.SIGTERM, stop)

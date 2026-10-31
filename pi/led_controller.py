@@ -1,4 +1,4 @@
-"""One WS2812 writer thread. GPIO18/PWM0, Pi 4; mockable without hardware."""
+"""One WS2812 writer thread. GPIO12 or GPIO18/PWM0, Pi 4; mockable without hardware."""
 from enum import Enum
 from collections import deque
 import fcntl
@@ -45,14 +45,16 @@ class MockStrip:
 class WS2812Strip:
     mock = False
 
-    def __init__(self):
+    def __init__(self, pin=LED_PIN):
+        if type(pin) is not int or pin not in (12, 18):
+            raise ValueError('LED pin must be BCM GPIO12 or GPIO18 (PWM0)')
         # PWM/DMA must have one owner, including standalone diagnostic processes.
         self.lock = os.open('/run/paybypalm-led.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         try:
             fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             from rpi_ws281x import PixelStrip, Color
             self.color = Color
-            self.strip = PixelStrip(LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA,
+            self.strip = PixelStrip(LED_COUNT, pin, LED_FREQ_HZ, LED_DMA,
                                     LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL)
             self.strip.begin()
         except Exception:
@@ -79,9 +81,12 @@ def is_raspberry_pi():
 
 
 class LEDController:
-    def __init__(self, *, strip=None, mock=False, brightness=LED_BRIGHTNESS,
+    def __init__(self, *, strip=None, mock=False, pin=LED_PIN, brightness=LED_BRIGHTNESS,
                  capture_brightness=50, clockwise=True, step_seconds=0.1,
                  feedback_seconds=2.0, capture_timeout=10.0, loading_timeout=90.0):
+        if type(pin) is not int or pin not in (12, 18):
+            raise ValueError('LED pin must be BCM GPIO12 or GPIO18 (PWM0)')
+        self.pin = pin
         if not all(type(v) is int and 0 <= v <= 255 for v in (brightness, capture_brightness)):
             raise ValueError('Brightness must be an integer from 0 to 255')
         if not all(isinstance(v, (int, float)) and 0 < v <= 120 for v in
@@ -152,7 +157,7 @@ class LEDController:
         black = [(0, 0, 0)] * LED_COUNT
         try:
             if self._strip is None:
-                self._strip = MockStrip() if self._mock_requested else WS2812Strip()
+                self._strip = MockStrip() if self._mock_requested else WS2812Strip(pin=self.pin)
             seen, deadline, next_frame, index = -1, None, 0, 0
             while True:
                 with self._condition:

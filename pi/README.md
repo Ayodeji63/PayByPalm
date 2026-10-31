@@ -147,7 +147,7 @@ starting new sales; automatic browser startup is not financial reconciliation.
 
 ## Optional WS2812 camera ring
 
-For the 12-LED GPIO18 ring, installation commands, wiring, state mapping and
+For the 12-LED PWM ring, installation commands, wiring, state mapping and
 hardware checks, follow [LEDS.md](LEDS.md). It extends the existing kiosk extension
 with a local native-messaging bridge only when opted in. No browser GPIO access or
 public hardware endpoint is added.
