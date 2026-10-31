@@ -35,7 +35,8 @@ existing Render backend's environment:
 | `CCNET_API_KEY` | Dedicated credential from the private file |
 | `CCNET_MATCH_TIMEOUT_MS` | `5000` |
 | `CCNET_ENROLL_TIMEOUT_MS` | `20000` |
-| `PALM_ACCEPT_SCORE` | `85` or stricter |
+| `PALM_ACCEPT_SCORE` | `50` (current provisional testing threshold) |
+| `PALM_STEP_UP_SCORE` | `40` (legacy band; does not authorize CCNet checkout below 50) |
 | `ENROL_SESSION_TTL_SECONDS` | `300` |
 
 Choose **Save, rebuild, and deploy** after the migration and release are ready.
@@ -60,9 +61,10 @@ node --import tsx scripts/release-ccnet.ts
 ```
 
 The helper checks a clean main branch and a dry-run push **before** changing the
-live schema. It applies migration 0027 and its migration-ledger record atomically,
-then pushes the same tested release. An interrupted push can be retried using the
-same command. It never invokes payment endpoints. Import the prepared settings
+live schema. It applies pending migrations 0027, 0028 and 0029 with their
+migration-ledger records atomically, then pushes the same tested release.
+An interrupted push can be retried using the same command. It never invokes
+payment endpoints. Import the prepared settings
 into Render and select **Save, rebuild, and deploy** after successful publishing.
 Existing Paystack and Tencent environment values stay in place.
 
@@ -70,9 +72,12 @@ Existing Paystack and Tencent environment values stay in place.
 
 1. Finish tests and build both backend and wallet/terminal from this release.
 2. Start the PC and check public readiness and an unauthenticated `/v1` rejection.
-3. Apply `supabase/migrations/0027_ccnet_provider.sql` to the existing database.
-   It retains accounts, cards, Tencent bindings and all payment history. Its
-   transaction rolls back if the lock or statement deadline is exceeded.
+3. Apply pending migrations in order: `0027_ccnet_provider.sql`,
+   `0028_live_operations_and_retakes.sql` and `0029_ccnet_checkout_threshold.sql`.
+   These retain accounts, cards, Tencent bindings and payment history, add live
+   operation tracking and safe retakes, and set the database checkout floor to 50.
+   Use the release helper or a reviewed migration workflow that preserves the
+   existing migration ledger; do not blindly rerun already-applied SQL.
 4. Set the Render values above and deploy the backend and terminal release
    together. `/health` must report `palmProvider: "ccnet"`; `/terminal/me` must
    report `captureMode: "ccnet"`. Existing processing payments keep reconciling.
@@ -114,9 +119,12 @@ session UUID names the upstream subject; it contains no account identity.
 A database lease serializes registration attempts. The fingerprint binds retries
 to the original images and side. An uncertain result retains its lease for up to
 70 seconds: retry the same in-memory captures after that period. A successful
-completion is idempotent even after session expiry. If captures are rejected,
-start a new QR session. Independent sessions never overwrite the completed
-session's upstream subject. Orphan templates cannot enter payment searches.
+completion is idempotent even after session expiry. After a definitive capture
+rejection, the backend resets the failed fingerprint and permits three fresh
+frames in the same active QR session. An expired session requires a new QR.
+Unknown writes or failed reset attempts retain the original captures for retry.
+Independent sessions never overwrite the completed session's upstream subject.
+Orphan templates cannot enter payment searches.
 
 `POST /palm/revoke` revokes CCNet bindings locally before upstream deletion.
 Offline/in-flight cleanup reports `palm_unlink_incomplete`; retry unlinking to
@@ -140,9 +148,14 @@ Render supplies all active CCNet bindings as the bounded `eligible_palms` list
 and asks `/v1/identify` for two candidates. One embedding searches that gallery
 once. The adapter validates response shape, identity, ordering, finite scores,
 positive verdict and selected subject. It rejects candidates outside the list.
-Scores are `floor(100 * cosineSimilarity)`, clamped to 0–100. Require a positive
-upstream verdict and at least 85. A second eligible user at 85 is ambiguous and
-rejected. A PIN does not override the match policy.
+Scores are `floor(100 * cosineSimilarity)`, clamped to 0–100. The highest raw
+similarity wins when the reader verdict is positive and its score reaches
+`max(50, PALM_ACCEPT_SCORE)`; the current configured acceptance score is 50.
+A lower second candidate above 50 does not disqualify the winner. An exact
+highest-similarity tie between different users requires a retake. A PIN does not
+override this policy. The 40 step-up setting is a legacy band, not a lower CCNet
+checkout threshold. Similarity is not a confidence percentage; these testing
+thresholds are not deployment-calibrated.
 
 Eligible bindings are reloaded after the search. Authentication records the
 exact immutable binding ID; database guards validate it again on authentication

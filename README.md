@@ -1,112 +1,186 @@
 # PayByPalm
 
-PayByPalm links a customer's payment card and palm so they can enrol once and
-pay at a merchant terminal using their palm—without presenting a phone, card,
-or QR code at checkout.
+PayByPalm links a customer's palm to their account and saved payment card. At a
+merchant terminal, the customer scans an enrolled palm, reviews the payer, card
+and amount, then taps **Pay**. The backend requests the card charge and displays
+success only after verifying the payment result.
 
-The original terminal camera is the default (`TENCENT_CAPTURE_MODE=legacy`).
-The backend uses 1:1 comparisons across all active palm bindings; native 1:N
-search is removed. H5 code remains available behind `TENCENT_CAPTURE_MODE=h5`.
-See [capture setup and H5 test instructions](backend/PALM_H5_INTEGRATION.md).
+The current implementation uses **CCNet for palm matching**, **Paystack for card
+payments**, **Better Auth for accounts and sessions**, and **Supabase PostgreSQL
+for application data**. The Raspberry Pi runs the terminal interface; the CCNet
+model runs separately on a PC in Docker, exposed to the backend through ngrok.
 
-## Team Members
+This is a prototype under active development. The current matching thresholds
+are provisional, and real Pi performance, biometric error rates and liveness
+protection have not been established for production deployment. This README
+describes the code in this checkout; publishing and deploying it are separate steps.
 
-- Olusanya Ayodeji
-- Raji Mubarak
- 
-## 🚀 Live Demo
+## Contents
 
-- **Live application:** [pay-by-palm.vercel.app](https://pay-by-palm.vercel.app/)
-- **Backend API:** [paybypalm-backend.onrender.com](https://paybypalm-backend.onrender.com/health)
-- **Merchant terminal:** [pay-by-palm.vercel.app/terminal](https://pay-by-palm.vercel.app/terminal)
-- **Recorded demo:** [Demo Video](https://drive.google.com/file/d/1MOuOVUfxC5ENNYc7mOXj4nDjERYhAECG/view?usp=sharing)
+- [Applications and architecture](#applications-and-architecture)
+- [Enrollment and checkout](#enrollment-and-checkout)
+- [Matching policy](#matching-policy)
+- [Local development](#local-development)
+- [Deployment](#deployment)
+- [Starting the reader and Pi](#starting-the-reader-and-pi)
+- [Operations dashboard](#operations-dashboard)
+- [Security and data handling](#security-and-data-handling)
+- [Validation](#validation)
+- [Limitations and proposed work](#limitations-and-proposed-work)
+- [Documentation](#documentation)
 
-> The merchant terminal requires a registered terminal key. Opening the terminal
-> URL without one intentionally shows a configuration error.
+## Applications and architecture
 
-## 🎯 The Problem
+| Component | Source | Responsibility | Deployment target |
+| --- | --- | --- | --- |
+| Wallet | [`wallet/`](wallet/) | Accounts, card management, palm-enrollment consent and payment history | [www.paybypalm.app](https://www.paybypalm.app) · Vercel root `wallet` |
+| Pi terminal | [`wallet/src/terminal/`](wallet/src/terminal/), [`pi/`](pi/) | Camera capture, sale confirmation and payment recovery | [Wallet `/terminal`](https://www.paybypalm.app/terminal) in Chromium kiosk mode |
+| Backend | [`backend/`](backend/) | Authentication, enrollment, matching orchestration, card charges and reconciliation | [Render API health](https://paybypalm-backend.onrender.com/health) · root `backend` |
+| Administrator app | [`admin/`](admin/) | Merchants, payout setup, terminal provisioning and live operations | [admin.paybypalm.app](https://admin.paybypalm.app) · Vercel root `admin` |
+| Merchant workspace | [`merchant/`](merchant/) | Merchant-scoped reporting, payment and settlement views | [merchant.paybypalm.app](https://merchant.paybypalm.app) · Vercel root `merchant` |
+| Application database | [`supabase/`](supabase/) | Profiles, bindings, transactions, card references and operation metadata | Supabase PostgreSQL |
+| CCNet reader | [Separate repository](https://github.com/Ayodeji63/PayByPalm-CCNET) | Palm preprocessing, embeddings, template storage and gallery search | PC Docker service → fixed ngrok HTTPS address |
 
-**How might we make everyday payments faster and more accessible when customers
-cannot—or do not want to—depend on a phone, bank card, cash, or remembered PIN?**                                                                           
-
-Conventional digital payments still require customers to carry an object, keep
-it charged, unlock an application, or remember credentials. Those requirements
-create friction at busy checkout points and exclude customers when a device is
-lost, unavailable, or out of power.
-
-## ✨ Our Solution
-
-PayByPalm connects a customer wallet to a palm biometric through a secure,
-single-use QR enrolment session. After enrolment, a customer places an open palm
-in front of a Raspberry Pi merchant terminal. The terminal captures the palm,
-the backend asks Tencent PalmAI to identify it, and the customer explicitly
-confirms the payment before their linked card is charged.
-
-The biometric provider receives only an internal user identifier and the
-temporary capture. Application provider secrets stay on the backend; the reader
-receives a short-lived capture token only when H5 is selected. Palm images are not stored by
-PayByPalm, and provider operations are audited. A phone establishes identity
-during enrolment. Payment requires a strong palm match and explicit card-payment
-confirmation; a PIN does not override a failed match.
-
-### Payment flow
-
-1. The merchant enters the sale amount.
-2. The customer presents an enrolled palm.
-3. MediaPipe checks hand placement and steadiness on the terminal.
-4. The backend compares the selected frame against every active registration
-   through Tencent's 1:1 API and accepts exactly one strong match.
-5. The customer reviews and confirms the payment.
-6. Paystack charges the linked card; the backend records the verified outcome.
-
-The restored camera supports the operator's controlled live tests when Paystack
-live mode, a live reusable card and merchant settlement are configured. No pilot
-account allowlist or extra amount cap is imposed. A camera image and local hand
-placement guidance do not establish biometric liveness.
-
-## 🛠️ Tech Stack
-
-- **Frontend:** React 18, TypeScript, Vite, Tailwind CSS
-- **Palm and QR detection:** MediaPipe Tasks Vision, ZXing, `qrcode.react`
-- **Backend:** Node.js, Express, TypeScript, Zod
-- **Database and authentication:** Supabase PostgreSQL, Better Auth and Resend
-- **Biometric API:** Tencent PalmAI
-- **Terminal hardware:** Raspberry Pi, OV5647 camera, 7-inch touch display,
-  Chromium kiosk mode
-- **Deployment:** Vercel for the wallet and terminal UI; Render for the API;
-  Supabase for managed PostgreSQL and authentication
-- **Package manager:** pnpm
-
-## 🧱 Repository Structure
-
-```text
-admin/        Merchant onboarding, Paystack payout setup and terminal administration
-merchant/     Separate business reports, settlements and terminal workspace
-backend/      Express API, transaction services, PalmAI integration and tests
-wallet/       Customer wallet and merchant-terminal React application
-supabase/     Database migrations, row-level security and schema tests
-pi/           Raspberry Pi kiosk launcher, environment template and setup guide
-render.yaml   Render Blueprint for the production backend
+```mermaid
+flowchart LR
+    Wallet[Customer wallet] --> API[PayByPalm backend on Render]
+    Pi[Pi terminal] --> API
+    API --> Auth[Better Auth and Resend]
+    API --> DB[(Supabase PostgreSQL)]
+    API --> Paystack[Paystack]
+    API --> Tunnel[ngrok HTTPS tunnel]
+    Tunnel --> CCNet[CCNet Docker API on PC]
+    CCNet --> Gallery[(Persistent SQLite gallery)]
+    Admin[Admin server] --> DB
+    Admin --> CCNet
+    Merchant[Merchant server] --> API
+    Merchant --> DB
 ```
 
-## ⚙️ How to Set Up and Run Locally
+The Pi authenticates with its registered device key. Customer wallets use user
+sessions. The backend holds the CCNet integration credential; the admin server
+uses a separate monitor-only credential. Neither credential belongs in a browser
+bundle or on the Pi.
+
+The wallet uses React, TypeScript, Vite and Tailwind CSS, with MediaPipe hand
+guidance and ZXing QR scanning. The backend uses Node.js, Express, TypeScript and
+Zod. Admin and merchant apps have their own React clients and Express servers.
+
+Tencent modules and enrollment history remain in the repository/database, but
+Tencent is disabled as an active provider in this rollout. There is no automatic
+fallback from CCNet to Tencent. `PALM_PROVIDER=mock` is available for simulated
+local development; it does not perform biometric recognition.
+
+## Enrollment and checkout
+
+### Account and card setup
+
+1. Create an account, verify its email through Resend, sign in and set a wallet PIN.
+2. Link a card through Paystack's hosted checkout. The wallet shows the configured
+   test/live mode and requires consent before the verification payment.
+3. The backend verifies the payment before saving a reusable card authorization
+   and requesting its verification-payment refund. Refund status remains visible.
+4. Select an active saved card as the default payment card.
+
+Ordinary sign-in opens **Home**. Card-link returns resume **Cards**, and card
+updates keep the user there. Temporary account/session-refresh outages preserve
+saved credentials and offer Retry; confirmed invalid sessions require sign-in.
+Enrollment QR links also resume their workflow after a required sign-in.
+
+Paystack does not provide the customer's bank-card balance. The wallet reports
+that balance as unavailable rather than substituting an old ledger balance.
+Current purchases debit the linked card directly; the historical internal ledger
+is retained and is not the funding source for checkout.
+
+### Palm enrollment
+
+1. A registered terminal creates a short-lived enrollment session and displays its QR.
+2. The signed-in customer scans the QR and claims that session for their account.
+3. The Pi captures **three distinct frames** of the selected left or right palm.
+   Captures preserve aspect ratio, cap the longest edge at 960 pixels and limit
+   each JPEG to 512 KiB.
+4. The backend validates ownership, expiry and retry state, then submits all three
+   captures to CCNet using an opaque subject reference.
+5. CCNet checks sample consistency, averages the three normalized embeddings into
+   one normalized template, and persists that template in SQLite.
+6. The backend completes the active CCNet binding and updates wallet enrollment status.
+
+Rejected captures can be retaken in the same active session. An uncertain write
+retries the original in-memory captures; it must not silently create a competing
+registration. Retries and concurrent attempts are serialized in the database.
+
+Users with only a historical Tencent binding need fresh CCNet enrollment. Accounts,
+cards and Tencent history are preserved. Unlinking revokes the CCNet binding and
+removes its reader templates; incomplete upstream cleanup is reported for retry.
+Each account has at most one active binding per provider.
+
+**Phone-camera palm enrollment is proposed, not implemented.** The phone currently
+claims the QR session; the Pi captures the palm.
+
+### Terminal checkout
+
+The customer flow is **amount → automatic scan → payer/card review → Pay → receipt**.
+
+1. The merchant enters an amount. The terminal prepares the camera and hand guidance.
+2. After stable positioning, the Pi captures three frames, 100 ms apart, and submits
+   the sharpest frame for matching.
+3. The backend supplies active CCNet bindings as an eligible gallery and requests
+   the top two candidates in **one 1:N search**.
+4. A qualifying match is bound to the exact active enrollment and displayed card.
+   Binding, card, ownership and expiry checks remain required before charging.
+5. The customer's **Pay** tap requests the charge. Identification alone never charges.
+6. The backend verifies the provider result before committing payment confirmation.
+
+A rejected palm offers another scan on the same unpaid sale. If a charge response
+is uncertain, retain the original sale/transaction reference and recover its
+status. Do not start another sale or clear recovery storage to repeat a charge.
+A confirmed collection is distinct from the merchant's eventual bank settlement.
+
+## Matching policy
+
+| Setting or operation | Current behavior |
+| --- | --- |
+| CCNet 1:1 verification | Compares a probe with one claimed enrolled palm; standalone default threshold `0.50` |
+| CCNet 1:N identification | Extracts one probe embedding and ranks the eligible templates; standalone default threshold `0.50` |
+| Checkout score | `floor(100 × cosineSimilarity)`, clamped to `0–100` |
+| Checkout acceptance | Positive reader verdict and a score of at least `max(50, PALM_ACCEPT_SCORE)`; current configured value is `50` |
+| Candidate selection | Highest raw cosine similarity wins; a lower second candidate above the threshold does not disqualify it |
+| Exact cross-user tie | Requires a retake; no payer is selected |
+| Enrollment consistency | Reader default minimum pair similarity `0.50` across the three samples |
+| `PALM_STEP_UP_SCORE=40` | Legacy policy band; does not authorize CCNet checkout below `50` |
+
+Checkout uses 1:N identification; the adapter's 1:1 operation is available for
+claimed-palm verification. Checkout does not make one comparison request per user.
+The backend currently bounds the eligible list to 1,000 active bindings; this is
+an application limit, not a measured SQLite capacity claim.
+
+These scores are similarities, **not confidence percentages**. The current
+thresholds were selected for testing, not derived from measured genuine/impostor
+error rates. Calibrate on representative devices and lighting before production use.
+
+## Local development
 
 ### Prerequisites
 
-- Node.js 22
-- pnpm through Corepack
-- A Supabase project
-- Supabase CLI for applying migrations
-- Optional Tencent PalmAI credentials; the mock provider works without them
+- Node.js 22.22 or a compatible runtime supported by the app manifests.
+- Corepack and the pnpm version declared by each app's `packageManager` field.
+- A Supabase project, PostgreSQL session-pooler connection and Supabase CLI.
+- Resend credentials and a verified sending domain for account-email flows.
+- Docker for isolated database tests and the real CCNet reader.
+- For real matching: the separate CCNet checkout, its model assets and configured ngrok.
 
-### 1. Clone the repository
+Each application has its own manifest and lockfile. Install from its directory;
+there is no root command that starts every service.
 
 ```bash
-git clone https://github.com/Wema-Hackaholics-Hackathon/wema-hackaholics7-0-hackathon-yabatech-project-pay-by-palm.git
-cd wema-hackaholics7-0-hackathon-yabatech-project-pay-by-palm
+git clone https://github.com/Ayodeji63/PayByPalm.git
+cd PayByPalm
+corepack enable
 ```
 
-### 2. Apply the database migrations
+### 1. Prepare the database
+
+For a **new development project**, review and apply migrations in filename order:
 
 ```bash
 npx supabase login
@@ -114,51 +188,54 @@ npx supabase link --project-ref YOUR_PROJECT_REF
 npx supabase db push
 ```
 
-The migrations in `supabase/migrations/` must be applied before seeding or
-starting the API. See [supabase/README.md](supabase/README.md) for database
-details and schema tests.
+The current schema includes migration `0029`. Existing deployments require a
+coordinated update: [authentication cutover](AUTH_MIGRATION.md) covers `0025/0026`;
+[CCNet rollout](CCNET_ROLLOUT.md) covers `0027–0029`. Preserve existing data and
+migration records. Do not reset a hosted database or replay historical migrations
+as an ordinary startup step.
 
-### 3. Configure and run the backend
+### 2. Start the backend
+
+From the repository root:
 
 ```bash
 cd backend
-corepack enable
 pnpm install --frozen-lockfile
 cp .env.example .env
+pnpm auth:prepare
 ```
 
-Populate the following values in `backend/.env`:
+Copy the example only for initial setup. Configure `backend/.env` privately:
 
-```dotenv
-SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
-AUTH_DATABASE_URL=YOUR_POSTGRES_SESSION_POOLER_URI
-AUTH_SECRET=GENERATE_PRIVATELY_WITH_PNPM_AUTH_PREPARE
-AUTH_BASE_URL=http://localhost:8080
-RESEND_API_KEY=YOUR_RESEND_SENDING_KEY
-RESEND_FROM_EMAIL=auth@YOUR_VERIFIED_DOMAIN
+| Variables | Purpose |
+| --- | --- |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Application database access |
+| `AUTH_DATABASE_URL` | PostgreSQL session-pooler URI for Better Auth |
+| `AUTH_SECRET` | Persistent secret generated by `auth:prepare`; preserve existing values |
+| `AUTH_BASE_URL` | Local API origin, normally `http://localhost:8080` |
+| `RESEND_API_KEY`, `RESEND_FROM_EMAIL` | Verification and recovery email delivery |
+| `WALLET_BASE_URL` | Local wallet origin, normally `http://localhost:5173` |
+| `EXTRA_CORS_ORIGINS` | Additional exact browser origins, if needed |
+| `PALM_PROVIDER` | `mock` for simulated development, `ccnet` for real matching |
+| `CCNET_BASE_URL`, `CCNET_API_KEY` | Reader origin and dedicated server credential when using CCNet |
+| `PAYSTACK_MODE` | Use `test` in a new development environment |
+| `PAYSTACK_SECRET_KEY`, `CARD_TOKEN_ENCRYPTION_KEY` | Required for card-linking/payment tests; keep private |
 
-PALM_PROVIDER=mock
-TENCENT_BASE_URL=https://open.intl.palm.tencent.com
-TENCENT_PALM_API_KEY=
-
-WALLET_BASE_URL=http://localhost:5173
-EXTRA_CORS_ORIGINS=
-```
-
-Use `PALM_PROVIDER=mock` for local development. To test the real integration,
-set `PALM_PROVIDER=tencent` and provide `TENCENT_PALM_API_KEY`.
+The mock replaces only biometric calls. Accounts still require the configured
+authentication database, and card flows require their own payment configuration.
+Preserve the existing encryption key when using a database with saved cards.
 
 ```bash
-pnpm auth:prepare
+pnpm auth:preflight
 pnpm dev
 ```
 
-The local API runs at `http://localhost:8080` by default.
+The API defaults to `http://localhost:8080`. `/health` checks the application
+database; the authentication preflight checks the separate PostgreSQL connection.
 
-### 4. Configure and run the wallet
+### 3. Start the wallet
 
-Open another terminal:
+In another terminal, from the repository root:
 
 ```bash
 cd wallet
@@ -166,154 +243,215 @@ pnpm install --frozen-lockfile
 cp .env.example .env
 ```
 
-Set the API address in `wallet/.env`:
-
-```dotenv
-VITE_API_BASE_URL=http://localhost:8080
-```
-
-Then start Vite:
+Set `VITE_API_BASE_URL=http://localhost:8080` in `wallet/.env`, then run:
 
 ```bash
 pnpm dev
 ```
 
-Open `http://localhost:5173` for the customer wallet. The terminal route is
-`http://localhost:5173/terminal?k=YOUR_REGISTERED_TERMINAL_KEY`.
+Open `http://localhost:5173`. Phone camera access requires HTTPS or a browser's
+trusted loopback context; a phone opening a plain HTTP LAN address is not equivalent
+to localhost. On a phone or Pi, `localhost` refers to that device.
 
-### 5. Raspberry Pi kiosk
+### 4. Optional admin and merchant apps
 
-The kiosk launcher reads `KIOSK_URL` and `TERMINAL_KEY` from
-`/etc/paybypalm/terminal.env`, then starts Chromium with a persistent profile
-and MediaPipe asset cache. Follow the complete hardware and installation guide
-in [pi/README.md](pi/README.md).
+Configure each app from its own `.env.example`, including its private server
+settings and access grants. Then run `pnpm install --frozen-lockfile` and
+`pnpm dev` from `admin/` or `merchant/`.
 
-Never commit a real terminal key, Supabase service-role key, or Tencent API key.
+- Admin web: `http://127.0.0.1:5190`; local server port `8090`.
+- Merchant web: `http://127.0.0.1:5193`; local server port `8093`.
 
-## Custom domain CORS on Render
+See the [admin guide](admin/README.md) for merchant/device provisioning and the
+[merchant guide](merchant/README.md) for account grants and reporting rules.
 
-The API allows the exact `WALLET_BASE_URL` origin plus the comma-separated
-`EXTRA_CORS_ORIGINS`. `https://www.paybypalm.app` and `https://paybypalm.app`
-are separate browser origins. Configure both on the **backend Render service →
-Environment**:
+## Deployment
+
+Deploy the wallet, admin and merchant as separate Vercel projects with the root
+directories in the architecture table. Deploy the backend through
+[`render.yaml`](render.yaml). The reader remains on the PC for the current setup.
+
+Production backend configuration includes:
 
 ```dotenv
-EXTRA_CORS_ORIGINS=https://www.paybypalm.app,https://paybypalm.app
+PALM_PROVIDER=ccnet
+WALLET_BASE_URL=https://www.paybypalm.app
+EXTRA_CORS_ORIGINS=https://paybypalm.app,https://pay-by-palm.vercel.app
+CCNET_BASE_URL=https://YOUR_FIXED_NGROK_ADDRESS
+CCNET_MATCH_TIMEOUT_MS=5000
+CCNET_ENROLL_TIMEOUT_MS=20000
+PALM_ACCEPT_SCORE=50
+PALM_STEP_UP_SCORE=40
+ENROL_SESSION_TTL_SECONDS=300
+AUTH_VALIDITY_SECONDS=60
 ```
 
-Append these to any existing extra origins you still need. Use exact origins
-with the scheme and no path or trailing slash. Select **Save and deploy** so the
-backend reloads its configuration. Editing a local `.env` or Vercel's environment
-does not update Render. The Blueprint includes these public origins for deployments
-managed through `render.yaml`.
+Set `CCNET_API_KEY` privately on Render, together with the existing database,
+authentication, email and payment settings. The wallet build uses
+`VITE_API_BASE_URL=https://paybypalm-backend.onrender.com`. Admin/merchant servers
+use their documented backend URL and private settings; the admin also needs its
+separate CCNet monitor credential.
 
-This CORS change leaves `WALLET_BASE_URL` and existing redirect destinations intact.
-When moving email verification, Paystack callbacks and enrolment QR links to the
-custom domain, first allow `https://www.paybypalm.app/auth/confirm` in Supabase
-Auth's redirect URLs, then set Render's `WALLET_BASE_URL` to
-`https://www.paybypalm.app`. Keep the old Vercel origin in `EXTRA_CORS_ORIGINS` if
-existing clients or Pi configurations still use it.
+`WALLET_BASE_URL` controls email, enrollment and card-checkout return links. Use
+one canonical wallet origin. Different hostnames have separate browser login
+storage; allowing both through CORS does not share sessions between them. Preserve
+the old Vercel origin while existing Pi configurations still use it.
 
-Verify the browser's preflight without creating an account:
+Save/redeploy the relevant hosting service after changing its environment. Local
+`.env` edits do not change Render or a deployed frontend. Coordinate backend,
+wallet/terminal and schema changes as described in the rollout guides. Preserve
+existing Paystack mode, credentials and card encryption keys during normal releases.
+Live mode charges real cards only through an explicitly authorized user action;
+automated checks must use fixtures or test mode.
+
+## Starting the reader and Pi
+
+After the CCNet repository's initial setup, run from **that repository** on the PC:
 
 ```bash
-curl -i -X OPTIONS https://paybypalm-backend.onrender.com/auth/signup \
-  -H 'Origin: https://www.paybypalm.app' \
-  -H 'Access-Control-Request-Method: POST' \
-  -H 'Access-Control-Request-Headers: content-type'
+python3 scripts/local.py start
+python3 scripts/local.py status
 ```
 
-Expected: HTTP 204 and `Access-Control-Allow-Origin: https://www.paybypalm.app`.
-An `origin_not_allowed` response means that origin is still absent from the
-running service's configuration.
+The helper starts Docker, warms the reader, reuses the persistent SQLite volume,
+waits for readiness and starts the fixed HTTPS tunnel with ngrok request inspection
+disabled. SQLite is an embedded file: there is **no separate SQLite server to start**.
+The PC must remain awake and online. Check reader readiness locally and through
+the reported tunnel URL before starting enrollment.
 
-## ✅ Verification
+On the Pi, from its logged-in graphical desktop:
 
 ```bash
-# Backend
-cd backend
+bash ~/.local/share/paybypalm/pi/start-kiosk-session.sh
+systemctl --user status paybypalm-kiosk.service --no-pager
+```
+
+The kiosk uses `~/.config/paybypalm/terminal.env` and its registered device key.
+Provision once through the admin workflow or Pi provisioning helper; do not
+regenerate keys on every restart or put them in a `?k=` URL. Preserve the browser
+profile and pending-sale recovery data.
+
+Use `python3 scripts/local.py stop` in the CCNet checkout to stop its managed
+service/tunnel while preserving data. Never use `docker compose down -v` as a
+restart command: it removes the enrolled-template volume.
+
+Follow the [complete shutdown-to-startup walkthrough](https://github.com/Ayodeji63/PayByPalm-CCNET/blob/main/docs/START_AFTER_SHUTDOWN.md)
+for PC, reader, tunnel, Render checks, dashboard, Pi and troubleshooting. Pi
+installation and the optional 12-LED WS2812 ring are documented in
+[pi/README.md](pi/README.md) and [pi/LEDS.md](pi/LEDS.md).
+
+## Operations dashboard
+
+The admin operations monitor combines backend activity with CCNet reader metadata.
+The main list shows important capture, enrollment, matching and payment outcomes,
+with **10 events per page**. Details opens above the list and shows available
+frame counts, candidate similarities, timing and a collapsed technical trace.
+
+- **Palm captured** records a completed three-frame capture burst.
+- **Palm accepted** means checkout authentication passed; no charge is implied.
+- **Cancelled** records cancellation and is not presented as payment success.
+- **Payment confirmed** receives the green success state only for a verified payment.
+
+Reader processing completion is separate from identity acceptance and payment
+confirmation. The monitor exposes metadata, not palm images, card secrets or API
+keys. It is a bounded operational view, not a replacement for transaction records
+or provider reconciliation.
+
+## Security and data handling
+
+- User sessions and terminal device credentials have separate authentication paths.
+  The backend resolves account ownership; a terminal cannot choose an arbitrary payer.
+- Application database credentials, auth/email secrets, CCNet keys and card-token
+  encryption keys stay on trusted servers. Pi configuration contains its device key only.
+- Captures are processed temporarily. Browser buffers are cleared after completion
+  or cancellation; uncertain enrollment retries retain their original buffers in memory.
+  CCNet persists templates and metadata rather than uploaded photographs.
+- PostgreSQL stores provider-specific enrollment bindings and payment/audit records;
+  local SQLite stores CCNet templates and reader-operation metadata. Both require
+  controlled access and appropriate backup/deletion handling.
+- The exact active binding, card, terminal ownership and authentication expiry are
+  checked before a charge claim. Revocation/replacement prevents new stale claims.
+- Durable sale IDs, charge claims and provider references protect retries. An
+  uncertain charge remains recoverable; a successful HTTP request alone is not payment.
+- API input limits, database-backed request budgets and audit/error classification
+  are implemented. The CCNet service separately enforces scoped access and resource limits.
+
+Camera hand guidance and a three-frame burst do **not** establish biometric liveness.
+See [API controls](backend/SECURITY_API.md), [payment controls](backend/SECURITY_PAYMENTS.md)
+and [authentication migration](AUTH_MIGRATION.md) for implementation details.
+
+## Validation
+
+Run commands from their respective application directories:
+
+```bash
+# backend/
 pnpm typecheck
 pnpm test
+pnpm build
 
-# Wallet
-cd ../wallet
+# wallet/
+pnpm test:security
 pnpm typecheck
 pnpm build
 pnpm guard:secrets
 
-# Database invariants (requires Docker)
-cd ..
-./supabase/tests/run.sh
+# admin/ and merchant/, independently
+pnpm test
+pnpm build
+pnpm guard:secrets
 ```
 
-The backend test suite covers image validation, palm-match policy, database
-queries, phone normalization and the mock biometric provider. The database
-tests verify ledger balance, replay protection, overdraft prevention and RLS.
+From the repository root, `bash supabase/tests/run.sh` exercises isolated
+PostgreSQL schema/payment invariants, including the CCNet migration/race suite.
+`pnpm test:auth:database` in `backend/` checks the authentication cutover in a
+disposable database. These checks require Docker and use test fixtures.
 
-## 🔐 Security and Privacy
+Browser checks cover auth/card returns, capture retakes, operations pagination and
+payment-status presentation. See the app manifests and guides for server/Playwright
+requirements: wallet `test:auth:browser` and `test:retake:browser`; admin
+`test:operations:browser`. They intercept API responses and do not charge live cards.
 
-- Tencent credentials are read only by the backend.
-- The terminal authenticates separately with `X-Terminal-Key`.
-- Palm images are held in memory for one request and are not persisted by
-  PayByPalm.
-- Tencent receives an internal UUID rather than a customer's name or phone.
-- Palm-provider success and failure responses are written to an audit trail.
-- Payment authentication and payment confirmation are separate operations.
-- Wallet balances are derived from an atomic double-entry ledger.
+A passing automated suite does not establish real-camera recognition accuracy,
+liveness, live card collection, refunds or merchant bank settlement.
 
-## Current Prototype Limitations
+## Limitations and proposed work
 
-- Match thresholds require calibration with the final camera and lighting.
-- The current prototype does not implement biometric liveness detection.
-- Top-ups are sandbox ledger credits; no real banking rail moves funds.
-- A stable, well-lit camera view is required for reliable palm recognition.
+- The current reader setup targets one Pi and fewer than 50 users. Higher-volume
+  operation and the backend's 1,000-binding cap need separate capacity evaluation.
+- Phone enrollment followed by Pi checkout needs cross-device accuracy and spoofing
+  evaluation before enabling it for payments. Phone-camera enrollment is not shipped.
+- The optional WS2812 ring currently uses fixed capture brightness. Adaptive
+  camera/sensor-controlled lighting is proposed, not implemented.
+- Local matching p95 ≤300 ms and stable-palm-to-Pay-screen p95 ≤1.5 s are targets,
+  not verified end-to-end Pi results. Earlier local inference timing excludes capture,
+  upload, tunnel and payment-provider time. Faster-than-NFC payment is not established.
+- PC sleep, network/tunnel loss and ngrok quotas can make the reader unavailable.
+  There is no offline payment authorization or automatic Tencent fallback.
+- Paystack collection confirmation and eventual merchant settlement are distinct.
+  The application cannot guarantee bank confirmation time.
 
-These limitations are explicit so the prototype can be evaluated honestly and
-extended safely.
+## Documentation
 
+| Topic | Guide |
+| --- | --- |
+| Current reader integration, API flow and rollout | [CCNET_ROLLOUT.md](CCNET_ROLLOUT.md) |
+| Accounts, migration and email delivery | [AUTH_MIGRATION.md](AUTH_MIGRATION.md) |
+| Wallet setup, auth/card returns and deployment | [wallet/README.md](wallet/README.md) |
+| Administrator onboarding and device management | [admin/README.md](admin/README.md) |
+| Merchant access and reporting | [merchant/README.md](merchant/README.md) |
+| Pi installation and illumination | [pi/README.md](pi/README.md), [pi/LEDS.md](pi/LEDS.md) |
+| Database history and schema tests | [supabase/README.md](supabase/README.md) |
+| Card linking and financial recovery | [CARD_LINKING.md](backend/CARD_LINKING.md), [TERMINAL_SALE_RECOVERY.md](backend/TERMINAL_SALE_RECOVERY.md) |
+| Reader HTTP API and authentication | [CCNet API guide](https://github.com/Ayodeji63/PayByPalm-CCNET/blob/main/docs/API.md) |
 
-## Admin app and Git workflow
+Older integration reports include retired Tencent, Supabase Auth and internal-ledger
+flows. Use this README, the current rollout/auth guides and the running code for the
+active CCNet architecture; historical reports are not deployment instructions.
 
-The merchant admin app is in [admin/](admin/README.md). It is part of this Git
-repository and deploys as the existing Vercel project `paybypalm-admin` at
-`admin.paybypalm.app`, with **Root Directory = admin**. The wallet keeps its own
-Vercel project with **Root Directory = wallet**; Render keeps **rootDir = backend**.
+## Team
 
-```bash
-cd admin
-pnpm install --frozen-lockfile
-pnpm run dev
-```
+- Olusanya Ayodeji
+- Raji Mubarak
 
-Local private configuration and the admin's existing Vercel binding are ignored.
-For a fresh checkout, copy `admin/.env.example` to `admin/.env` and configure its
-values privately. Follow the admin README for the one-time migrations and hosted
-server environment. Deployments do not require credentials in Git.
-
-Commit and push changes from the PayByPalm repository:
-
-```bash
-git status
-git add admin/                 # or name the other files changed
-git commit -m "Describe the change"
-git push origin main
-```
-
-The primary remote is `origin` (`Ayodeji63/PayByPalm`). The hackathon remote stays
-available as `submission`; push there explicitly when intended. The admin source
-is ordinary tracked files, so GitHub shows its directory without a separate
-repository checkout. The guarded admin CLI deployment is
-`pnpm --dir admin run deploy:vercel`; Git deployments use the configured `admin`
-Root Directory automatically.
-
-## Merchant workspace
-
-The separate [merchant app](merchant/README.md) targets `merchant.paybypalm.app`.
-Administrators grant verified accounts access from each merchant record in Admin.
-Run migration `0024_merchant_portal.sql` and deploy the updated backend/admin before
-using the portal. It follows the backend payment mode and separates card payments
-from Paystack bank settlements.
-
-## Authentication cutover
-
-Accounts, passwords and sessions now use Better Auth; Resend delivers verification and recovery emails. Supabase remains the database. Before deploying this release, complete the coordinated UUID-preserving steps in [AUTH_MIGRATION.md](AUTH_MIGRATION.md).
+[Historical recorded demo](https://drive.google.com/file/d/1MOuOVUfxC5ENNYc7mOXj4nDjERYhAECG/view?usp=sharing)
