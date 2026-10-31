@@ -1536,3 +1536,14 @@ tbody tr:hover {
 .ops-pagination > div { display: flex; align-items: center; gap: 14px; }
 .ops-pagination .button { min-height: 40px; padding: 9px 14px; font-size: 12px; }
 @media(max-width:650px) { .ops-pagination { padding: 16px; }.ops-pagination > div { width: 100%; justify-content: space-between; gap: 8px; } }
+
+.feedback-review { display: grid; gap: 20px; }
+.feedback-controls { display: flex; align-items: end; justify-content: space-between; gap: 16px; padding: 20px; }
+.feedback-controls label { display: grid; gap: 8px; }
+.feedback-list { display: grid; gap: 16px; list-style: none; padding: 0; }
+.feedback-entry { padding: 24px; display: grid; gap: 16px; }
+.feedback-entry-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.feedback-entry-heading h2 { font-size: 17px; }
+.feedback-comment { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.feedback-entry .button { justify-self: start; }
+@media(max-width:650px) { .feedback-entry { padding: 20px; }.feedback-controls { align-items: stretch; flex-direction: column; } }

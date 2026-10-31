@@ -181,3 +181,10 @@ offline navigation displays a connection-required page.
 Optional browser acceptance: make Playwright available to Node, serve a production
 preview at `http://127.0.0.1:4178` and run `node wallet/tests/pwa-browser.mjs` from the
 repository root. It uses API fixtures and sends no live email.
+
+## Ratings and terminal audio
+
+The Profile page includes private ratings/comments; administrators moderate public
+reviews on the welcome page. Deploy the matching backend/admin and migration
+0030 as described in [FEEDBACK.md](../FEEDBACK.md). Terminal speech uses the
+15 supplied recordings and an idle-screen sound toggle. See [Pi audio setup](../pi/AUDIO.md).

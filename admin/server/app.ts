@@ -19,6 +19,7 @@ import {Failure} from "./failure.js";
 import {mountOperations} from "./operations.js";
 import {mountPayoutRoutes} from "./payouts.js";
 import {mountMerchantAccess} from "./merchantAccess.js";
+import {mountFeedback} from "./feedback.js";
 
 const uuid = z.string().uuid();
 const text = (max: number) =>
@@ -463,6 +464,7 @@ export function createApp({
   mountOperations(app,{config,db});
   mountPayoutRoutes(app,{config,db,writes,dbFailure});
   mountMerchantAccess(app,db,writes);
+  mountFeedback(app,db,writes);
   app.post("/api/merchants", writes, async (req, res) => {
     const i = merchantInput.parse(req.body);
     const r = await db.rpc("admin_save_merchant", {

@@ -14,6 +14,7 @@ import "./style.css";
 import {PayoutSetup} from "./PayoutSetup";
 import {LiveOperations} from "./LiveOperations";
 import {MerchantAccess} from "./MerchantAccess";
+import {Feedback} from "./Feedback";
 
 const go = (path: string) => {
   window.location.hash = path;
@@ -1015,6 +1016,7 @@ function App() {
   const section =
     base === "terminals"
       ? "terminals"
+      : base === "feedback" ? "feedback"
       : base === "operations" ? "operations"
       : base === "activity"
         ? "activity"
@@ -1022,6 +1024,7 @@ function App() {
   const titles: Record<string, [string, string]> = {
     merchants: ["Merchants", "Build the network, one business at a time."],
     terminals: ["Terminals", "Every device, connected to the right merchant."],
+    feedback: ["Customer feedback", "Review private ratings and choose what to publish."],
     operations: ["Live operations", "Follow palm captures and checkout as they happen."],
     activity: ["Activity", "A record of changes made in this admin workspace."],
   };
@@ -1084,7 +1087,7 @@ function App() {
         </a>
         <span className="workspace-label">Administration</span>
         <nav aria-label="Main navigation">
-          {(["merchants", "terminals", "operations", "activity"] as const).map((name) => (
+          {(["merchants", "terminals", "operations", "feedback", "activity"] as const).map((name) => (
             <a
               key={name}
               href={"#/" + name}
@@ -1164,7 +1167,7 @@ function App() {
               </button>
               {!entityId &&
                 base !== "provisioned" &&
-                section !== "activity" && section !== "operations" && (
+                section !== "activity" && section !== "operations" && section !== "feedback" && (
                   <Button
                     icon="plus"
                     onClick={() => go("/" + section + "/new")}
@@ -1306,6 +1309,8 @@ function App() {
                 Refresh the inventory or return to the terminal list.
               </Empty>
             )
+          ) : section === "feedback" ? (
+            <Feedback />
           ) : section === "operations" ? (
             <LiveOperations terminals={data.terminals} merchants={data.merchants} />
           ) : section === "activity" ? (

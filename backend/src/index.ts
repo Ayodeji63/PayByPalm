@@ -32,6 +32,7 @@ import { startCardPaymentReconciliation } from './services/cardPaymentService.js
 import { startCardReconciliation } from './services/cardLinkService.js';
 import { walletRouter } from './routes/wallet.js';
 import { merchantRouter } from './routes/merchant.js';
+import { feedbackRouter } from './routes/feedback.js';
 import { checkAuthReadiness } from './auth/readiness.js';
 
 export function createApp(): express.Express {
@@ -78,6 +79,7 @@ export function createApp(): express.Express {
   app.use(authRouter);
   app.use(walletRouter);
   app.use(merchantRouter);
+  app.use(feedbackRouter);
   app.use(cardsRouter);
   app.use(terminalRouter);
   app.use(terminalEventsRouter);

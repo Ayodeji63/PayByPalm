@@ -18,6 +18,8 @@ import { reportCaptureEvent } from '../captureTelemetry.js';
 import { useAutoCapture, useCamera } from '../useCamera.js';
 import { CameraPane, TButton } from '../ui.js';
 import { H5PalmCapture } from '../H5PalmCapture.js';
+import {terminalAudio} from '../audio.js';
+import {useCaptureAudio} from '../useCaptureAudio.js';
 
 type CaptureProps = {
   captureMode?: 'legacy' | 'h5' | 'ccnet';
@@ -55,6 +57,7 @@ function LegacyCapture({
     videoRef,
     status === 'ready' && !busy,
   );
+  useCaptureAudio(status==='ready'&&!busy,autoCaptureState,landmarks,transactionId);
   useEffect(()=>{reportCaptureEvent({scope:'payment',scopeId:transactionId,stage:'scan_started'});},[transactionId]);
   useEffect(()=>{reportCaptureEvent({scope:'payment',scopeId:transactionId,stage:'guidance',guidance:autoCaptureState});},[transactionId,autoCaptureState]);
   const autoCaptureFired = useRef(false);
@@ -74,8 +77,12 @@ function LegacyCapture({
     reportCaptureEvent({scope:'payment',scopeId:transactionId,stage:'capture_started'});
     setBusy(true);
     const leds=beginLEDOperation();operation.current=leds;
+    terminalAudio.event('hold_still');
+    let finishReading=()=>{};
     try {
       const frame = await captureBest(leds,count=>reportCaptureEvent({scope:'payment',scopeId:transactionId,stage:'frame_captured',frameCount:count}));
+      if(!leds.active()){frame.imageB64='';return;}
+      finishReading=terminalAudio.reading();
       const started = performance.now();
       let outcome: AuthenticateOutcome;
       try { outcome = await terminalApi.authenticate(transactionId, frame.imageB64); }
@@ -83,11 +90,13 @@ function LegacyCapture({
       if(!leds.active())return;
       await leds.state(outcome.decision==='accept'?'OFF':'ERROR');
       if(outcome.decision !== 'accept') {
+        terminalAudio.event('retry_scan');
         setRetryMessage(outcome.message); reportCaptureEvent({scope:'payment',scopeId:transactionId,stage:'capture_retake'}); return;
       }
       onOutcome(outcome);
     } catch (err) {
       if(!leds.active())return;
+      terminalAudio.event('retry_scan');
       await leds.state('ERROR');
       if(err instanceof TerminalApiError && ['invalid_transaction_state','transaction_not_found','stale_authentication','transaction_expired','card_payment_not_configured','palm_reader_configuration','palm_capture_mode_changed','unauthorized'].includes(err.code)) { onError(err.message,err.code); return; }
       setRetryMessage(
@@ -96,6 +105,7 @@ function LegacyCapture({
           : err instanceof Error?err.message:'The camera did not produce a usable image. Try again.',
       );
     } finally {
+      finishReading();
       captureInProgress.current=false;
       setBusy(false);
     }

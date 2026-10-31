@@ -2,6 +2,7 @@
 import { Link } from "react-router-dom";
 import { PalmIcon, Wordmark } from "../components/ui.js";
 import "./Landing.css";
+import { PublishedFeedback } from '../components/Feedback.js';
 
 function Arrow() {
   return (
@@ -180,6 +181,7 @@ export default function Landing() {
             Get started <Arrow />
           </Link>
         </section>
+        <PublishedFeedback />
       </main>
 
       <footer className="welcome-footer welcome-width">

@@ -4,6 +4,7 @@ const paths: Record<string, string> = {
     "M3 10h18L19 4H5l-2 6Zm1 0v10h16V10M9 20v-6h6v6M3 10c0 3 4 3 4 0 0 3 5 3 5 0 0 3 5 3 5 0 0 3 4 3 4 0",
   terminals: "M6 3h12v18H6V3Zm3 3h6v6H9V6Zm0 9h1m4 0h1m-6 3h1m4 0h1",
   operations: "M3 12h4l3-7 4 14 3-7h4",
+  feedback: "M4 4h16v12H8l-4 4V4Zm4 4h8m-8 4h5",
   activity: "M4 4h16v16H4V4Zm4 4h8M8 12h8m-8 4h5",
   plus: "M12 5v14M5 12h14",
   search: "m20 20-5-5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0",

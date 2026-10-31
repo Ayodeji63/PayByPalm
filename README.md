@@ -24,6 +24,7 @@ describes the code in this checkout; publishing and deploying it are separate st
 - [Deployment](#deployment)
 - [Starting the reader and Pi](#starting-the-reader-and-pi)
 - [Operations dashboard](#operations-dashboard)
+- [Ratings and comments](#ratings-and-comments)
 - [Security and data handling](#security-and-data-handling)
 - [Validation](#validation)
 - [Limitations and proposed work](#limitations-and-proposed-work)
@@ -188,9 +189,10 @@ npx supabase link --project-ref YOUR_PROJECT_REF
 npx supabase db push
 ```
 
-The current schema includes migration `0029`. Existing deployments require a
+The current schema includes migration `0030`. Existing deployments require a
 coordinated update: [authentication cutover](AUTH_MIGRATION.md) covers `0025/0026`;
-[CCNet rollout](CCNET_ROLLOUT.md) covers `0027–0029`. Preserve existing data and
+[CCNet rollout](CCNET_ROLLOUT.md) covers `0027–0029`; [customer feedback](FEEDBACK.md)
+covers `0030`. Preserve existing data and
 migration records. Do not reset a hosted database or replay historical migrations
 as an ordinary startup step.
 
@@ -339,6 +341,8 @@ Follow the [complete shutdown-to-startup walkthrough](https://github.com/Ayodeji
 for PC, reader, tunnel, Render checks, dashboard, Pi and troubleshooting. Pi
 installation and the optional 12-LED WS2812 ring are documented in
 [pi/README.md](pi/README.md) and [pi/LEDS.md](pi/LEDS.md).
+[Terminal audio guidance](pi/AUDIO.md) maps the 15 supplied recordings to capture,
+positioning and payment events. Only a verified payment plays `success1.wav`.
 
 ## Operations dashboard
 
@@ -356,6 +360,14 @@ Reader processing completion is separate from identity acceptance and payment
 confirmation. The monitor exposes metadata, not palm images, card secrets or API
 keys. It is a bounded operational view, not a replacement for transaction records
 or provider reconciliation.
+
+## Ratings and comments
+
+Customers can submit a 1–5 star rating and comment from their wallet Profile.
+Feedback is private by default; administrators choose reviews to publish or
+unpublish in **Admin → Feedback**. Public reviews appear on the welcome page
+without account details. Customer edits remove publication until another review.
+See [FEEDBACK.md](FEEDBACK.md) for migration 0030, API behavior and moderation.
 
 ## Security and data handling
 
@@ -443,6 +455,8 @@ liveness, live card collection, refunds or merchant bank settlement.
 | Pi installation and illumination | [pi/README.md](pi/README.md), [pi/LEDS.md](pi/LEDS.md) |
 | Database history and schema tests | [supabase/README.md](supabase/README.md) |
 | Card linking and financial recovery | [CARD_LINKING.md](backend/CARD_LINKING.md), [TERMINAL_SALE_RECOVERY.md](backend/TERMINAL_SALE_RECOVERY.md) |
+| Ratings, private comments and publication | [FEEDBACK.md](FEEDBACK.md) |
+| Terminal speech and speaker setup | [pi/AUDIO.md](pi/AUDIO.md) |
 | Reader HTTP API and authentication | [CCNet API guide](https://github.com/Ayodeji63/PayByPalm-CCNET/blob/main/docs/API.md) |
 
 Older integration reports include retired Tencent, Supabase Auth and internal-ledger

@@ -244,3 +244,10 @@ desktop auto-login and power-cycle behavior must still be verified on the Pi.
 References: [Chromium extension loading](https://groups.google.com/a/chromium.org/g/chromium-extensions/c/1-g8EFx2BBY/m/S0ET5wPjCAAJ),
 [content-script timing](https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts),
 [Raspberry Pi configuration](https://www.raspberrypi.com/documentation/computers/configuration.html).
+
+## Spoken guidance
+
+The terminal now includes the 15 supplied event/guidance recordings. See
+[AUDIO.md](AUDIO.md) for event mapping, sound controls, USB/HDMI speaker setup
+and verification. `success1.wav` is reserved for a verified payment receipt;
+enrollment, capture completion, cancellation and unknown payments use separate cues.

@@ -362,3 +362,11 @@ Follow [AUTH_MIGRATION.md](../AUTH_MIGRATION.md) before deploying the authentica
 
 The **Live operations** page monitors terminal capture, enrollment, verification,
 identification and payment status. See [setup, rollout and retention](LIVE_OPERATIONS.md).
+
+## Customer feedback moderation
+
+**Feedback** lists private ratings and comments, ten per page. Administrators can
+publish/unpublish reviewed entries on the public wallet welcome page. Customer
+edits remove publication automatically; stale moderator updates return a conflict.
+Apply migration 0030 and deploy matching backend/wallet/admin releases. See
+[FEEDBACK.md](../FEEDBACK.md) for privacy, API and release details.

@@ -29,13 +29,14 @@ import { Enrol } from './screens/Enrol.js';
 import { preloadPalmRecognition } from './useCamera.js';
 import { leaseCamera } from './cameraStream.js';
 import { beginLEDOperation,type LEDOperation } from './leds.js';
+import {terminalAudio,type AudioPrompt} from './audio.js';
 
 type Screen =
-  | { name: 'idle' }
+  | { name: 'idle';audio?:AudioPrompt;audioKey?:string }
   | { name: 'amount' }
   | { name: 'capture'; transactionId: string; amountMinor: number }
   | { name: 'confirm'; transactionId: string; amountMinor: number; outcome: AuthenticateOutcome }
-  | { name: 'result'; ok: boolean; title: string; detail?: string; amountMinor?: number }
+  | { name: 'result'; ok: boolean; title: string; detail?: string; amountMinor?: number;paymentId?:string;audio?:AudioPrompt }
   | { name: 'recovery' }
   | { name: 'enrol' };
 
@@ -64,6 +65,18 @@ export default function TerminalApp() {
   const [stepUpError, setStepUpError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const ledOperation=useRef<LEDOperation|null>(null);
+  useEffect(()=>{terminalAudio.preload();return()=>terminalAudio.stop();},[]);
+  useEffect(()=>{
+    terminalAudio.cancelGuidance();
+    if(screen.name==='capture'||screen.name==='confirm')return;
+    terminalAudio.stop();
+    if(screen.name==='result'&&screen.ok&&screen.paymentId)terminalAudio.event('success',`paid:${screen.paymentId}`);
+    else if(screen.name==='result'&&screen.audio)terminalAudio.event(screen.audio);
+    else if(screen.name==='idle'&&screen.audio)terminalAudio.event(screen.audio,screen.audioKey);
+    else if(screen.name==='recovery'){
+      try{const sale=loadPendingSale();if(sale?.confirming)terminalAudio.event('payment_pending',`pending:${sale.saleId}`);}catch{/* No financial conclusion from corrupt recovery data. */}
+    }
+  },[screen]);
   useEffect(()=>()=>ledOperation.current?.close(),[]);
   useEffect(()=>{
     if(screen.name!=='result')return;
@@ -193,8 +206,9 @@ export default function TerminalApp() {
       const sale = loadPendingSale();
       if (!sale || sale.transactionId !== transactionId) throw new Error('Payment recovery required.');
       savePendingSale({ ...sale, confirming: true });
+      terminalAudio.event('processing');
       const receipt = await terminalApi.confirm(transactionId);
-      if (receipt.transactionId !== transactionId || receipt.amountMinor !== sale.amountMinor || !receipt.settledAt) {
+      if (receipt.transactionId !== transactionId || receipt.amountMinor !== sale.amountMinor || typeof receipt.settledAt!=='string' || !Number.isFinite(Date.parse(receipt.settledAt))) {
         throw new Error('Settlement receipt could not be verified.');
       }
       clearPendingSale();
@@ -204,6 +218,7 @@ export default function TerminalApp() {
         title: 'Payment complete',
         detail: `${receipt.maskedName} · ${receipt.merchantName}`,
         amountMinor: receipt.amountMinor,
+        paymentId:receipt.transactionId,
       });
     } catch (err) {
       const message = recoveryError(err);
@@ -241,14 +256,14 @@ export default function TerminalApp() {
         }
         if (current.status === 'failed' || current.status === 'cancelled') {
           clearPendingSale();
-          toIdle();
+          setScreen({name:'idle',audio:current.status==='cancelled'?'cancelled':'payment_failed',audioKey:`${current.status}:${id}`});
           return;
         }
         const cancelled = await terminalApi.cancel(id);
         if (cancelled.status !== 'cancelled') throw new Error('Cancellation not confirmed.');
       }
       clearPendingSale();
-      toIdle();
+      setScreen({name:'idle',audio:'cancelled',audioKey:`cancelled:${id??crypto.randomUUID()}`});
     } catch (err) { setStepUpError(recoveryError(err)); setScreen({ name: 'recovery' }); }
     finally { setBusy(false); }
   }, [toIdle, busy]);
@@ -276,7 +291,7 @@ export default function TerminalApp() {
         setScreen({ name: 'capture', transactionId: id, amountMinor: state.amountMinor });
       } else if (state.status === 'failed' || state.status === 'cancelled') {
         clearPendingSale();
-        setScreen({ name: 'result', ok: false, title: 'Payment not completed', detail: 'No new charge was made. Start a new sale only if needed.' });
+        setScreen({ name: 'result', ok: false, title: 'Payment not completed', detail: 'No new charge was made. Start a new sale only if needed.',audio:state.status==='cancelled'?'cancelled':'payment_failed' });
       } else {
         // An interrupted authorization without a Confirm tap is abandoned.
         // recoverSale owns the busy state; cancel directly rather than invoke
@@ -284,7 +299,7 @@ export default function TerminalApp() {
         const cancelled = await terminalApi.cancel(id);
         if (cancelled.status !== 'cancelled') throw new Error('Cancellation not confirmed.');
         clearPendingSale();
-        toIdle();
+        setScreen({name:'idle',audio:'cancelled',audioKey:`cancelled:${id}`});
       }
     } catch (err) {
       void leds.state('ERROR');

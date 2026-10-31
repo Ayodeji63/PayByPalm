@@ -394,6 +394,7 @@ function terminalHarness(terminalApi, sessionStorage = storage()) {
       useEffect: () => {}, useCallback: callback => callback, useRef:current=>({current}),
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
+    './audio.js': {terminalAudio:{event:()=>{},cancelGuidance:()=>{},stop:()=>{},preload:()=>{}}},
     './leds.js': {beginLEDOperation:()=>({state:async()=>({available:false}),active:()=>true,close:()=>{}})},
     './api.js': { terminalApi, TerminalApiError: FixtureTerminalApiError },
     './paymentRecovery.js': recovery,

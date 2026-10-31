@@ -1,6 +1,6 @@
 // Cache public assets only. Credentials, API responses and payment requests are
 // always network-only; offline use never implies a transaction succeeded.
-const CACHE_NAME = 'paybypalm-public-v2';
+const CACHE_NAME = 'paybypalm-public-v3';
 const PUBLIC_FILES = ['/offline.html', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(PUBLIC_FILES)).then(() => self.skipWaiting()));
@@ -25,7 +25,8 @@ self.addEventListener('fetch', event => {
     return;
   }
   const hashedAsset = /^\/assets\/[A-Za-z0-9_-]+\.(?:js|css|woff2|png|svg)$/.test(url.pathname);
-  if (!PUBLIC_FILES.includes(url.pathname) && !hashedAsset) return;
+  const terminalAudio = /^\/audio\/terminal\/(?:ready|move_left|move_right|move_closer|move_back|open_hand|palm_flat|hold_still|scan_complete|processing|retry_scan|payment_pending|payment_failed|cancelled|success1)\.wav$/.test(url.pathname);
+  if (!PUBLIC_FILES.includes(url.pathname) && !hashedAsset && !terminalAudio) return;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
     const cached = await cache.match(request);

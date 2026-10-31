@@ -1,0 +1,16 @@
+import {beforeAll,afterAll,beforeEach,expect,it,vi} from 'vitest';
+import express from 'express';
+import type {Server} from 'node:http';
+import {mountFeedback} from '../server/feedback';
+const actor='aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',id='bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb',expected='2026-11-01T00:00:00Z';
+const state={select:vi.fn(),is:vi.fn(),not:vi.fn(),order:vi.fn(),range:vi.fn(),update:vi.fn(),eq:vi.fn(),maybeSingle:vi.fn()};
+let server:Server,base:string;
+beforeAll(async()=>{const app=express();app.use(express.json(),(_req,res,next)=>{res.locals.admin={id:actor};next();});mountFeedback(app,{from:()=>state} as any,(_req,_res,next)=>next());app.use((err:any,_req:any,res:any,_next:any)=>res.status(err.status??400).json({code:err.code??'validation_failed'}));server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));base=`http://127.0.0.1:${(server.address() as any).port}`;});
+afterAll(async()=>{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));});
+beforeEach(()=>{vi.clearAllMocks();for(const field of ['select','is','not','order','update','eq'] as const)state[field].mockReturnValue(state);state.range.mockResolvedValue({data:[],count:12,error:null});state.maybeSingle.mockResolvedValue({data:{id},error:null});});
+const post=(body:unknown)=>fetch(base+'/api/feedback/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+it('paginates ten rows and supports private/published moderation filters',async()=>{const response=await fetch(base+'/api/feedback?page=2&status=private');expect(response.status).toBe(200);expect(state.is).toHaveBeenCalledWith('published_at',null);expect(state.range).toHaveBeenCalledWith(10,19);expect((await response.json()).pageSize).toBe(10);});
+it('binds publication to the verified admin and the exact version reviewed',async()=>{expect((await post({publish:true,expected})).status).toBe(200);expect(state.update).toHaveBeenCalledWith({published_at:expect.any(String),reviewed_by:actor});expect(state.eq).toHaveBeenCalledWith('updated_at',expected);expect(state.eq).toHaveBeenCalledWith('id',id);});
+it('can remove a review from publication',async()=>{expect((await post({publish:false,expected})).status).toBe(200);expect(state.update).toHaveBeenCalledWith({published_at:null,reviewed_by:actor});});
+it('rejects a comment changed since the admin reviewed it',async()=>{state.maybeSingle.mockResolvedValue({data:null,error:null});expect((await post({publish:true,expected})).status).toBe(409);});
+it.each([{publish:true},{publish:true,expected,reviewed_by:'attacker'},{publish:true,expected,comment:'replace customer text'}])('rejects unversioned or mass-assigned moderation',async body=>{expect((await post(body)).status).toBe(400);expect(state.update).not.toHaveBeenCalled();});

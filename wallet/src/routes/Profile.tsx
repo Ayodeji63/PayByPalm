@@ -21,6 +21,7 @@ import { PageTransition } from '../components/transitions.js';
 import { InstallWallet } from '../components/InstallWallet.js';
 import { useToast } from '../components/Toast.js';
 import { PalmLinkStatus } from '../components/PalmLinkStatus.js';
+import { Feedback } from '../components/Feedback.js';
 
 export default function Profile() {
   const { me, signOut, refresh, consentGiven, setConsentGiven } = useAuth();
@@ -187,6 +188,7 @@ export default function Profile() {
             </div>
           </div>
 
+          <Feedback />
           {/* ── 5. SIGN OUT ── */}
           <div className="pt-2">
             {confirmSignOut ? (

@@ -43,7 +43,7 @@ test('payment and enrollment previews stay white even while the hand model loads
    react:{useEffect:fn=>effects.push(fn),useCallback:fn=>fn,useRef:current=>({current}),useState:initial=>{const index=slot++;return [name==='Capture'&&index===0?true:name==='Enrol'&&index===0?'capturing':name==='Enrol'&&index===1?{captureMode:'legacy',sessionId:'session',expiresAt:'2099-01-01'}:initial,()=>{}];}},
    'react/jsx-runtime':{jsx,jsxs:jsx},'qrcode.react':{QRCodeSVG:'QR'},
    '../leds.js':{beginLEDOperation:()=>({state:async state=>{events.push(state);},close:()=>{},active:()=>true})},
-   '../useCamera.js':{useCamera:()=>({status:'ready',videoRef:{current:null}}),useAutoCapture:()=>({state:guidance,landmarks:[]})},
+   '../audio.js':{terminalAudio:{event:()=>{},stop:()=>{},reading:()=>()=>{}}},'../useCaptureAudio.js':{useCaptureAudio:()=>{}},'../useCamera.js':{useCamera:()=>({status:'ready',videoRef:{current:null}}),useAutoCapture:()=>({state:guidance,landmarks:[]})},
    '../api.js':{},'../config.js':{TIMINGS:{}},'../../lib/money.js':{formatNaira:()=>''},'../ui.js':{},'../H5PalmCapture.js':{H5PalmCapture:'H5'},
   };
   const source=readFileSync(new URL(`../src/terminal/screens/${name}.tsx`,import.meta.url),'utf8');

@@ -24,6 +24,8 @@ import { TIMINGS } from '../config.js';
 import { useAutoCapture, useCamera } from '../useCamera.js';
 import { CameraPane, Pane, PalmGlyph, TButton } from '../ui.js';
 import { H5PalmCapture } from '../H5PalmCapture.js';
+import {terminalAudio} from '../audio.js';
+import {useCaptureAudio} from '../useCaptureAudio.js';
 
 type Phase = 'creating' | 'waiting' | 'capturing' | 'done' | 'expired' | 'failed';
 
@@ -53,6 +55,8 @@ export function Enrol({ onExit }: { onExit: () => void }) {
     videoRef,
     legacyCapture && status === 'ready' && !busy,
   );
+  useCaptureAudio(legacyCapture&&status==='ready'&&!busy,autoCaptureState,landmarks,session?.sessionId??'');
+  useEffect(()=>{if(phase==='done'||phase==='expired'||phase==='failed')terminalAudio.stop();},[phase]);
   useEffect(()=>{if(phase==='capturing'&&session)reportCaptureEvent({scope:'enrollment',scopeId:session.sessionId,stage:'scan_started'});},[phase,session?.sessionId]);
   useEffect(()=>{if(phase==='capturing'&&session)reportCaptureEvent({scope:'enrollment',scopeId:session.sessionId,stage:'guidance',guidance:autoCaptureState});},[phase,session?.sessionId,autoCaptureState]);
   const autoCaptureFired = useRef(false);
@@ -153,11 +157,15 @@ export function Enrol({ onExit }: { onExit: () => void }) {
     setRetake(false);
     setError(null);
     const leds=beginLEDOperation();operation.current=leds;
+    terminalAudio.event(pendingSamples.current?'processing':'hold_still');
+    let finishReading=()=>{};
     try {
       let result;
       if (session.captureMode === 'ccnet') {
         if (!pendingSamples.current) {
           const frames = await captureBurst(leds, count=>{setProgress(count);reportCaptureEvent({scope:'enrollment',scopeId:session.sessionId,stage:'frame_captured',frameCount:count});});
+          if(!leds.active()){frames.forEach(frame=>{frame.imageB64='';});return;}
+          finishReading=terminalAudio.reading();
           pendingSamples.current = frames.map(frame => frame.imageB64) as [string,string,string];
           frames.forEach(frame => { frame.imageB64 = ''; });
         }
@@ -165,6 +173,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
         pendingSamples.current?.fill(''); pendingSamples.current = null;
       } else {
         const frame = await captureBest(leds);
+        finishReading=terminalAudio.reading();
         try { result = await confirmedEnrollment(leds, () => terminalApi.registerPalm(session.sessionId, frame.imageB64)); }
         finally { frame.imageB64 = ''; }
       }
@@ -175,6 +184,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
       if(!leds.active())return;
       await leds.state('ERROR');
       if (err instanceof TerminalApiError && ['palm_capture_rejected','distinct_frames_required','image_too_large'].includes(err.code)) {
+        terminalAudio.event('retry_scan');
         pendingSamples.current?.fill(''); pendingSamples.current = null; setProgress(0); setRetake(true);
         reportCaptureEvent({scope:'enrollment',scopeId:session.sessionId,stage:'capture_retake'});
       } else if (err instanceof TerminalApiError && ['enrolment_retry_required','session_expired','session_not_claimed'].includes(err.code)) {
@@ -184,6 +194,7 @@ export function Enrol({ onExit }: { onExit: () => void }) {
         err instanceof TerminalApiError ? err.message : err instanceof Error?err.message:'Could not read that palm. Try again.',
       );
     } finally {
+      finishReading();
       captureInProgress.current=false;
       setBusy(false);
     }

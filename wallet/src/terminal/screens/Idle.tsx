@@ -5,6 +5,8 @@
  */
 
 import { PalmGlyph, Pane, TButton, useLongPress } from '../ui.js';
+import {AudioControl} from '../AudioControl.js';
+import {terminalAudio} from '../audio.js';
 
 export function Idle({
   merchantName,
@@ -29,7 +31,7 @@ export function Idle({
         <h1 className="t-lg" {...longPress}>
           {merchantName}
         </h1>
-        <p className="t-sm text-ink-muted">{terminalLabel}</p>
+        <div className="flex items-center gap-4"><p className="t-sm text-ink-muted">{terminalLabel}</p><AudioControl /></div>
       </header>
 
       <div className="flex flex-1 flex-col items-center justify-center">
@@ -40,10 +42,10 @@ export function Idle({
       </div>
 
       <div className="flex gap-4">
-        <TButton className="flex-1" onClick={onNewSale}>
+        <TButton className="flex-1" onClick={()=>{terminalAudio.unlock();onNewSale();}}>
           New sale
         </TButton>
-        <TButton className="flex-1" tone="secondary" onClick={onEnrol}>
+        <TButton className="flex-1" tone="secondary" onClick={()=>{terminalAudio.unlock();onEnrol();}}>
           Enrol new user
         </TButton>
       </div>
