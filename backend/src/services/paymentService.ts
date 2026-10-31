@@ -189,7 +189,7 @@ function requireApprovedCaptureMode(): void {
   }
 }
 
-/** Original camera capture; the server still performs every 1:1 comparison. */
+/** CCNet captures use one eligible-gallery search; legacy readers use 1:1 comparisons. */
 export async function authenticateTransaction(
   transactionId: string, terminal: AuthedTerminal, rawImage: string,
   _last4: string | undefined, log: Logger,
@@ -206,13 +206,15 @@ export async function authenticateTransaction(
     if (!sameBindings(candidates, current)) throw conflict('palm_binding_changed', 'The eligible palms changed. Please scan again.');
     const [first, second] = result.candidates;
     const matched = result.meta?.providerIsMatch === true && first && first.score >= Math.max(50, thresholds.accept);
-    const ambiguous = second && second.userId !== first?.userId && second.score >= Math.max(50, thresholds.accept);
-    const outcome: PolicyOutcome = ambiguous
+    // CCNet validates descending raw cosine order. Select rank 1, even if
+    // another candidate also qualifies. Only an exact cross-user tie has no winner.
+    const tied = matched && second && second.userId !== first.userId && second.cosineSimilarity === first.cosineSimilarity;
+    const outcome: PolicyOutcome = tied
       ? {...rejectWithout('ambiguous_match'),score:first?.score??null}
       : matched ? decide(first.score)
       : {decision:'reject',score:first?.score??null,reason:result.meta?.providerIsMatch===true&&first?'low_score':'no_match'};
     log.info({ candidates: candidates.length, decision: outcome.decision, timings: result.meta?.timings }, 'CCNet eligible-gallery search complete');
-    return finaliseAuthentication(txn, matched && !ambiguous ? await getProfile(first.userId) : null, outcome, log, matched && !ambiguous ? first : undefined);
+    return finaliseAuthentication(txn, matched && !tied ? await getProfile(first.userId) : null, outcome, log, matched && !tied ? first : undefined);
   }
   const candidates = await getActivePalmCandidates();
   const matched = await matchPalmCandidates(candidates, userId => palm.compare(userId, image.data));
@@ -241,7 +243,7 @@ async function finaliseAuthentication(
       mode,
       score: outcome.score,
       reason: outcome.reason ?? 'no_match',
-      message: outcome.reason === 'ambiguous_match' ? 'More than one enrolled palm matched. No payment was authorized. Please contact support.' : outcome.reason === 'no_candidates' ? 'No active palms are enrolled. Link your palm before paying.' : explain(outcome),
+      message: outcome.reason === 'ambiguous_match' ? config.PALM_PROVIDER==='ccnet' ? 'The top palm similarities are tied. Reposition your hand and scan again.' : 'More than one enrolled palm matched. No payment was authorized. Please contact support.' : outcome.reason === 'no_candidates' ? 'No active palms are enrolled. Link your palm before paying.' : explain(outcome),
     };
   }
 

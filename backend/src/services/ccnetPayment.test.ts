@@ -27,9 +27,11 @@ it('rejects a negative upstream verdict even with a high score',async()=>{
  m.identify.mockResolvedValue({candidates:[{...binding,score:99}],meta:{providerIsMatch:false}});
  expect((await authenticateTransaction('transaction',terminal,'cHJvYmU=',undefined,log)).decision).toBe('reject');expect(m.update).not.toHaveBeenCalled();
 });
-it('rejects when a second eligible user also reaches 50',async()=>{
- m.identify.mockResolvedValue({candidates:[{...binding,score:95},{...binding,id:'other-binding',userId:'other',score:50}],meta:{providerIsMatch:true}});
- expect(await authenticateTransaction('transaction',terminal,'cHJvYmU=',undefined,log)).toMatchObject({decision:'reject',reason:'ambiguous_match'});expect(m.update).not.toHaveBeenCalled();
+it('selects the highest similarity even when the second candidate reaches 50',async()=>{
+ const other={...binding,id:'other-binding',userId:'other',subjectId:'other-subject'};m.bindings.mockResolvedValue([binding,other]);
+ m.identify.mockResolvedValue({candidates:[{...binding,score:95,cosineSimilarity:.95},{...other,score:50,cosineSimilarity:.50}],meta:{providerIsMatch:true}});
+ m.single.mockResolvedValueOnce({data:pending}).mockResolvedValueOnce({data:{id:'card',last4:'1234'}}).mockResolvedValueOnce({data:{...pending,status:'authenticated'}});
+ expect(await authenticateTransaction('transaction',terminal,'cHJvYmU=',undefined,log)).toMatchObject({decision:'accept',score:95});expect(m.profile).toHaveBeenCalledWith('payer');expect(m.update).toHaveBeenCalledWith(expect.objectContaining({matched_user_id:'payer',palm_binding_id:'binding'}));expect(m.charge).not.toHaveBeenCalled();
 });
 it.each([{current:[]},{current:[{...binding,id:'replacement'}]}])('rejects revocation or replacement during matching',async ({current})=>{
  m.bindings.mockResolvedValueOnce([binding]).mockResolvedValueOnce(current);
@@ -53,7 +55,13 @@ it('accepts the posted 0.8471 result when it is the only eligible match above th
  expect(await authenticateTransaction('transaction',terminal,'cHJvYmU=',undefined,log)).toMatchObject({decision:'accept',score:84});expect(m.charge).not.toHaveBeenCalled();
 });
 
-it('keeps the posted two-user result ambiguous when both scores reach 50',async()=>{
- m.identify.mockResolvedValue({candidates:[{...binding,score:84},{...binding,id:'second',userId:'other',score:63}],meta:{providerIsMatch:true}});
- expect(await authenticateTransaction('transaction',terminal,'cHJvYmU=',undefined,log)).toMatchObject({decision:'reject',score:84,reason:'ambiguous_match'});expect(m.update).not.toHaveBeenCalled();expect(m.charge).not.toHaveBeenCalled();
+it.each([[.8471496105194092,.6332696676254272,84],[.8471,.8401,84],[.5,.4999,50]])('chooses raw similarity %s over %s, returning score %s',async(best,runnerUp,score)=>{
+ const other={...binding,id:'second',userId:'other',subjectId:'other-subject'};m.bindings.mockResolvedValue([binding,other]);
+ m.identify.mockResolvedValue({candidates:[{...binding,score,cosineSimilarity:best},{...other,score:Math.floor(runnerUp*100),cosineSimilarity:runnerUp}],meta:{providerIsMatch:true}});
+ m.single.mockResolvedValueOnce({data:pending}).mockResolvedValueOnce({data:{id:'card',last4:'1234'}}).mockResolvedValueOnce({data:{...pending,status:'authenticated'}});
+ expect(await authenticateTransaction('transaction',terminal,'cHJvYmU=',undefined,log)).toMatchObject({decision:'accept',score});expect(m.update).toHaveBeenCalledWith(expect.objectContaining({matched_user_id:'payer',palm_binding_id:'binding'}));expect(m.charge).not.toHaveBeenCalled();
+});
+it('asks for a retake on an exact highest-similarity tie between different users',async()=>{
+ m.identify.mockResolvedValue({candidates:[{...binding,score:84,cosineSimilarity:.8471},{...binding,id:'second',userId:'other',score:84,cosineSimilarity:.8471}],meta:{providerIsMatch:true}});
+ expect(await authenticateTransaction('transaction',terminal,'cHJvYmU=',undefined,log)).toMatchObject({decision:'reject',reason:'ambiguous_match',message:expect.stringContaining('tied')});expect(m.profile).not.toHaveBeenCalled();expect(m.update).not.toHaveBeenCalled();expect(m.charge).not.toHaveBeenCalled();
 });

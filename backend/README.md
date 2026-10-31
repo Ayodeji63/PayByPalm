@@ -109,7 +109,7 @@ on a score.
 
 | Score | Decision | Effect |
 |---|---|---|
-| `>= PALM_ACCEPT_SCORE` (50) | `accept` | An unambiguous positive reader result enables Pay; provider verification confirms payment |
+| `>= PALM_ACCEPT_SCORE` (50) | `accept` | The highest qualifying positive reader match enables Pay; provider verification confirms payment |
 | `>= PALM_STEP_UP_SCORE` (40), below accept | `step_up` | Checkout requires a new scan; a PIN cannot override the match |
 | below `PALM_STEP_UP_SCORE`, or no match | `reject` | Retry; nothing is charged |
 

@@ -50,8 +50,8 @@ An uncertain timeout offers **Retry linking**, which keeps the original capture
 fingerprint to avoid overwriting a completed enrollment. Only expired/revoked
 sessions require a new QR. A mismatched payment scan likewise retakes against the
 same sale and never confirms/charges automatically. Standalone thresholds remain
-0.50; payment approval still requires at least 50/100 and an unambiguous positive
-provider result.
+0.50; payment approval still requires at least 50/100 and a positive
+provider result for the highest-ranked eligible palm.
 
 ## Scope and retention
 
@@ -119,7 +119,8 @@ migrations are unchanged. On Render set `PALM_ACCEPT_SCORE=50` and
 `PALM_STEP_UP_SCORE=40`, then deploy the matching backend. Private prepared Render
 settings include both values. Refresh/redeploy the admin app for the new policy copy.
 
-Checkout still requires a positive reader verdict and exactly one eligible user
-reaching the acceptance score. If two different eligible users score 50 or higher,
-checkout rejects the scan as ambiguous. A single 0.8471 candidate passes the score
-check; 0.8471 and 0.6333 together remain ambiguous. Acceptance never charges until Pay.
+Checkout requires a positive reader verdict and selects the highest raw cosine
+similarity reaching 50/100. Another eligible user above 50 does not reject the winner.
+For example, 0.8471 wins over 0.6333. Raw similarity determines rank even when both
+integer scores round down to the same value. An exact top similarity tie between
+different users asks for a retake. Acceptance never charges until Pay.
