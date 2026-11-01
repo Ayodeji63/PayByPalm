@@ -14,8 +14,8 @@
  *   - touch-action: none enabled on card container so vertical swipe-up works
  *     flawlessly without browser page-scroll interception.
  *   - Card balances are unavailable; payments debit the linked card.
- *   - Quick action buttons (Send, Receive, Add Card, Merchants) in circular white styling.
- *   - Cards are verified and managed by the backend; transfers remain unavailable.
+ *   - Add Card shortcut in circular white styling.
+ *   - Cards are verified and managed by the backend.
  *   - Transaction History with time, date, merchant, and soft coral/emerald badges.
  */
 
@@ -546,31 +546,9 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ─── Quick Action Buttons (Circular White Style) ─── */}
+        {/* ─── Add Card Shortcut (Circular White Style) ─── */}
         <div className="mt-5 px-5">
-          <div className="grid grid-cols-4 gap-3 text-center">
-            {/* Send / Transfer */}
-            <QuickActionButton
-              label="Send"
-              onClick={() => toast.show('Transfers are currently unavailable.', 'info')}
-              icon={
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M7 17l10-10M17 7H7M17 7v10" />
-                </svg>
-              }
-            />
-
-            {/* Receive / QR */}
-            <QuickActionButton
-              label="Receive"
-              onClick={() => toast.show('Transfers are currently unavailable.', 'info')}
-              icon={
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17 7L7 17M7 17h10M7 17V7" />
-                </svg>
-              }
-            />
-
+          <div className="flex justify-center text-center">
             {/* Add Card (Tokenized Card-on-File) */}
             <QuickActionButton
               label="Add Card"
@@ -581,19 +559,6 @@ export default function Dashboard() {
                   <line x1="2" y1="10" x2="22" y2="10" />
                   <line x1="12" y1="13" x2="12" y2="17" />
                   <line x1="10" y1="15" x2="14" y2="15" />
-                </svg>
-              }
-            />
-
-            {/* Merchants / Campus Kiosks */}
-            <QuickActionButton
-              label="Merchants"
-              onClick={() => navigate('/merchant')}
-              icon={
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="1.5" />
-                  <circle cx="19" cy="12" r="1.5" />
-                  <circle cx="5" cy="12" r="1.5" />
                 </svg>
               }
             />
@@ -794,7 +759,3 @@ function DefaultAvatarSvg({ className = 'h-full w-full' }: { className?: string 
     </svg>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Send / Transfer Modal (Portaled to document.body, z-[100] above BottomNav)
-// ---------------------------------------------------------------------------
