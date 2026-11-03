@@ -31,6 +31,39 @@ function load(relativePath, globals = {}) {
 }
 
 const session = { accessToken: 'access-A', refreshToken: 'refresh-A' };
+
+test('closing an unresolved sale preserves its reference and deduplicates review history', () => {
+  const sessionStorage=storage();
+  const recovery=load('../src/terminal/paymentRecovery.ts',{sessionStorage});
+  const sale={saleId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',transactionId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',amountMinor:10000,confirming:true};
+  recovery.savePendingSale(sale);
+  recovery.closePendingSale(sale);
+  assert.equal(recovery.loadPendingSale(),null);
+  assert.deepEqual(JSON.parse(JSON.stringify(recovery.loadClosedSales())),[sale]);
+  recovery.savePendingSale(sale);recovery.closePendingSale(sale);
+  assert.equal(recovery.loadClosedSales().length,1);
+});
+
+test('failure to save closed-sale history never erases the active payment reference', () => {
+  const sessionStorage=storage();
+  const recovery=load('../src/terminal/paymentRecovery.ts',{sessionStorage});
+  const sale={saleId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',amountMinor:10000,confirming:false};
+  recovery.savePendingSale(sale);
+  sessionStorage.setItem=()=>{throw new Error('Storage full');};
+  assert.throws(()=>recovery.closePendingSale(sale),/Storage full/);
+  assert.equal(recovery.loadPendingSale().saleId,sale.saleId);
+});
+
+test('corrupt closed-sale history is preserved for review instead of overwritten', () => {
+  const sessionStorage=storage();
+  const recovery=load('../src/terminal/paymentRecovery.ts',{sessionStorage});
+  const sale={saleId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',amountMinor:10000,confirming:false};
+  recovery.savePendingSale(sale);
+  sessionStorage.setItem('paybypalm.closedSales','{"unexpected":"record"}');
+  assert.throws(()=>recovery.closePendingSale(sale),/administrator review/);
+  assert.equal(recovery.loadPendingSale().saleId,sale.saleId);
+  assert.equal(sessionStorage.getItem('paybypalm.closedSales'),'{"unexpected":"record"}');
+});
 const deferred = () => {
   let resolve;
   const promise = new Promise(r => { resolve = r; });
@@ -403,7 +436,7 @@ function terminalHarness(terminalApi, sessionStorage = storage()) {
     './useCamera.js': { preloadPalmRecognition: () => {} },
     './cameraStream.js': { leaseCamera: () => ({ ready: Promise.resolve({}), release: () => {} }) },
   };
-  for (const name of ['Idle', 'Amount', 'Capture', 'Confirm', 'StepUp', 'Result', 'Enrol']) {
+  for (const name of ['Idle', 'Amount', 'Capture', 'Confirm', 'StepUp', 'Result', 'Enrol', 'ClosedSales']) {
     dependencies[`./screens/${name}.js`] = { [name]: name };
   }
   const module = load('../src/terminal/TerminalApp.tsx', {
@@ -497,14 +530,29 @@ test('cancel recovers a lost initiation response using the same sale reference',
   assert.ok(app.find('Idle'));
 });
 
-test('failed cancellation preserves the sale and shows the actual error', async () => {
+test('cancelling a processing sale releases the terminal but retains the charge reference', async () => {
   const sessionStorage = storage();
   const recovery = load('../src/terminal/paymentRecovery.ts', { sessionStorage });
   recovery.savePendingSale({saleId:'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',amountMinor:100,confirming:true,transactionId:paymentId});
-  const app = terminalHarness({status:async()=>({status:'processing'}),cancel:async()=>{throw new Error('Card charge is still processing');}},sessionStorage);
+  let cancelCalls=0;
+  const app = terminalHarness({status:async()=>({status:'processing'}),cancel:async()=>{cancelCalls++;throw new Error('Card charge is still processing');}},sessionStorage);
   app.find('Button','Cancel pending sale').props.onClick(); await flushActions();
-  assert.ok(app.recovery.loadPendingSale()); assert.equal(app.find('Idle'),null);
-  assert.ok(app.find('p','Card charge is still processing'));
+  assert.equal(app.recovery.loadPendingSale(),null); assert.ok(app.find('Idle'));
+  assert.equal(app.recovery.loadClosedSales()[0].transactionId,paymentId);
+  assert.equal(cancelCalls,0,'no attempt to mark a processing bank charge cancelled');
+  assert.ok(app.find('Idle').props.onClosedSales);
+  assert.equal(app.find('Idle').props.onPendingPayment,undefined);
+});
+
+test('a racing charge or offline cancellation closes locally without losing recovery',async()=>{
+ for(const offline of [true,false]){
+  const sessionStorage=storage(),recovery=load('../src/terminal/paymentRecovery.ts',{sessionStorage});
+  recovery.savePendingSale({saleId:'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',amountMinor:100,confirming:true,transactionId:paymentId});
+  const app=terminalHarness({status:async()=>{if(offline)throw Error('Offline');return {status:'authenticated'};},cancel:async()=>{throw Error('Charge started concurrently');}},sessionStorage);
+  app.find('Button','Cancel pending sale').props.onClick();await flushActions();
+  assert.ok(app.find('Idle'));assert.equal(app.recovery.loadPendingSale(),null);
+  assert.equal(app.recovery.loadClosedSales()[0].transactionId,paymentId);
+ }
 });
 
 test('corrupt recovery storage cannot silently enable a fresh sale', async () => {

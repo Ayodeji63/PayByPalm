@@ -15,6 +15,7 @@ export function Idle({
   onEnrol,
   onDemoReset,
   onPendingPayment,
+  onClosedSales,
 }: {
   merchantName: string;
   terminalLabel: string;
@@ -22,6 +23,7 @@ export function Idle({
   onEnrol: () => void;
   onDemoReset: () => void;
   onPendingPayment?: () => void;
+  onClosedSales?: () => void;
 }) {
   // Hidden demo reset. Deliberately not a visible button — a stage prop that a
   // customer could press is a liability.
@@ -37,10 +39,11 @@ export function Idle({
       </header>
 
       <div className="flex flex-1 flex-col items-center justify-center">
-        <div className="flex h-[168px] w-[168px] items-center justify-center rounded-full bg-accent-tint">
+        <div className={`flex ${onClosedSales?'h-[112px] w-[112px]':'h-[168px] w-[168px]'} items-center justify-center rounded-full bg-accent-tint`}>
           <PalmGlyph className="h-[104px] w-[104px] text-accent" />
         </div>
-        <p role={onPendingPayment ? 'status' : undefined} className="t-sm mt-5 text-ink-muted text-center">{onPendingPayment ? 'Previous payment still unresolved. Check it before another sale.' : 'Pay with your palm'}</p>
+        <p role={onPendingPayment || onClosedSales ? 'status' : undefined} className="t-sm mt-5 text-ink-muted text-center">{onPendingPayment ? 'Previous payment still unresolved. Check it before another sale.' : onClosedSales ? 'Closed sales may still be charged. Review them before retrying a purchase.' : 'Pay with your palm'}</p>
+        {onClosedSales&&<TButton tone="secondary" size="sm" className="mt-3" onClick={onClosedSales}>Review closed sales</TButton>}
       </div>
 
       <div className="flex gap-4">

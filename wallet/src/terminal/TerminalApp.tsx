@@ -17,10 +17,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { terminalApi, TerminalApiError, type AuthenticateOutcome } from './api.js';
-import { loadPendingSale, savePendingSale, clearPendingSale } from './paymentRecovery.js';
+import { loadPendingSale, savePendingSale, clearPendingSale, closePendingSale, loadClosedSales } from './paymentRecovery.js';
 import { resolveTerminalKey, TIMINGS } from './config.js';
 import { KioskFrame, Pane, TButton } from './ui.js';
 import { Idle } from './screens/Idle.js';
+import { ClosedSales } from './screens/ClosedSales.js';
 import { Amount } from './screens/Amount.js';
 import { Capture } from './screens/Capture.js';
 import { Confirm } from './screens/Confirm.js';
@@ -38,6 +39,7 @@ type Screen =
   | { name: 'confirm'; transactionId: string; amountMinor: number; outcome: AuthenticateOutcome }
   | { name: 'result'; ok: boolean; title: string; detail?: string; amountMinor?: number;paymentId?:string;audio?:AudioPrompt }
   | { name: 'recovery' }
+  | { name: 'closedSales' }
   | { name: 'enrol' };
 
 interface Identity {
@@ -232,11 +234,12 @@ export default function TerminalApp() {
     }
   }
 
-  /** Keep uncertain outcomes attached to the original sale. */
+  /** End the kiosk sale; retain uncertain charges for independent reconciliation. */
   const abandon = useCallback(async (transactionId?: string) => {
     if (busy) return;
     setBusy(true);
     setStepUpError(null);
+    const deadline=AbortSignal.timeout(5000);
     try {
       let sale = loadPendingSale();
       let id = transactionId ?? sale?.transactionId;
@@ -244,28 +247,38 @@ export default function TerminalApp() {
         // Creation may have committed before its response was lost. Recover
         // that same intent before cancelling; never create a new sale ID.
         if (sale.confirming) throw new Error('This payment requires administrator review. Its transaction reference is missing.');
-        const txn = await terminalApi.createTransaction(sale.amountMinor, sale.description, sale.saleId);
+        const txn = await terminalApi.createTransaction(sale.amountMinor, sale.description, sale.saleId, deadline);
         id = txn.transactionId;
         sale = { ...sale, transactionId: id };
         savePendingSale(sale);
       }
       if (id) {
-        const current = await terminalApi.status(id);
-        if (current.status === 'settled') {
-          setStepUpError('This payment has completed. Check this payment to retrieve its receipt.');
-          setScreen({ name: 'recovery' }); return;
+        const current = await terminalApi.status(id, deadline);
+        if (current.status === 'settled' || current.status === 'processing') {
+          if (!sale) throw new Error('The original sale reference is missing.');
+          closePendingSale(sale);
+          setScreen({name:'idle'});return;
         }
         if (current.status === 'failed' || current.status === 'cancelled') {
           clearPendingSale();
           setScreen({name:'idle',audio:current.status==='cancelled'?'cancelled':'payment_failed',audioKey:`${current.status}:${id}`});
           return;
         }
-        const cancelled = await terminalApi.cancel(id);
+        const cancelled = await terminalApi.cancel(id, deadline);
         if (cancelled.status !== 'cancelled') throw new Error('Cancellation not confirmed.');
       }
       clearPendingSale();
       setScreen({name:'idle',audio:'cancelled',audioKey:`cancelled:${id??crypto.randomUUID()}`});
-    } catch (err) { setStepUpError(recoveryError(err)); setScreen({ name: 'recovery' }); }
+    } catch (err) {
+      // A timeout or a racing charge must not trap the operator. Archive first;
+      // never mark the bank payment cancelled and never replay it from history.
+      try {
+        const sale=loadPendingSale();
+        if(!sale)throw err;
+        closePendingSale(sale);
+        setStepUpError(null);setScreen({name:'idle'});
+      } catch (storageError) {setStepUpError(recoveryError(storageError));setScreen({name:'recovery'});}
+    }
     finally { setBusy(false); }
   }, [toIdle, busy]);
 
@@ -329,6 +342,8 @@ export default function TerminalApp() {
   let hasPendingPayment = false;
   try { hasPendingPayment = loadPendingSale() !== null; }
   catch { hasPendingPayment = true; }
+  let hasClosedSales=false;
+  try {hasClosedSales=loadClosedSales().length>0;}catch{hasClosedSales=true;}
 
   return (
     <KioskFrame>
@@ -349,7 +364,7 @@ export default function TerminalApp() {
       {screen.name === 'recovery' && (
         <Pane className="items-center justify-center text-center">
           <p className="t-lg">Resolve the previous payment</p>
-          <p className="t-sm mt-4">Check its outcome before another sale. You can return home while this payment stays pending.</p>
+          <p className="t-sm mt-4">Cancel closes this sale on the terminal. A submitted bank charge stays tracked and may still complete.</p>
           {stepUpError && <p role="alert" className="t-sm mt-4">{stepUpError}</p>}
           <TButton className="mt-6" disabled={busy} onClick={() => void recoverSale()}>Check or retry this payment</TButton>
           <div className="mt-4 flex gap-4">
@@ -367,8 +382,11 @@ export default function TerminalApp() {
           onEnrol={() => setScreen({ name: 'enrol' })}
           onDemoReset={toIdle}
           onPendingPayment={hasPendingPayment ? () => setScreen({ name: 'recovery' }) : undefined}
+          onClosedSales={hasClosedSales ? () => setScreen({name:'closedSales'}) : undefined}
         />
       )}
+
+      {screen.name === 'closedSales' && <ClosedSales onBack={toIdle} />}
 
       {screen.name === 'amount' && (
         <Amount onCancel={toIdle} onCharge={(minor, description) => void startSale(minor, description)} />

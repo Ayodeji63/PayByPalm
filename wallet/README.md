@@ -60,6 +60,26 @@ user: it authenticates with `X-Terminal-Key` and must never hold or poll a custo
 Both are lazy-loaded, so a phone never downloads the kiosk and a Pi never downloads the QR
 decoder.
 
+### Terminal cancellation and payment recovery
+
+**Back to home** leaves the active sale available under **Check payment**.
+**Cancel pending sale** ends the active kiosk flow and restores **New sale**. The
+terminal attempts backend cancellation with a five-second deadline. If a charge
+is already processing, has settled, or cannot be checked, its reference is saved
+under **Review closed sales** before the active sale is cleared. Storage errors
+retain the original active reference.
+
+Closing a kiosk sale does not reverse a submitted bank charge. Closed-sale review
+uses status GET requests only; it cannot charge, retry, refund, or mark a payment
+cancelled. Backend reconciliation continues using the original provider. Review
+an unresolved purchase before charging that purchase again.
+
+Active and closed references survive page reloads in the kiosk's session storage;
+the backend retains transactions independently. Do not clear browser storage as a
+payment-recovery procedure. Run `node tests/payment-recovery-browser.mjs` against
+a local wallet on port 5187 (or set `PBP_PREVIEW_ORIGIN`) to test cancellation,
+offline deadlines, reloads, and read-only review using mocked payment APIs.
+
 Top-up, profile/settings, and transaction detail are **bottom sheets** on the dashboard rather
 than routes of their own — see [`src/components/sheets.tsx`](src/components/sheets.tsx). Nothing
 was lost in that consolidation: changing a PIN, unlinking a palm, and disputing a payment all

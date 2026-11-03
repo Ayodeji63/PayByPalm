@@ -35,8 +35,6 @@ try {
   });
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
   await page.goto(origin+'/terminal');
-  await page.getByRole('button',{name:'Cancel pending sale',exact:true}).click();
-  await page.getByRole('alert').waitFor();
   await page.screenshot({path:`${out}/recovery-${viewport.width}.png`});
   const before=calls.filter(c=>c.path.startsWith('/transactions')||c.path.startsWith('/terminal/transactions')).length;
   await page.getByRole('button',{name:'Back to home',exact:true}).click();
@@ -55,15 +53,34 @@ try {
   await page.reload();
   await page.getByText('Resolve the previous payment',{exact:true}).waitFor();
   assert.deepEqual(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('paybypalm.pendingSale'))),sale,'reload retains unresolved reference');
-  status='failed';
-  await page.getByRole('button',{name:'Check or retry this payment',exact:true}).click();
-  await page.getByText('Payment not completed',{exact:true}).waitFor();
-  assert.equal(await page.evaluate(()=>sessionStorage.getItem('paybypalm.pendingSale')),null);
-  await page.getByRole('button',{name:/Done/}).click();
+  await page.getByRole('button',{name:'Cancel pending sale',exact:true}).click();
   await page.getByRole('button',{name:'New sale',exact:true}).waitFor();
-  assert.equal(calls.some(c=>c.path==='/transactions'||c.path.endsWith('/confirm')),false,'no new sale or charge while navigating');
+  assert.equal(await page.evaluate(()=>sessionStorage.getItem('paybypalm.pendingSale')),null);
+  assert.deepEqual(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('paybypalm.closedSales'))),[sale]);
+  await page.screenshot({path:`${out}/closed-home-${viewport.width}.png`});
+  await page.reload();
+  await page.getByRole('button',{name:'New sale',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Review closed sales',exact:true}).click();
+  await page.getByRole('button',{name:'Check status',exact:true}).click();
+  await page.getByText('Payment outcome is still unconfirmed. Do not charge the same purchase again.').waitFor();
+  await page.screenshot({path:`${out}/closed-status-${viewport.width}.png`});
+  status='settled';
+  await page.getByRole('button',{name:'Check status',exact:true}).click();
+  await page.getByText(/Payment completed despite closing the sale/).waitFor();
+  assert.equal(calls.some(c=>c.path==='/transactions'||c.path.endsWith('/confirm')),false,'closing and reviewing never issue a charge');
+  await page.getByRole('button',{name:'Back to home',exact:true}).click();
+  // A failed status lookup also closes locally and retains the reference.
+  await page.evaluate(sale=>sessionStorage.setItem('paybypalm.pendingSale',JSON.stringify(sale)),sale);
+  await page.reload();
+  await context.route(`**/terminal/transactions/${txn}`,()=>{}); // Simulate a connection that never responds.
+  const closingStarted=Date.now();
+  await page.getByRole('button',{name:'Cancel pending sale',exact:true}).click();
+  await page.getByRole('button',{name:'New sale',exact:true}).waitFor();
+  assert.ok(Date.now()-closingStarted<8000,'cancellation is bounded even when the backend hangs');
+  assert.equal(await page.evaluate(()=>sessionStorage.getItem('paybypalm.pendingSale')),null);
+  assert.deepEqual(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('paybypalm.closedSales'))),[sale],'reclosing deduplicates the reference');
   assert.deepEqual(errors,[]);
-  console.log(`PASS ${viewport.width}x${viewport.height}: dismiss, reopen, reload, preserve pending sale and unlock new sales only after a final outcome.`);
+  console.log(`PASS ${viewport.width}x${viewport.height}: dismiss, close processing/offline sale, reload, preserve reference, read-only pending/settled review, no charge requests.`);
   await context.close();
  }
 } finally {await browser.close();}

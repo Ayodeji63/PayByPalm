@@ -88,11 +88,12 @@ export const terminalApi = {
 
   health: () => send<{ status: string }>('/health', 'GET'),
 
-  createTransaction: (amountMinor: number, description: string | undefined, saleId: string) =>
+  createTransaction: (amountMinor: number, description: string | undefined, saleId: string, signal?: AbortSignal) =>
     send<{ transactionId: string; amountMinor: number; status: string; merchantName: string; terminalLabel: string }>(
       '/transactions',
       'POST',
       { amountMinor, saleId, ...(description ? { description } : {}) },
+      signal,
     ),
 
   authenticate: (transactionId: string, imageB64: string, last4?: string) =>
@@ -107,16 +108,17 @@ export const terminalApi = {
   authenticateCapture: (transactionId: string, captureId: string, payload: string) =>
     send<AuthenticateOutcome>(`/transactions/${transactionId}/authenticate`, 'POST', {captureId, payload}),
 
-  status: (transactionId: string) =>
-    send<{ transactionId: string; status: string; amountMinor: number }>(`/terminal/transactions/${transactionId}`, 'GET'),
+  status: (transactionId: string, signal: AbortSignal = AbortSignal.timeout(10000)) =>
+    send<{ transactionId: string; status: string; amountMinor: number }>(`/terminal/transactions/${transactionId}`, 'GET', undefined, signal),
 
   confirm: (transactionId: string) =>
     send<Receipt>(`/transactions/${transactionId}/confirm`, 'POST', {}),
 
-  cancel: (transactionId: string) =>
+  cancel: (transactionId: string, signal?: AbortSignal) =>
     send<{ transactionId: string; status: string }>(
       `/transactions/${transactionId}/cancel`,
       'POST',
+      undefined, signal,
     ),
 
   createEnrolSession: () =>

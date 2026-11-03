@@ -1,5 +1,6 @@
 /** Persist a sale before sending it so retries keep the same financial intent. */
 const STORAGE_KEY = 'paybypalm.pendingSale';
+const CLOSED_KEY = 'paybypalm.closedSales';
 export interface PendingSale {
   saleId: string;
   amountMinor: number;
@@ -26,4 +27,23 @@ export function savePendingSale(sale: PendingSale): void {
 }
 export function clearPendingSale(): void {
   sessionStorage.removeItem(STORAGE_KEY);
+}
+
+/** Closing the kiosk sale does not cancel an already-submitted bank charge. */
+export function loadClosedSales(): PendingSale[] {
+  const raw = sessionStorage.getItem(CLOSED_KEY);
+  if (!raw) return [];
+  const rows: PendingSale[] = JSON.parse(raw);
+  if (!Array.isArray(rows) || rows.some(s => !s || !UUID.test(s.saleId) ||
+      !Number.isSafeInteger(s.amountMinor) || s.amountMinor <= 0 || s.amountMinor > 100_000_000 ||
+      typeof s.confirming !== 'boolean' || (s.transactionId !== undefined && !UUID.test(s.transactionId)))) {
+    throw new Error('Closed payment records need administrator review.');
+  }
+  return rows;
+}
+export function closePendingSale(sale: PendingSale): void {
+  const rows = loadClosedSales();
+  // Write the recovery record first. Storage failure must retain the active sale.
+  sessionStorage.setItem(CLOSED_KEY, JSON.stringify([sale, ...rows.filter(s => s.saleId !== sale.saleId)]));
+  clearPendingSale();
 }
