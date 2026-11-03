@@ -21,7 +21,10 @@ export async function backendPaymentSelection(config:Config){
 export async function backendPaymentMode(config:Config):Promise<PaymentMode>{const selection=await backendPaymentSelection(config);if(selection.paymentProvider!=='paystack')throw new Failure(409,'payment_provider_changed','Paystack payout setup is unavailable while Flutterwave is selected.');return selection.paymentMode;}
 export async function paymentContext(config:Config):Promise<PaymentContext>{
  const {paymentMode:mode,paymentProvider}=await backendPaymentSelection(config);
- if(paymentProvider==='flutterwave')return {mode,provider:paymentProvider,secret:undefined};
+ if(paymentProvider==='flutterwave'){
+  const candidate=(mode==='live'?config.FLUTTERWAVE_LIVE_SECRET_KEY:config.FLUTTERWAVE_TEST_SECRET_KEY)??config.FLUTTERWAVE_SECRET_KEY;
+  return {mode,provider:paymentProvider,secret:candidate?.startsWith(mode==='live'?'FLWSECK-':'FLWSECK_TEST-')?candidate:undefined};
+ }
  const secret=(mode==='live'?config.PAYSTACK_LIVE_SECRET_KEY:config.PAYSTACK_TEST_SECRET_KEY)??
   (config.PAYSTACK_SECRET_KEY?.startsWith(`sk_${mode}_`)?config.PAYSTACK_SECRET_KEY:undefined);
  return {mode,provider:paymentProvider,secret};
@@ -50,24 +53,24 @@ export function provider(context:PaymentContext){
  };
 }
 export const verifiedAccountSchema=z.object({
- actor:z.string().uuid(),merchant:z.string().uuid(),mode:z.enum(['test','live']),
+ actor:z.string().uuid(),merchant:z.string().uuid(),mode:z.enum(['test','live']),provider:z.enum(['paystack','flutterwave']).default('paystack'),
  bankCode:z.string().regex(/^\d{2,12}$/),bankName:z.string().min(1).max(160),
  accountNumber:z.string().regex(/^\d{10}$/),accountName:z.string().min(1).max(200),expires:z.number().int(),
 }).strict();
 export type VerifiedAccount=z.infer<typeof verifiedAccountSchema>;
-export function sealAccount(config:Config,value:VerifiedAccount){
+export function sealAccount(config:Config,value:z.input<typeof verifiedAccountSchema>){
  const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',Buffer.from(config.SESSION_ENCRYPTION_KEY,'hex'),iv);
  cipher.setAAD(Buffer.from('paybypalm:payout-verification:v1'));
  const ciphertext=Buffer.concat([cipher.update(JSON.stringify(value),'utf8'),cipher.final()]);
  return Buffer.concat([iv,cipher.getAuthTag(),ciphertext]).toString('base64url');
 }
-export function openAccount(config:Config,token:string,actor:string,merchant:string,mode:PaymentMode):VerifiedAccount{
+export function openAccount(config:Config,token:string,actor:string,merchant:string,mode:PaymentMode,expectedProvider:'paystack'|'flutterwave'='paystack'):VerifiedAccount{
  try{
   const bytes=Buffer.from(token,'base64url');if(bytes.length<29)throw Error();
   const decipher=createDecipheriv('aes-256-gcm',Buffer.from(config.SESSION_ENCRYPTION_KEY,'hex'),bytes.subarray(0,12));
   decipher.setAAD(Buffer.from('paybypalm:payout-verification:v1'));decipher.setAuthTag(bytes.subarray(12,28));
   const value=verifiedAccountSchema.parse(JSON.parse(Buffer.concat([decipher.update(bytes.subarray(28)),decipher.final()]).toString('utf8')));
-  if(value.actor!==actor||value.merchant!==merchant||value.mode!==mode||value.expires<=Date.now()||value.expires>Date.now()+5*60_000)throw Error();
+  if(value.actor!==actor||value.merchant!==merchant||value.mode!==mode||value.provider!==expectedProvider||value.expires<=Date.now()||value.expires>Date.now()+5*60_000)throw Error();
   return value;
  }catch{throw new Failure(409,'account_verification_expired','Verify the bank account again before creating its payout account.');}
 }

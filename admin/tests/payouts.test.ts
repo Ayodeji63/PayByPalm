@@ -33,6 +33,7 @@ const db={rpc,from:(table:string)=>{
  const run=()=>{
   if(table==='admin_sessions')return {data:{user_id:actor,expires_at:new Date(Date.now()+60000).toISOString(),revoked_at:null},error:null};
   if(table==='merchants')return {data:merchant,error:null};
+  if(table==='flutterwave_payout_setups')return {data:null,error:null};
   if(table==='merchant_payout_setups'){
    if(patch&&setup&&filters.every(([k,v])=>setup[k]===v))setup={...setup,...patch};
    return {data:setup&&filters.every(([k,v])=>setup[k]===v)?setup:null,error:null};
@@ -92,7 +93,7 @@ describe('admin bank payout onboarding',()=>{
  it('exposes Flutterwave selection without calling Paystack or leaking its keys',async()=>{
   backendProvider='flutterwave';merchant.flutterwave_test_subaccount='RS_fixture';
   expect(await (await send('/merchants/'+id+'/payout')).json()).toMatchObject({provider:'flutterwave',mode:'test',subaccountCode:'RS_fixture',setup:null});
-  expect((await send('/payouts/verify',{merchantId:id,bankCode:'058',accountNumber:'0123456789'})).status).toBe(409);
+  expect((await send('/payouts/verify',{merchantId:id,bankCode:'058',accountNumber:'0123456789'})).status).toBe(503);
   expect(providerCalls).toHaveLength(0);
  });
  it('refuses Flutterwave recipient updates while Paystack is selected',async()=>{

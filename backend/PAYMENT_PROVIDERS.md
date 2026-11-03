@@ -1,5 +1,7 @@
 # Payment providers: Flutterwave v3 and Paystack
 
+For real payments and automatic merchant bank setup, follow [the live rollout guide](FLUTTERWAVE_LIVE.md).
+
 PayByPalm supports a selected provider for new card links and terminal payments.
 `PAYMENT_PROVIDER=paystack` is the backward-compatible default. There is no automatic
 fallback: a sale can acquire only one durable charge claim, with one provider,
@@ -87,13 +89,23 @@ No frontend payment secret or Flutterwave public key is needed for hosted checko
 
 ## Merchant settlement setup
 
+With migration 0032 and the updated Admin, Flutterwave bank verification and
+subaccount creation are available directly in **Bank payouts**. Configure the same
+Flutterwave business’s live secret on the Admin server, verify the bank account
+name, confirm the commission, and create the receiving subaccount. See the
+[live guide](FLUTTERWAVE_LIVE.md). Paystack’s setup remains available when selected.
+
+The following dashboard-code import describes compatibility with the first
+Flutterwave release; automated creation replaces that manual setup for new merchants.
+
 For Flutterwave, create and verify the merchant's NGN split-payment subaccount in
 **the same Flutterwave account and mode** used by the backend. Confirm its bank
 recipient and fee configuration in Flutterwave. In PayByPalm Admin, edit the
 merchant, open **Bank payouts**, and save its `RS_...` subaccount code. Test and live
 codes are separate. Saving is an audited administrator action with stale-edit
 protection; saving a code does not claim Flutterwave verified its bank details.
-No Flutterwave secret is required on the admin server for this manual setup.
+A Flutterwave secret is required on the admin server for automatic creation. The
+legacy manual-code import remains available only without an automated setup in progress.
 
 Live terminal checkout requires a saved settlement subaccount for that merchant.
 The adapter includes it in the tokenized charge request. GET verification binds
@@ -117,6 +129,10 @@ user session; no card credential is returned to the browser.
 | `POST /cards/link/verify` | `{ reference }`; verifies an owned attempt using its original provider, including after a switch |
 | `POST /cards/:id` | `{ action: "default", "pause", "resume" or "remove", paymentMode, paymentProvider }`; owner and active selection checked |
 | `POST /webhooks/flutterwave` | Provider callback using the configured v3 `verif-hash`; only queues authoritative GET verification |
+| Admin `GET /api/payouts/banks` | Lists banks for the backend-selected provider and mode; private server credentials |
+| Admin `POST /api/payouts/verify` | `{ merchantId, bankCode, accountNumber }`; returns masked account details and an opaque provider/admin/merchant/mode-bound verification token |
+| Admin `POST /api/merchants/:id/payout` | `{ verificationToken, percentageCharge, expected }`; claims once, creates the selected provider’s receiving subaccount, and verifies it by GET |
+| Admin `POST /api/merchants/:id/payout/check` | `{}`; checks the original request with GET only and never creates a replacement |
 | Admin `POST /api/merchants/:id/payout/flutterwave` | Admin session and same-origin write; `{ mode, code: "RS_...", expected: merchant.updated_at }`; audited optimistic update |
 
 Wallet returns accept Flutterwave's `tx_ref` alongside existing Paystack

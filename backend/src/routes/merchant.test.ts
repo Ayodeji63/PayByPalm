@@ -11,6 +11,7 @@ import express from "express";
 import type { Server } from "node:http";
 const m = vi.hoisted(() => ({
   mode: "test",
+  provider: "paystack",
   member: true,
   offline: false,
   calls: [] as any[],
@@ -35,6 +36,7 @@ vi.mock("../middleware/userAuth.js", () => ({
 vi.mock("../middleware/abuseLimits.js", () => ({
   userRateLimit: () => (_req: any, _res: any, next: any) => next(),
 }));
+vi.mock("../services/paymentGateway.js",()=>({paymentMode:()=>m.mode,paymentProvider:()=>m.provider}));
 vi.mock("../services/paystack.js", () => ({
   paystackDomain: () => m.mode,
   paystack: m.paystack,
@@ -62,6 +64,7 @@ vi.mock("../db/client.js", () => ({
                     {
                       id: merchantA,
                       name: "Ayo Stores",
+                      flutterwave_subaccount:"RS_liveFixture",
                       paystack_subaccount: "ACCT_liveA",
                       paystack_test_subaccount: "ACCT_testA",
                     },
@@ -193,6 +196,7 @@ afterAll(async () => {
 });
 beforeEach(() => {
   m.mode = "test";
+  m.provider="paystack";
   m.member = true;
   m.offline = false;
   m.calls.length = 0;
@@ -350,6 +354,14 @@ describe("merchant reporting boundaries", () => {
     });
     expect(r.status).toBe(404);
   });
+});
+describe('merchant Flutterwave settlement settings',()=>{
+ it('reads the owned live Flutterwave setup and never fetches Paystack settlement data',async()=>{
+  m.provider='flutterwave';m.mode='live';const response=await get('settings');
+  expect(response.status).toBe(200);expect(await response.json()).toMatchObject({paymentProvider:'flutterwave',paymentMode:'live',payoutConfigured:true});
+  const reads=m.calls.filter(c=>c.table==='flutterwave_payout_setups');expect(reads).toHaveLength(1);expect(reads[0].filters).toEqual([['merchant_id',merchantA,'eq'],['domain','live','eq']]);
+  expect((await get('settlements')).status).toBe(409);expect(m.paystack).not.toHaveBeenCalled();
+ });
 });
 describe("merchant Paystack settlement isolation", () => {
   it("resolves and uses only the owned subaccount numeric ID for settlement reads", async () => {

@@ -371,12 +371,21 @@ edits remove publication automatically; stale moderator updates return a conflic
 Apply migration 0030 and deploy matching backend/wallet/admin releases. See
 [FEEDBACK.md](../FEEDBACK.md) for privacy, API and release details.
 
-### Flutterwave v3 selection
+### Flutterwave v3 live bank settlements
 
-Apply main migration 0031 and deploy this admin alongside the updated backend and
-wallet. When the backend selects Flutterwave, Bank payouts accepts the merchant’s
-dashboard-created `RS_...` code for the current mode. This is an audited selection
-of the payout recipient; confirm the bank account and split in Flutterwave first.
-Paystack payout creation is disabled while Flutterwave is active, and existing
-Paystack codes are preserved. Flutterwave secrets belong only on the payment
-backend. See [the provider rollout guide](../backend/PAYMENT_PROVIDERS.md).
+Apply main migrations 0031 and 0032, then deploy Admin with the updated backend
+and wallet. Set the main backend's `PAYMENT_PROVIDER=flutterwave` and
+`PAYMENT_MODE=live`. Add `FLUTTERWAVE_LIVE_SECRET_KEY` from the same business to
+both the backend's and Admin's **server** environments; no secret belongs in the
+browser. Admin follows the backend's selected provider and environment.
+
+In **Bank payouts**, select the merchant's bank, enter its account number, verify
+the returned name, confirm the PayByPalm commission (0% by default), and create the
+subaccount. Save the merchant's contact phone first. Setup is audited and uses a
+durable database claim. Interrupted requests are recovered with GET using
+**Check status**, without another creation POST. Paystack's existing setup remains
+available when Paystack is selected. Bank-name resolution and successful creation
+do not claim completed settlement or upstream KYC approval. Actual settlement
+status remains in Flutterwave's dashboard.
+
+See [the step-by-step live guide](../backend/FLUTTERWAVE_LIVE.md).

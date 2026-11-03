@@ -212,9 +212,8 @@ merchantRouter.get("/merchant/terminals", async (req, res) => {
 });
 async function payoutSettings(c: Context) {
   const m = await merchant(c);
-  if(paymentProvider()==='flutterwave')return {paymentMode:c.mode,paymentProvider:'flutterwave',business:{id:m.id,name:m.name,email:m.contact_email,phone:m.contact_phone,address:m.address},payout:null,payoutConfigured:!!(c.mode==='live'?m.flutterwave_subaccount:m.flutterwave_test_subaccount)};
   const setup = await db
-    .from("merchant_payout_setups")
+    .from(paymentProvider()==='flutterwave'?"flutterwave_payout_setups":"merchant_payout_setups")
     .select(
       "bank_name,account_last4,account_name,percentage_charge,status,provider_verified,provider_active",
     )
@@ -232,7 +231,8 @@ async function payoutSettings(c: Context) {
       address: m.address,
     },
     payout: setup.data ?? null,
-    payoutConfigured: !!(c.mode === "live"
+    paymentProvider:paymentProvider(),
+    payoutConfigured: paymentProvider()==='flutterwave'?!!(c.mode==='live'?m.flutterwave_subaccount:m.flutterwave_test_subaccount):!!(c.mode === "live"
       ? m.paystack_subaccount
       : m.paystack_test_subaccount),
   };

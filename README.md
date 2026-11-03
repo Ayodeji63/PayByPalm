@@ -16,7 +16,8 @@ protection have not been established for production deployment. This README
 describes the code in this checkout; publishing and deploying it are separate steps.
 
 Card payments are selected with `PAYMENT_PROVIDER=paystack|flutterwave` (Paystack
-by default). Cards, defaults and recovery stay separate by provider and test/live
+by default). For real Flutterwave payments and merchant bank subaccounts, follow
+the [live deployment guide](backend/FLUTTERWAVE_LIVE.md). Cards, defaults and recovery stay separate by provider and test/live
 mode. See the [payment provider deployment and switching guide](backend/PAYMENT_PROVIDERS.md)
 for migration 0031, Render settings, Flutterwave NOAUTH approval, merchant subaccounts
 and card relinking. Flutterwave uses a ₦100 card-verification payment; Paystack

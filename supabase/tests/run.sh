@@ -68,6 +68,7 @@ for f in "$SUPA"/migrations/*.sql; do
   [ "$b" = "0029_ccnet_checkout_threshold.sql" ] && continue
   [ "$b" = "0030_customer_feedback.sql" ] && continue
   [ "$b" = "0031_payment_providers.sql" ] && continue
+  [ "$b" = "0032_flutterwave_merchant_settlements.sql" ] && continue
 
   out=$(pg -v ON_ERROR_STOP=1 -q -f "/sql/$b" 2>&1) || fail "migration $b" "$out"
   echo "applied  $b"
@@ -131,3 +132,5 @@ python3 "$HERE/ccnet_migration_test.py" || fail "CCNet rollout and payment races
 python3 "$HERE/feedback_test.py" || fail "feedback privacy and moderation races" "See Python assertion"
 
 python3 "$HERE/payment_providers_test.py" || fail "payment provider switching" "See Python assertion"
+
+python3 "$HERE/flutterwave_settlements_test.py" || fail "Flutterwave merchant settlement setup" "See Python assertion"

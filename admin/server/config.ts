@@ -37,6 +37,9 @@ export const configSchema = z
     PAYSTACK_LIVE_SECRET_KEY: z.string().regex(/^sk_live_[A-Za-z0-9]+$/).optional(),
     // Compatibility with an existing deployment; usable only in its own mode.
     PAYSTACK_SECRET_KEY: z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/).optional(),
+    FLUTTERWAVE_TEST_SECRET_KEY: z.string().regex(/^FLWSECK_TEST-[A-Za-z0-9_-]+$/).optional(),
+    FLUTTERWAVE_LIVE_SECRET_KEY: z.string().regex(/^FLWSECK-[A-Za-z0-9_-]+$/).optional(),
+    FLUTTERWAVE_SECRET_KEY: z.string().regex(/^FLWSECK(?:_TEST)?-[A-Za-z0-9_-]+$/).optional(),
     SESSION_ENCRYPTION_KEY: z.string().regex(/^[a-f0-9]{64}$/i),
     TERMINAL_URL: z
       .string()

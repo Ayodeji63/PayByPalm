@@ -6,12 +6,14 @@ import type {Config} from './config.js';
 import {Failure} from './failure.js';
 import {provider,paymentSettings,sealAccount,openAccount,accountFingerprint,ProviderFailure,paymentContext,assertPaymentMode,requirePaymentKey,type PaymentContext,type PaymentMode} from './paystack.js';
 import {loadBanks,type Bank} from './banks.js';
+import {createFlutterwavePayouts} from './flutterwavePayouts.js';
 
 type Setup={merchant_id:string;domain:'test'|'live';request_id:string;fingerprint:string;bank_code:string;bank_name:string;account_last4:string;account_name:string;percentage_charge:number;status:string;subaccount_code:string|null;provider_verified:boolean|null;provider_active:boolean|null};
 const setupFields='merchant_id,domain,request_id,fingerprint,bank_code,bank_name,account_last4,account_name,percentage_charge,status,subaccount_code,provider_verified,provider_active';
-const safe=(s:Setup|null)=>s?{status:s.status,mode:s.domain,bankName:s.bank_name,accountLast4:s.account_last4,accountName:s.account_name,percentageCharge:Number(s.percentage_charge),subaccountCode:s.subaccount_code,verified:s.provider_verified,active:s.provider_active}:null;
+const safe=(s:Setup|null)=>s?{provider:'paystack',status:s.status,mode:s.domain,bankName:s.bank_name,accountLast4:s.account_last4,accountName:s.account_name,percentageCharge:Number(s.percentage_charge),subaccountCode:s.subaccount_code,verified:s.provider_verified,active:s.provider_active}:null;
 const marker=(s:Setup)=>`PayByPalm payout ${s.merchant_id}:${s.request_id}`;
 export function mountPayoutRoutes(app:Express,{config,db,writes,dbFailure}:{config:Config;db:SupabaseClient;writes:RequestHandler;dbFailure:(e:{code?:string}|null)=>never}){
+ const flutterwave=createFlutterwavePayouts({config,db,dbFailure});
  const cachedBanks=new Map<string,{until:number;value:Bank[]}>();
  async function banks(context:PaymentContext){
   requirePaymentKey(context);
@@ -43,8 +45,10 @@ export function mountPayoutRoutes(app:Express,{config,db,writes,dbFailure}:{conf
   if(r.error)dbFailure(r.error);return {merchant:r.data.merchant,setup:safe(r.data.setup)};
  }
  app.get('/api/payouts/settings',async(_req,res)=>res.json(paymentSettings(await paymentContext(config))));
- app.get('/api/payouts/banks',async(_req,res)=>{const context=await paymentContext(config);res.json({...paymentSettings(context),banks:await banks(context)});});
+ app.get('/api/payouts/banks',async(_req,res)=>{const context=await paymentContext(config);res.json({...paymentSettings(context),banks:await (context.provider==='flutterwave'?flutterwave.banks(context):banks(context))});});
  app.post('/api/payouts/verify',writes,async(req,res)=>{
+  const selected=await paymentContext(config);
+  if(selected.provider==='flutterwave'){res.json(await flutterwave.verify(req.body,res.locals.admin.id,selected));return;}
   const input=z.object({merchantId:z.string().uuid(),bankCode:z.string().regex(/^\d{2,12}$/),accountNumber:z.string().regex(/^\d{10}$/)}).strict().parse(req.body);
   const context=await paymentContext(config),call=provider(context);
   await merchant(input.merchantId);
@@ -57,7 +61,7 @@ export function mountPayoutRoutes(app:Express,{config,db,writes,dbFailure}:{conf
  });
  app.get('/api/merchants/:id/payout',async(req,res)=>{
   const id=z.string().uuid().parse(req.params.id),context=await paymentContext(config),m=await merchant(id);
-  res.json({...paymentSettings(context),setup:context.provider==='flutterwave'?null:safe(await readSetup(id,context.mode)),subaccountCode:context.provider==='flutterwave'?(context.mode==='live'?m.flutterwave_subaccount:m.flutterwave_test_subaccount):codeFor(m,context.mode)});
+  res.json({...paymentSettings(context),setup:context.provider==='flutterwave'?flutterwave.safe(await flutterwave.readSetup(id,context.mode)):safe(await readSetup(id,context.mode)),subaccountCode:context.provider==='flutterwave'?(context.mode==='live'?m.flutterwave_subaccount:m.flutterwave_test_subaccount):codeFor(m,context.mode)});
  });
  app.post('/api/merchants/:id/payout/flutterwave',writes,async(req,res)=>{
   const id=z.string().uuid().parse(req.params.id);
@@ -69,6 +73,8 @@ export function mountPayoutRoutes(app:Express,{config,db,writes,dbFailure}:{conf
  });
  app.post('/api/merchants/:id/payout',writes,async(req,res)=>{
   const id=z.string().uuid().parse(req.params.id);
+  const selected=await paymentContext(config);
+  if(selected.provider==='flutterwave'){res.status(201).json(await flutterwave.create(id,req.body,res.locals.admin.id,selected));return;}
   const input=z.object({verificationToken:z.string().min(1).max(3000),percentageCharge:z.number().min(0).max(100).multipleOf(0.01),expected:z.string().datetime({offset:true})}).strict().parse(req.body);
   const context=await paymentContext(config),call=provider(context);
   const value=openAccount(config,input.verificationToken,res.locals.admin.id,id,context.mode);
@@ -100,6 +106,7 @@ export function mountPayoutRoutes(app:Express,{config,db,writes,dbFailure}:{conf
  app.post('/api/merchants/:id/payout/check',writes,async(req,res)=>{
   const id=z.string().uuid().parse(req.params.id);z.object({}).strict().parse(req.body);
   const context=await paymentContext(config),call=provider(context);
+  if(context.provider==='flutterwave'){res.json(await flutterwave.check(id,res.locals.admin.id,context));return;}
   const s=await readSetup(id,context.mode);if(!s)throw new Failure(404,'payout_not_found','No payout setup is recorded. Verify the merchant’s bank account first.');
   if(s.status==='rejected'){res.json({merchant:await merchant(id),setup:safe(s)});return;}
   if(s.subaccount_code){const r=await call('/subaccount/'+encodeURIComponent(s.subaccount_code));res.json(await complete(s,r.data,res.locals.admin.id,false));return;}
