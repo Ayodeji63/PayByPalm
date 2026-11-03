@@ -1,0 +1,29 @@
+{
+  "name": "flutterwave-skills",
+  "version": "0.2.0",
+  "skills": [
+    "flutterwave",
+    "flutterwave-setup",
+    "flutterwave-webhooks",
+    "flutterwave-testing",
+    "flutterwave-standard-checkout",
+    "flutterwave-card-payments",
+    "flutterwave-bank-transfers",
+    "flutterwave-mobile-money",
+    "flutterwave-ussd",
+    "flutterwave-transactions",
+    "flutterwave-refunds",
+    "flutterwave-transfers",
+    "flutterwave-beneficiaries",
+    "flutterwave-subaccounts",
+    "flutterwave-payment-plans",
+    "flutterwave-virtual-cards",
+    "flutterwave-virtual-accounts",
+    "flutterwave-bills",
+    "flutterwave-verification",
+    "flutterwave-settlements",
+    "flutterwave-chargebacks-disputes",
+    "flutterwave-bulk-virtual-accounts",
+    "flutterwave-tokenized-charges"
+  ]
+}

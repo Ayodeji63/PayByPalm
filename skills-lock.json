@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "flutterwave": {
+      "source": "DevMubarak1/Flutterwave",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "bd1328bb1e6886228011d73e936c203627713778a3b6caa59765b59093379b81"
+    }
+  }
+}

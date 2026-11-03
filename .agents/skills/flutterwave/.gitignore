@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env*.local
+
+# IDE and agent runtime directories
+.agent/
+.agents/
+.claude/
+.zencoder/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Separate projects
+flutterwave-portfolio/
+

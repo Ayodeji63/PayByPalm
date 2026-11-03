@@ -1,0 +1,28 @@
+name: Validate Repository
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate package.json exists
+        run: test -f package.json
+
+      - name: Validate README exists
+        run: test -f README.md
+
+      - name: Validate skills folder is not empty
+        run: test -n "$(find skills -name SKILL.md -print -quit)"

@@ -1,0 +1,44 @@
+{
+  "name": "flutterwave-skills",
+  "version": "0.2.0",
+  "description": "Open-source AI agent skills for Flutterwave API integrations across v3 and v4 Public Beta patterns.",
+  "license": "MIT",
+  "author": "DevMubarak",
+  "type": "module",
+  "keywords": [
+    "flutterwave",
+    "ai-agents",
+    "copilot",
+    "cursor",
+    "claude-code",
+    "skills",
+    "payments",
+    "typescript",
+    "llms-txt"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DevMubarak1/Flutterwave.git"
+  },
+  "bugs": {
+    "url": "https://github.com/DevMubarak1/Flutterwave/issues"
+  },
+  "homepage": "https://github.com/DevMubarak1/Flutterwave#readme",
+  "files": [
+    "skills",
+    "docs",
+    "README.md"
+  ],
+  "scripts": {
+    "check": "node -e \"console.log('No build step required for markdown-only skills repo.')\""
+  },
+  "skills": {
+    "paths": [
+      "SKILL.md",
+      "skills/*/SKILL.md"
+    ]
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
