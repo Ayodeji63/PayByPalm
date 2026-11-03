@@ -87,8 +87,9 @@ export default function TerminalApp() {
 
   const toIdle = useCallback(() => {
     setStepUpError(null);
-    try { setScreen(loadPendingSale() ? { name: 'recovery' } : { name: 'idle' }); }
-    catch { setScreen({ name: 'recovery' }); }
+    // Leaving recovery is navigation only. Keep the original sale until the
+    // backend confirms a final outcome; the home screen exposes its check action.
+    setScreen({ name: 'idle' });
   }, []);
 
   // --- identity ----------------------------------------------------------
@@ -325,6 +326,9 @@ export default function TerminalApp() {
 
   const merchantName = identity?.merchantName ?? 'PayByPalm';
   const terminalLabel = identity?.terminalLabel ?? '';
+  let hasPendingPayment = false;
+  try { hasPendingPayment = loadPendingSale() !== null; }
+  catch { hasPendingPayment = true; }
 
   return (
     <KioskFrame>
@@ -345,10 +349,13 @@ export default function TerminalApp() {
       {screen.name === 'recovery' && (
         <Pane className="items-center justify-center text-center">
           <p className="t-lg">Resolve the previous payment</p>
-          <p className="t-sm mt-4">Its outcome must be checked before starting another sale. Retrying uses the same payment reference.</p>
+          <p className="t-sm mt-4">Check its outcome before another sale. You can return home while this payment stays pending.</p>
           {stepUpError && <p role="alert" className="t-sm mt-4">{stepUpError}</p>}
           <TButton className="mt-6" disabled={busy} onClick={() => void recoverSale()}>Check or retry this payment</TButton>
-          <TButton tone="ghost" className="mt-4" disabled={busy} onClick={() => void abandon()}>Cancel pending sale</TButton>
+          <div className="mt-4 flex gap-4">
+            <TButton tone="secondary" size="sm" disabled={busy} onClick={toIdle}>Back to home</TButton>
+            <TButton tone="ghost" size="sm" disabled={busy} onClick={() => void abandon()}>Cancel pending sale</TButton>
+          </div>
         </Pane>
       )}
 
@@ -359,6 +366,7 @@ export default function TerminalApp() {
           onNewSale={() => setScreen({ name: 'amount' })}
           onEnrol={() => setScreen({ name: 'enrol' })}
           onDemoReset={toIdle}
+          onPendingPayment={hasPendingPayment ? () => setScreen({ name: 'recovery' }) : undefined}
         />
       )}
 

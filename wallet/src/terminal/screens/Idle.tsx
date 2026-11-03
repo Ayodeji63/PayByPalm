@@ -14,12 +14,14 @@ export function Idle({
   onNewSale,
   onEnrol,
   onDemoReset,
+  onPendingPayment,
 }: {
   merchantName: string;
   terminalLabel: string;
   onNewSale: () => void;
   onEnrol: () => void;
   onDemoReset: () => void;
+  onPendingPayment?: () => void;
 }) {
   // Hidden demo reset. Deliberately not a visible button — a stage prop that a
   // customer could press is a liability.
@@ -38,12 +40,12 @@ export function Idle({
         <div className="flex h-[168px] w-[168px] items-center justify-center rounded-full bg-accent-tint">
           <PalmGlyph className="h-[104px] w-[104px] text-accent" />
         </div>
-        <p className="t-sm mt-5 text-ink-muted">Pay with your palm</p>
+        <p role={onPendingPayment ? 'status' : undefined} className="t-sm mt-5 text-ink-muted text-center">{onPendingPayment ? 'Previous payment still unresolved. Check it before another sale.' : 'Pay with your palm'}</p>
       </div>
 
       <div className="flex gap-4">
-        <TButton className="flex-1" onClick={()=>{terminalAudio.unlock();onNewSale();}}>
-          New sale
+        <TButton className="flex-1" onClick={()=>{terminalAudio.unlock();(onPendingPayment ?? onNewSale)();}}>
+          {onPendingPayment ? 'Check payment' : 'New sale'}
         </TButton>
         <TButton className="flex-1" tone="secondary" onClick={()=>{terminalAudio.unlock();onEnrol();}}>
           Enrol new user
