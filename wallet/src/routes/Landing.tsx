@@ -142,7 +142,7 @@ export default function Landing() {
               <span className="welcome-step-number">2</span>
               <h3>Link a payment card</h3>
               <p>
-                Add your card through Paystack’s checkout and choose it for your
+                Add your card through secure checkout and choose it for your
                 payments.
               </p>
             </li>

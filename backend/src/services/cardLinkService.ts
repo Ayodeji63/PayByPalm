@@ -3,60 +3,62 @@ import { db } from '../db/client.js';
 import { config } from '../config.js';
 import { AppError, notFound } from '../errors.js';
 import { logger } from '../logger.js';
-import { CARD_LINK_AMOUNT, cardLinkEnabled, paystackDomain, requirePaystack, paystack, checkoutUrl, sealAuthorization, cardSignature } from './paystack.js';
+import { sealAuthorization, cardSignature } from './paystack.js';
+import {paymentProvider,paymentMode,savedPaymentContext,paymentGateway,paymentEnabled,requirePayment,recoveryContexts,verificationAmount,assertPaymentSelection,type PaymentProvider} from './paymentGateway.js';
 
 export interface LinkAttempt {
- id:string; user_id:string; request_id:string; reference:string; email:string; domain:string;
+ id:string; user_id:string; request_id:string; reference:string; email:string; domain:string; provider?:PaymentProvider; amount_minor?:number;
  status:string; checkout_url:string|null; init_started_at:string|null; provider_transaction_id:string|null;
  refund_status:string; refund_id:string|null; card_id:string|null; created_at:string;
 }
 const PUBLIC_CARD_FIELDS='id,bank,brand,last4,exp_month,exp_year,is_default,is_paused,created_at';
 function dbFailure(error: unknown): void {
- if((error as {code?:string}|null)?.code==='42703')throw new AppError(503,'card_mode_setup_required','Apply payment mode migration 0022 before using cards.');
+ if((error as {code?:string}|null)?.code==='42703')throw new AppError(503,'card_mode_setup_required','Apply payment provider migration 0031 before using cards.');
  if(error) throw new AppError(503,'card_storage_unavailable','Card storage could not be updated. Please check again shortly.');
 }
 export function publicAttempt(a: LinkAttempt) {
- return {reference:a.reference,status:a.status,refundStatus:a.refund_status,cardId:a.card_id,createdAt:a.created_at};
+ return {reference:a.reference,provider:a.provider??'paystack',amountMinor:a.amount_minor??verificationAmount(a.provider??'paystack'),status:a.status,refundStatus:a.refund_status,cardId:a.card_id,createdAt:a.created_at};
 }
 export async function ownedAttempt(userId:string,reference:string):Promise<LinkAttempt> {
  const {data,error}=await db.from('card_link_attempts').select('*').eq('reference',reference).eq('user_id',userId).maybeSingle();
  dbFailure(error);if(!data) throw notFound('Card-link request not found.');return data as LinkAttempt;
 }
 export async function listCards(userId:string) {
- const mode=paystackDomain();
- const cards=await db.from('linked_cards').select(PUBLIC_CARD_FIELDS).eq('user_id',userId).eq('domain',mode).is('removed_at',null).order('created_at',{ascending:false}).limit(50);
+ const mode=paymentMode(),provider=paymentProvider();
+ const cards=await db.from('linked_cards').select(PUBLIC_CARD_FIELDS).eq('user_id',userId).eq('domain',mode).eq('provider',provider).is('removed_at',null).order('created_at',{ascending:false}).limit(50);
  dbFailure(cards.error);
- const attempts=await db.from('card_link_attempts').select('reference,status,refund_status,card_id,created_at').eq('user_id',userId).eq('domain',mode).order('created_at',{ascending:false}).limit(20);
+ const attempts=await db.from('card_link_attempts').select('reference,provider,amount_minor,status,refund_status,card_id,created_at').eq('user_id',userId).eq('domain',mode).eq('provider',provider).order('created_at',{ascending:false}).limit(20);
  dbFailure(attempts.error);
- return {enabled:cardLinkEnabled(),amountMinor:CARD_LINK_AMOUNT,currency:'NGN',paymentMode:mode,testMode:mode==='test',cards:cards.data??[],attempts:(attempts.data??[]).map(a=>publicAttempt(a as LinkAttempt))};
+ return {provider,enabled:paymentEnabled(),amountMinor:verificationAmount(),currency:'NGN',paymentMode:mode,testMode:mode==='test',cards:cards.data??[],attempts:(attempts.data??[]).map(a=>publicAttempt(a as LinkAttempt))};
 }
-export async function initializeCardLink(userId:string,email:string,requestId:string,expectedMode:'test'|'live') {
- if(expectedMode!==paystackDomain())throw new AppError(409,'payment_mode_changed','Payment mode changed. Review the updated payment notice and agree again.');
- requirePaystack();
- let result=await db.from('card_link_attempts').select('*').eq('user_id',userId).eq('request_id',requestId).maybeSingle();
+export async function initializeCardLink(userId:string,email:string,requestId:string,expectedMode:'test'|'live',expectedProvider?:PaymentProvider) {
+ assertPaymentSelection(expectedMode,expectedProvider);
+ requirePayment();
+ let result=await db.from('card_link_attempts').select('*').eq('user_id',userId).eq('request_id',requestId).eq('provider',paymentProvider()).eq('domain',paymentMode()).maybeSingle();
  dbFailure(result.error);
  if(!result.data){
-  result=await db.from('card_link_attempts').insert({user_id:userId,email:email.toLowerCase(),request_id:requestId,reference:'pbp_card_'+randomUUID().replaceAll('-',''),domain:paystackDomain()}).select('*').single();
+  result=await db.from('card_link_attempts').insert({user_id:userId,email:email.toLowerCase(),request_id:requestId,reference:'pbp_card_'+randomUUID().replaceAll('-',''),domain:paymentMode(),provider:paymentProvider(),amount_minor:verificationAmount()}).select('*').single();
   if(result.error?.code==='23505'){
-   const existing=await db.from('card_link_attempts').select('*').eq('user_id',userId).eq('domain',paystackDomain()).or(`request_id.eq.${requestId},status.in.(initializing,pending)`).order('created_at',{ascending:false}).limit(1).maybeSingle();
+   const existing=await db.from('card_link_attempts').select('*').eq('user_id',userId).eq('domain',paymentMode()).eq('provider',paymentProvider()).or(`request_id.eq.${requestId},status.in.(initializing,pending)`).order('created_at',{ascending:false}).limit(1).maybeSingle();
    result=existing as typeof result;
   }
   dbFailure(result.error);
  }
  const attempt=result.data as LinkAttempt|null;
  if(!attempt) throw new AppError(409,'card_link_busy','A card-link request is already in progress. Check its status.');
- if(attempt.domain!==paystackDomain()) throw new AppError(409,'card_mode_changed','This request belongs to another payment environment. Please contact support.');
- if(attempt.checkout_url&&attempt.status==='pending') return {...publicAttempt(attempt),checkoutUrl:checkoutUrl(attempt.checkout_url)};
+ if(attempt.domain!==paymentMode()||(attempt.provider??'paystack')!==paymentProvider()) throw new AppError(409,'card_mode_changed','This request belongs to another payment environment. Please contact support.');
+ const gateway=paymentGateway(savedPaymentContext(attempt));
+ if(attempt.checkout_url&&attempt.status==='pending') return {...publicAttempt(attempt),checkoutUrl:gateway.checkoutUrl(attempt.checkout_url)};
  if(attempt.status!=='initializing') return {...publicAttempt(attempt),checkoutUrl:null};
  const claimed=await db.from('card_link_attempts').update({init_started_at:new Date().toISOString()}).eq('id',attempt.id).is('init_started_at',null).select('id');
  dbFailure(claimed.error);
  if(!claimed.data?.length) throw new AppError(409,'card_link_busy','Checkout is being prepared. Please check again shortly.');
  try {
-  const init=await paystack('/transaction/initialize',{email:attempt.email,amount:String(CARD_LINK_AMOUNT),currency:'NGN',reference:attempt.reference,
+  const init=await gateway.initialize({email:attempt.email,amount:String(attempt.amount_minor??verificationAmount()),currency:'NGN',reference:attempt.reference,
    channels:['card'],callback_url:new URL('/cards',config.WALLET_BASE_URL).href,
    metadata:{purpose:'card_link',user_id:userId,request_id:attempt.request_id}});
   if(init.reference!==attempt.reference) throw new Error('Unexpected checkout reference');
-  const url=checkoutUrl(init.authorization_url);
+  const url=gateway.checkoutUrl(init.authorization_url);
   const saved=await db.from('card_link_attempts').update({checkout_url:url,status:'pending'}).eq('id',attempt.id).eq('status','initializing');
   dbFailure(saved.error);
   return {...publicAttempt({...attempt,status:'pending'}),checkoutUrl:url};
@@ -70,26 +72,28 @@ export async function initializeCardLink(userId:string,email:string,requestId:st
 }
 /** Verify the transaction binding before any card is accepted or refund requested. */
 export function verifiedPayment(a:LinkAttempt,t:any):boolean {
- return t?.status==='success' && t.reference===a.reference && t.domain===a.domain && t.amount===CARD_LINK_AMOUNT && t.currency==='NGN' &&
+ return t?.status==='success' && t.reference===a.reference && t.domain===a.domain && t.amount===(a.amount_minor??verificationAmount(a.provider??'paystack')) && t.currency==='NGN' &&
   typeof t.customer?.email==='string' && t.customer.email.toLowerCase()===a.email.toLowerCase() &&
   t.metadata?.purpose==='card_link' && t.metadata?.user_id===a.user_id && t.metadata?.request_id===a.request_id &&
   (typeof t.id==='number' && Number.isSafeInteger(t.id) && t.id>0);
 }
 export function verifiedCard(a:LinkAttempt,t:any):Record<string,string>|null {
  const c=t.authorization;
- if(t.channel!=='card'||c?.channel!=='card'||c.reusable!==true||typeof c.authorization_code!=='string'||!/^AUTH_[A-Za-z0-9]+$/.test(c.authorization_code)||
-  c.authorization_code.length>256||typeof c.signature!=='string'||c.signature.length<4||c.signature.length>256||
+ const flutterwave=(a.provider??'paystack')==='flutterwave';
+ if(t.channel!=='card'||c?.channel!=='card'||c.reusable!==true||typeof c.authorization_code!=='string'||!(flutterwave?/^flw-[A-Za-z0-9_-]{8,500}$/:/^AUTH_[A-Za-z0-9]+$/).test(c.authorization_code)||
+  c.authorization_code.length>512||typeof c.signature!=='string'||c.signature.length<4||c.signature.length>512||
   typeof c.last4!=='string'||!/^\d{4}$/.test(c.last4)||typeof c.exp_month!=='string'||! /^(0[1-9]|1[0-2])$/.test(c.exp_month)||
   typeof c.exp_year!=='string'||!/^\d{4}$/.test(c.exp_year)||typeof c.bank!=='string'||!c.bank.trim()||c.bank.length>120||
   typeof c.card_type!=='string'||!/visa|mastercard|verve/i.test(c.card_type)||c.card_type.length>40) return null;
+ if(flutterwave&&(c.provider!=='flutterwave'||c.domain!==a.domain||!Number.isFinite(Date.parse(c.token_expires_at))||Date.parse(c.token_expires_at)<=Date.now()||Date.parse(c.token_expires_at)>Date.now()+366*86400000))return null;
  const now=new Date();
  if(Number(c.exp_year)<now.getUTCFullYear()||(Number(c.exp_year)===now.getUTCFullYear()&&Number(c.exp_month)<now.getUTCMonth()+1)) return null;
  return {signature_hash:cardSignature(c.signature),authorization_ciphertext:sealAuthorization(a.user_id,c,a.email),
-  bank:c.bank.trim(),brand:c.card_type.trim(),last4:c.last4,exp_month:c.exp_month,exp_year:c.exp_year};
+  bank:c.bank.trim(),brand:c.card_type.trim(),last4:c.last4,exp_month:c.exp_month,exp_year:c.exp_year,...(flutterwave?{credential_expires_at:c.token_expires_at}:{})};
 }
 function refundMatches(a:LinkAttempt,r:any):boolean {
  const transaction=typeof r?.transaction==='object'?r.transaction?.id:r?.transaction;
- return String(transaction)===a.provider_transaction_id && r.amount===CARD_LINK_AMOUNT && r.currency==='NGN' && r.domain===a.domain &&
+ return String(transaction)===a.provider_transaction_id && r.amount===(a.amount_minor??verificationAmount(a.provider??'paystack')) && r.currency==='NGN' && r.domain===a.domain &&
   (typeof r.id==='number'&&Number.isSafeInteger(r.id)&&r.id>0);
 }
 async function updateOwned(reference:string,owner:string,patch:Record<string,unknown>) {
@@ -103,9 +107,9 @@ async function reconcileRefund(a:LinkAttempt,owner:string) {
   // Commit before calling the provider. A crash/timeout must not issue a second
   // refund POST; later runs query the provider using the original transaction ID.
   await updateOwned(a.reference,owner,{refund_status:'submitting'});
-  refund=await paystack('/refund',{transaction:a.reference,amount:CARD_LINK_AMOUNT,currency:'NGN',customer_note:'PayByPalm card verification refund'});
+  refund=await paymentGateway(savedPaymentContext(a)).refund(a.reference,a.provider_transaction_id,a.amount_minor??verificationAmount(a.provider??'paystack'));
  }else{
-  const refunds=await paystack('/refund?transaction='+encodeURIComponent(a.provider_transaction_id)+'&perPage=100');
+  const refunds=await paymentGateway(savedPaymentContext(a)).refunds(a.provider_transaction_id,a.refund_id);
   if(!Array.isArray(refunds)) throw new Error('Unexpected refunds response');
   const matches=refunds.filter(r=>refundMatches(a,r));
   if(matches.length!==1){
@@ -118,16 +122,16 @@ async function reconcileRefund(a:LinkAttempt,owner:string) {
  await updateOwned(a.reference,owner,{refund_id:String(refund.id),refund_status:status});
 }
 export async function processCardLink(reference:string):Promise<void> {
- requirePaystack();const owner=randomUUID();
+ const owner=randomUUID();
  const claimed=await db.rpc('claim_card_link',{p_reference:reference,p_owner:owner});dbFailure(claimed.error);
  let a=claimed.data?.[0] as LinkAttempt|undefined;if(!a) return;
  try {
-  if(a.domain!==paystackDomain()) return;
+  requirePayment('link',savedPaymentContext(a));
   if(a.status==='initializing' && a.init_started_at && Date.parse(a.init_started_at)<Date.now()-120_000){
    await updateOwned(reference,owner,{status:'init_failed'});a={...a,status:'init_failed'};
   }
   if(['initializing','pending','init_failed','failed'].includes(a.status)){
-   const transaction=await paystack('/transaction/verify/'+encodeURIComponent(a.reference));
+   const transaction=await paymentGateway(savedPaymentContext(a)).verify(a.reference);
    if(transaction.status==='failed'){await updateOwned(reference,owner,{status:'failed'});return;}
    if(transaction.status!=='success') return;
    if(!verifiedPayment(a,transaction)){await updateOwned(reference,owner,{status:'invalid',refund_status:'manual_review'});return;}
@@ -142,27 +146,29 @@ export async function processCardLink(reference:string):Promise<void> {
   await updateOwned(reference,owner,{lease_until:null,lease_owner:null,next_check_at:new Date(Date.now()+60_000).toISOString()});
  }
 }
-export async function wakeCardLink(reference:string):Promise<void> {
- const result=await db.from('card_link_attempts').update({next_check_at:new Date().toISOString()}).eq('reference',reference);
+export async function wakeCardLink(reference:string,provider:PaymentProvider='paystack'):Promise<void> {
+ const result=await db.from('card_link_attempts').update({next_check_at:new Date().toISOString()}).eq('reference',reference).eq('provider',provider);
  dbFailure(result.error);
 }
 let working=false;
 export async function reconcileCardLinks():Promise<void> {
- if(working||!cardLinkEnabled())return;working=true;
+ if(working||!recoveryContexts().length)return;working=true;
  try{
-  const rows=await db.from('card_link_attempts').select('reference').eq('domain',paystackDomain()).or('status.in.(initializing,pending,init_failed,failed),and(status.in.(verified,unsupported),refund_status.neq.processed)').lte('next_check_at',new Date().toISOString()).order('next_check_at').limit(20);
+  for(const ctx of recoveryContexts()){
+  const rows=await db.from('card_link_attempts').select('reference').eq('domain',ctx.mode).eq('provider',ctx.provider).or('status.in.(initializing,pending,init_failed,failed),and(status.in.(verified,unsupported),refund_status.neq.processed)').lte('next_check_at',new Date().toISOString()).order('next_check_at').limit(20);
   dbFailure(rows.error);
   for(const row of rows.data??[]){try{await processCardLink(row.reference);}catch{logger.warn({component:'card-link'},'Card linking needs reconciliation; no provider payload logged');}}
+  }
  }catch{logger.warn({component:'card-link'},'Card-link reconciliation unavailable; check migration and provider configuration');}
  finally{working=false;}
 }
 export function startCardReconciliation():()=>void {
- if(!cardLinkEnabled())return ()=>{};
+ if(!recoveryContexts().length)return ()=>{};
  void reconcileCardLinks();const timer=setInterval(()=>void reconcileCardLinks(),30_000);timer.unref();return ()=>clearInterval(timer);
 }
-export async function editCard(userId:string,id:string,action:string,expectedMode:'test'|'live') {
- if(expectedMode!==paystackDomain())throw new AppError(409,'payment_mode_changed','Payment mode changed. Reload your cards and try again.');
- const owned=await db.from('linked_cards').select('id').eq('id',id).eq('user_id',userId).eq('domain',paystackDomain()).is('removed_at',null).maybeSingle();
+export async function editCard(userId:string,id:string,action:string,expectedMode:'test'|'live',expectedProvider?:PaymentProvider) {
+ assertPaymentSelection(expectedMode,expectedProvider);
+ const owned=await db.from('linked_cards').select('id').eq('id',id).eq('user_id',userId).eq('domain',paymentMode()).eq('provider',paymentProvider()).is('removed_at',null).maybeSingle();
  dbFailure(owned.error);if(!owned.data)throw notFound('Card not found in this payment mode.');
  const result=await db.rpc('edit_linked_card',{p_user:userId,p_id:id,p_action:action});dbFailure(result.error);
  if(!result.data)throw notFound('Card not found.');

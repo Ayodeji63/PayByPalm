@@ -7,11 +7,13 @@ import {sealAccount} from '../server/paystack';
 const actor='aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',id='dddddddd-dddd-4ddd-dddd-dddddddddddd';
 const config=configSchema.parse({NODE_ENV:'test',SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'fixture',SUPABASE_SERVICE_ROLE_KEY:'fixture',ADMIN_USER_IDS:actor,SESSION_ENCRYPTION_KEY:'a'.repeat(64),PAYMENT_API_BASE_URL:'https://payments.example.test',PAYSTACK_TEST_SECRET_KEY:'sk_test_fixture',PAYSTACK_LIVE_SECRET_KEY:'sk_live_fixture'});
 const stamp='2026-10-19T00:00:00Z',bank={code:'058',name:'Guaranty Trust Bank',active:true,currency:'NGN'};
+let backendProvider:'paystack'|'flutterwave'='paystack';
 let backendMode:'test'|'live'='test',backendFailure:string|null=null,flipAfterClaim=false,flipAfterPost=false,flipAfterResolve=false;
 let setup:any,merchant:any,providerRecords:any[],failPost:string|null,failComplete:boolean,failFetch:boolean,wrongResult:boolean,adminAllowed:boolean;
 const nativeFetch=globalThis.fetch,providerCalls:Array<{path:string;method:string;body:any;authorization:string}>=[];
 const rpc=vi.fn(async(name:string,args:any)=>{
  if(name==='consume_api_budget')return {data:0,error:null};
+ if(name==='admin_set_flutterwave_subaccount'){merchant={...merchant,[args.p_domain==='live'?'flutterwave_subaccount':'flutterwave_test_subaccount']:args.p_code,updated_at:new Date().toISOString()};return {data:merchant,error:null};}
  if(name==='admin_begin_payout'){
   if(setup&&setup.status!=='rejected')return {data:{claimed:false,setup:{...setup}},error:null};
   setup={merchant_id:id,domain:args.p_domain,request_id:args.p_request,fingerprint:args.p_fingerprint,bank_code:args.p_bank_code,bank_name:args.p_bank_name,account_name:args.p_account_name,account_last4:args.p_last4,percentage_charge:args.p_fee,status:'submitting',subaccount_code:null};
@@ -49,7 +51,7 @@ beforeAll(async()=>{
 });
 afterAll(async()=>{vi.unstubAllGlobals();server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));});
 beforeEach(()=>{
- backendMode='test';backendFailure=null;flipAfterClaim=false;flipAfterPost=false;flipAfterResolve=false;
+ backendProvider='paystack';backendMode='test';backendFailure=null;flipAfterClaim=false;flipAfterPost=false;flipAfterResolve=false;
  config.PAYSTACK_TEST_SECRET_KEY='sk_test_fixture';config.PAYSTACK_LIVE_SECRET_KEY='sk_live_fixture';config.PAYSTACK_SECRET_KEY=undefined;
  setup=null;merchant={id,name:'Ayo Stores',paystack_subaccount:'ACCT_existingLive',paystack_test_subaccount:null,updated_at:stamp};
  providerRecords=[];providerCalls.length=0;failPost=null;failComplete=false;failFetch=false;wrongResult=false;adminAllowed=true;rpc.mockClear();
@@ -58,7 +60,7 @@ beforeEach(()=>{
   if(new URL(url).origin===config.PAYMENT_API_BASE_URL){
    expect(path).toBe('/payment-settings');expect(options.redirect).toBe('error');expect(options.cache).toBe('no-store');expect(options.headers.Authorization).toBeUndefined();
    if(backendFailure==='offline')throw Error('Private backend details');
-   return new Response(JSON.stringify(backendFailure==='invalid'?{paymentMode:'unknown'}:{paymentMode:backendMode}),{status:backendFailure==='http'?503:200});
+   return new Response(JSON.stringify(backendFailure==='invalid'?{paymentMode:'unknown'}:{paymentMode:backendMode,paymentProvider:backendProvider}),{status:backendFailure==='http'?503:200});
   }
   providerCalls.push({path,method:options.method,body,authorization:options.headers.Authorization});
   expect(new URL(url).origin).toBe('https://api.paystack.co');expect(options.redirect).toBe('error');
@@ -78,15 +80,35 @@ beforeEach(()=>{
 async function verification(){const r=await send('/payouts/verify',{merchantId:id,bankCode:'058',accountNumber:'0123456789'});expect(r.status).toBe(200);return r.json();}
 const creation=(token:string,extra={})=>({verificationToken:token,percentageCharge:0,expected:stamp,...extra});
 describe('admin bank payout onboarding',()=>{
+ it('binds Flutterwave recipient updates to the authenticated admin and selected mode',async()=>{
+  backendProvider='flutterwave';
+  const r=await send('/merchants/'+id+'/payout/flutterwave',{mode:'test',code:'RS_fixture',expected:stamp});
+  expect(r.status).toBe(200);expect(rpc).toHaveBeenCalledWith('admin_set_flutterwave_subaccount',{p_actor:actor,p_merchant:id,p_domain:'test',p_code:'RS_fixture',p_expected:stamp});
+  expect((await r.json()).merchant.flutterwave_test_subaccount).toBe('RS_fixture');expect(providerCalls).toHaveLength(0);
+ });
+ it.each([{mode:'live'},{code:'ACCT_wrong'},{actor:'forged'}])('rejects Flutterwave setup mismatch or mass assignment %j',async patch=>{
+  backendProvider='flutterwave';const r=await send('/merchants/'+id+'/payout/flutterwave',{mode:'test',code:'RS_fixture',expected:stamp,...patch});expect([400,409]).toContain(r.status);expect(rpc).not.toHaveBeenCalledWith('admin_set_flutterwave_subaccount',expect.anything());
+ });
+ it('exposes Flutterwave selection without calling Paystack or leaking its keys',async()=>{
+  backendProvider='flutterwave';merchant.flutterwave_test_subaccount='RS_fixture';
+  expect(await (await send('/merchants/'+id+'/payout')).json()).toMatchObject({provider:'flutterwave',mode:'test',subaccountCode:'RS_fixture',setup:null});
+  expect((await send('/payouts/verify',{merchantId:id,bankCode:'058',accountNumber:'0123456789'})).status).toBe(409);
+  expect(providerCalls).toHaveLength(0);
+ });
+ it('refuses Flutterwave recipient updates while Paystack is selected',async()=>{
+  expect((await send('/merchants/'+id+'/payout/flutterwave',{mode:'test',code:'RS_fixture',expected:stamp})).status).toBe(409);
+  expect(rpc).not.toHaveBeenCalledWith('admin_set_flutterwave_subaccount',expect.anything());
+ });
+
  it('follows backend test/live/test changes without restarting the admin and selects mode-specific destinations',async()=>{
-  expect(await (await send('/payouts/settings')).json()).toEqual({mode:'test',enabled:true});
+  expect(await (await send('/payouts/settings')).json()).toEqual({provider:'paystack',mode:'test',enabled:true});
   expect((await (await send(`/merchants/${id}/payout`)).json()).subaccountCode).toBeNull();
   backendMode='live';
-  expect(await (await send('/payouts/settings')).json()).toEqual({mode:'live',enabled:true});
+  expect(await (await send('/payouts/settings')).json()).toEqual({provider:'paystack',mode:'live',enabled:true});
   expect((await (await send(`/merchants/${id}/payout`)).json()).subaccountCode).toBe('ACCT_existingLive');
   const v=await verification();expect(v.mode).toBe('live');
   expect(providerCalls.filter(c=>c.path.startsWith('/bank')).every(c=>c.authorization==='Bearer sk_live_fixture')).toBe(true);
-  backendMode='test';expect(await (await send('/payouts/settings')).json()).toEqual({mode:'test',enabled:true});
+  backendMode='test';expect(await (await send('/payouts/settings')).json()).toEqual({provider:'paystack',mode:'test',enabled:true});
  });
  it('creates a live payout using only the live key and retains the sandbox destination',async()=>{
   backendMode='live';merchant.paystack_subaccount=null;merchant.paystack_test_subaccount='ACCT_existingTest';
@@ -96,7 +118,7 @@ describe('admin bank payout onboarding',()=>{
  });
  it('never falls back to a test key when the backend is live',async()=>{
   backendMode='live';config.PAYSTACK_LIVE_SECRET_KEY=undefined;config.PAYSTACK_SECRET_KEY='sk_test_legacy';
-  expect(await (await send('/payouts/settings')).json()).toEqual({mode:'live',enabled:false});
+  expect(await (await send('/payouts/settings')).json()).toEqual({provider:'paystack',mode:'live',enabled:false});
   expect((await send('/payouts/verify',{merchantId:id,bankCode:'058',accountNumber:'0123456789'})).status).toBe(503);
   expect(providerCalls).toHaveLength(0);
  });
@@ -104,7 +126,7 @@ describe('admin bank payout onboarding',()=>{
   config.PAYSTACK_TEST_SECRET_KEY=undefined;config.PAYSTACK_SECRET_KEY='sk_test_legacy';await verification();
   expect(providerCalls.every(c=>c.authorization==='Bearer sk_test_legacy')).toBe(true);
   backendMode='live';config.PAYSTACK_LIVE_SECRET_KEY=undefined;
-  expect(await (await send('/payouts/settings')).json()).toEqual({mode:'live',enabled:false});
+  expect(await (await send('/payouts/settings')).json()).toEqual({provider:'paystack',mode:'live',enabled:false});
  });
  it.each(['offline','invalid','http'])('fails closed if the backend mode is %s',async failure=>{
   backendFailure=failure;const r=await send('/payouts/settings');expect(r.status).toBe(503);

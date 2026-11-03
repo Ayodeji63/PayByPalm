@@ -28,6 +28,7 @@ export interface CardTheme {
 }
 
 export interface LinkedCard {
+  paymentProvider?: 'paystack' | 'flutterwave';
   paymentMode: 'test' | 'live';
   id: string;
   name: string;

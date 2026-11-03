@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test:retake:browser": "node tests/capture-retry-browser.mjs",
+    "test:payments:browser": "node tests/payment-providers-browser.mjs",
     "test:auth:browser": "node tests/auth-return-browser.mjs",
     "test:feedback:browser": "node tests/feedback-browser.mjs",
     "guard:secrets": "node scripts/guard-secrets.mjs",

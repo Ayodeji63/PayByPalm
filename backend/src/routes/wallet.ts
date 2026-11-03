@@ -16,7 +16,7 @@ import { getProfile } from '../db/queries.js';
 import { requireUser, userAuth } from '../middleware/userAuth.js';
 import { userRateLimit } from '../middleware/abuseLimits.js';
 import { validate } from '../middleware/validate.js';
-import {paystackDomain} from '../services/paystack.js';
+import {paymentMode as paystackDomain,paymentProvider} from '../services/paymentGateway.js';
 
 export const walletRouter: Router = Router();
 
@@ -43,6 +43,7 @@ walletRouter.get('/me', userAuth, userRateLimit('user-read', 240, 60), async (re
     cardBalanceAvailable: false,
     paymentSource: 'linked_card',
     paymentMode: paystackDomain(),
+    paymentProvider: paymentProvider(),
     currency: 'NGN',
     createdAt: profile.created_at,
   });

@@ -3,17 +3,18 @@ import {api} from './api';
 import type {Merchant} from './types';
 
 type Setup={status:string;mode:'test'|'live';bankName:string;accountLast4:string;accountName:string;percentageCharge:number;subaccountCode:string|null;verified:boolean|null;active:boolean|null};
-type Info={mode:'test'|'live';enabled:boolean;setup:Setup|null;subaccountCode:string|null};
+type Info={provider?:'paystack'|'flutterwave';mode:'test'|'live';enabled:boolean;setup:Setup|null;subaccountCode:string|null};
 type Verification={mode:'test'|'live';accountName:string;bankName:string;accountLast4:string;verificationToken:string;expiresAt:string};
 export function PayoutSetup({merchant,onSaved}:{merchant:Merchant;onSaved:(m:Merchant)=>void}){
  const [info,setInfo]=useState<Info|null>(null),[banks,setBanks]=useState<Array<{code:string;name:string}>>([]);
+ const [flutterwaveCode,setFlutterwaveCode]=useState('');
  const [bank,setBank]=useState(''),[account,setAccount]=useState(''),[fee,setFee]=useState('0');
  const [verified,setVerified]=useState<Verification|null>(null),[confirmed,setConfirmed]=useState(false);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const revision=useRef(0),mounted=useRef(true),loading=useRef(0),busyRef=useRef(false),currentInfo=useRef<Info|null>(null);
  function markBusy(value:boolean){busyRef.current=value;setBusy(value);}
  function acceptInfo(next:Info){
-  if(currentInfo.current&&currentInfo.current.mode!==next.mode){
+  if(currentInfo.current&&(currentInfo.current.mode!==next.mode||currentInfo.current.provider!==next.provider)){
    invalidate();setBank('');setBanks([]);
    setNotice(`Payment backend switched to ${next.mode} mode. Verify the bank account again before creating a payout account.`);
   }
@@ -25,7 +26,7 @@ export function PayoutSetup({merchant,onSaved}:{merchant:Merchant;onSaved:(m:Mer
   const next=await api<Info>(`/merchants/${merchant.id}/payout`);
   if(!mounted.current||request!==loading.current)return null;
   acceptInfo(next);setError('');
-  if(next.enabled&&!next.subaccountCode&&!['submitting','needs_review'].includes(next.setup?.status||'')){
+  if(next.provider!=='flutterwave'&&next.enabled&&!next.subaccountCode&&!['submitting','needs_review'].includes(next.setup?.status||'')){
    const list=await api<{mode:Info['mode'];banks:Array<{code:string;name:string}>}>('/payouts/banks');
    if(!mounted.current||request!==loading.current)return null;
    if(list.mode!==next.mode)throw new Error('Payment mode changed. Reload payout setup and verify the bank account again.');
@@ -90,6 +91,18 @@ export function PayoutSetup({merchant,onSaved}:{merchant:Merchant;onSaved:(m:Mer
    if(result.setup.status==='created'){setNotice('Paystack status refreshed.');onSaved(result.merchant);}
   }catch(e){if(mounted.current)setError((e as Error).message);}finally{if(mounted.current)markBusy(false);}
  }
+ async function saveFlutterwave(){
+  if(busyRef.current||!info)return;markBusy(true);setError('');setNotice('');
+  try{const r=await api<{merchant:Merchant}>(`/merchants/${merchant.id}/payout/flutterwave`,{mode:info.mode,code:flutterwaveCode,expected:merchant.updated_at});if(mounted.current){onSaved(r.merchant);setFlutterwaveCode('');await load();setNotice('Flutterwave subaccount saved. Confirm its bank details and settlement status in Flutterwave.');}}
+  catch(e){if(mounted.current)setError((e as Error).message);}finally{if(mounted.current)markBusy(false);}
+ }
+ if(info?.provider==='flutterwave')return <section className="panel form-panel payout-panel" aria-labelledby="payout-title">
+  <h2 id="payout-title">Flutterwave bank payouts · {info.mode}</h2>
+  <p>Create and verify this merchant’s NGN split-payment subaccount in the Flutterwave dashboard, then save its RS_ code here. This selects the recipient of payments. Confirm the bank details and fee split before saving.</p>
+  {info.subaccountCode&&<p>Saved subaccount: <strong className="payout-code">{info.subaccountCode}</strong></p>}
+  {error&&<p className="notice danger" role="alert">{error}</p>}{notice&&<p className="notice" role="status">{notice}</p>}
+  <form onSubmit={e=>{e.preventDefault();void saveFlutterwave();}}><label className="field"><span>{info.mode==='live'?'Live':'Test'} subaccount code</span><input value={flutterwaveCode} onChange={e=>setFlutterwaveCode(e.target.value.trim())} pattern="RS_[A-Za-z0-9]{1,100}" maxLength={103} placeholder="RS_…" required disabled={busy}/></label><button className="button" disabled={busy}>{busy?'Saving…':'Save Flutterwave subaccount'}</button></form>
+ </section>;
  const setup=info?.setup,unresolved=setup&&['submitting','needs_review'].includes(setup.status);
  return <section className="panel form-panel payout-panel" aria-labelledby="payout-title">
   <div className="panel-heading"><h2 id="payout-title">Bank payouts</h2>{info&&<span className={`badge ${info.mode==='live'?'blue':'neutral'}`}>{info.mode==='live'?'Live mode':'Test mode'}</span>}</div>

@@ -39,6 +39,7 @@ import { PalmLinkStatus } from '../components/PalmLinkStatus.js';
 // ---------------------------------------------------------------------------
 
 export interface VirtualCard {
+  paymentProvider?: 'paystack' | 'flutterwave';
   paymentMode: 'test' | 'live';
   id: string;
   name: string;
@@ -72,7 +73,7 @@ function mapCards(linked: LinkedCard[]): VirtualCard[] {
   return linked.map((c) => {
     return {
       id: c.id,
-      paymentMode: c.paymentMode,
+      paymentMode: c.paymentMode,paymentProvider:c.paymentProvider,
       name: c.name,
       bank: c.bank,
       type: `${c.bank.toUpperCase()} DEBIT`,
@@ -234,7 +235,7 @@ export default function Dashboard() {
   const handleTogglePause = async () => {
     if (!activeCard) return;
     try {
-      await editLinkedCard(activeCard.id, activeCard.isPaused ? 'resume' : 'pause', activeCard.paymentMode);
+      await editLinkedCard(activeCard.id, activeCard.isPaused ? 'resume' : 'pause', activeCard.paymentMode,activeCard.paymentProvider);
       toast.show(activeCard.isPaused ? 'Card resumed.' : 'Card paused.', 'success');
     } catch (error) { toast.show(error instanceof Error ? error.message : 'Could not update your card.', 'error'); }
     setMenuOpen(false);

@@ -23,7 +23,7 @@ import { requireUser, userAuth } from '../middleware/userAuth.js';
 import { userRateLimit, terminalRateLimit, rateLimit } from '../middleware/abuseLimits.js';
 import { palmJson, imageSchema, sdkPayloadSchema } from '../middleware/requestBody.js';
 import { validate } from '../middleware/validate.js';
-import {paystackDomain} from '../services/paystack.js';
+import {paymentMode as paystackDomain,paymentProvider} from '../services/paymentGateway.js';
 import {
   authenticateTransaction,
   authenticateSdkTransaction,
@@ -241,6 +241,7 @@ transactionsRouter.get(
 
     res.json({
       paymentMode: paystackDomain(),
+      paymentProvider: paymentProvider(),
       transactions: (data as unknown as HistoryRow[]).map(shapeHistoryRow),
       total: count ?? 0,
       limit,

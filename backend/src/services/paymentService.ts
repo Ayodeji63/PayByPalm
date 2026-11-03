@@ -14,7 +14,7 @@ import { decide, explain, rejectWithout, thresholds, type PolicyOutcome } from '
 import type { AuthedTerminal } from '../middleware/terminalAuth.js';
 import type { Logger } from '../logger.js';
 import { chargeCardPayment } from './cardPaymentService.js';
-import { requirePaystack, paystackDomain } from './paystack.js';
+import {requirePayment as requirePaystack,paymentMode as paystackDomain,paymentProvider} from './paymentGateway.js';
 import { consumePalmCapture, getActivePalmCandidates, issuePalmCapture, type CaptureSubmission, type PalmCandidate } from './palmCaptureService.js';
 import { ccnetBindings, sameBindings } from './ccnetBindings.js';
 import type { ProviderBinding } from '../palm/provider.js';
@@ -184,7 +184,7 @@ export async function authenticateSdkTransaction(
 }
 
 function requireApprovedCaptureMode(): void {
-  if (config.PAYSTACK_MODE === 'live' && !config.TENCENT_H5_IMAGE_ONLY_APPROVED) {
+  if (paystackDomain() === 'live' && !config.TENCENT_H5_IMAGE_ONLY_APPROVED) {
     throw new AppError(503, 'palm_liveness_confirmation_required', 'Tencent must confirm the capture-only liveness and multi-user comparison contract before live card payments are enabled.');
   }
 }
@@ -252,7 +252,7 @@ async function finaliseAuthentication(
   // Do not offer card confirmation when this deployment cannot charge a card.
   // Charge still checks again before claiming a payment attempt.
   requirePaystack('payment');
-  const card=await db.from('linked_cards').select('id,last4,brand').eq('user_id',profile.id).eq('domain',paystackDomain()).eq('is_default',true).eq('is_paused',false).is('removed_at',null).maybeSingle();
+  const card=await db.from('linked_cards').select('id,last4,brand').eq('user_id',profile.id).eq('domain',paystackDomain()).eq('provider',paymentProvider()).eq('is_default',true).eq('is_paused',false).is('removed_at',null).maybeSingle();
   if(card.error)throw new AppError(503,'card_payment_unavailable','Could not check the linked card. Please try again.');
   if(!card.data)return {decision:'reject',mode,score:outcome.score,reason:'no_active_card',message:'Link an active default card in your PayByPalm account first.'};
 
@@ -262,6 +262,8 @@ async function finaliseAuthentication(
       status: 'authenticated',
       authenticated_at: new Date().toISOString(),
       payment_card_id: card.data.id,
+      payment_provider: paymentProvider(),
+      payment_domain: paystackDomain(),
       matched_user_id: profile.id,
       match_score: outcome.score,
       match_mode: mode,
@@ -311,7 +313,7 @@ export async function confirmTransaction(
   if (txn.status === 'settled') return receiptFor(txn, terminal);
 
   if (txn.status === 'processing') {
-    await chargeCardPayment(txn.id,terminal.id);
+    await chargeCardPayment(txn.id,terminal.id,true);
     const current=await loadForTerminal(txn.id,terminal);
     if(current.status==='settled')return receiptFor(current,terminal);
     throw conflict(current.status==='failed'?'card_declined':'card_payment_pending',current.status==='failed'?'The card payment was declined.':'The card payment is being checked. Do not start another sale.');

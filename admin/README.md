@@ -272,7 +272,7 @@ code. Sandbox codes use a separate `paystack_test_subaccount` column.
 Configure `PAYMENT_API_BASE_URL`, `PAYSTACK_TEST_SECRET_KEY` and
 `PAYSTACK_LIVE_SECRET_KEY` once in the **admin Vercel project’s server environment**,
 then deploy the backend and admin changes. The backend exposes only its non-secret
-`paymentMode` at `/payment-settings`. The admin reads it at runtime and uses the
+`paymentMode` and `paymentProvider` at `/payment-settings`. The admin reads it at runtime and uses the
 corresponding private server key. It no longer has an independent `PAYSTACK_MODE`;
 any old admin value can be removed and is ignored. Existing `PAYSTACK_SECRET_KEY`
 remains compatible only when its prefix matches the backend's active mode. To
@@ -370,3 +370,13 @@ publish/unpublish reviewed entries on the public wallet welcome page. Customer
 edits remove publication automatically; stale moderator updates return a conflict.
 Apply migration 0030 and deploy matching backend/wallet/admin releases. See
 [FEEDBACK.md](../FEEDBACK.md) for privacy, API and release details.
+
+### Flutterwave v3 selection
+
+Apply main migration 0031 and deploy this admin alongside the updated backend and
+wallet. When the backend selects Flutterwave, Bank payouts accepts the merchant’s
+dashboard-created `RS_...` code for the current mode. This is an audited selection
+of the payout recipient; confirm the bank account and split in Flutterwave first.
+Paystack payout creation is disabled while Flutterwave is active, and existing
+Paystack codes are preserved. Flutterwave secrets belong only on the payment
+backend. See [the provider rollout guide](../backend/PAYMENT_PROVIDERS.md).

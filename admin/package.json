@@ -12,6 +12,7 @@
     "start": "tsx server/index.ts",
     "deploy:vercel": "node scripts/deploy-vercel.mjs",
     "test": "vitest run",
+    "test:payments:browser": "node tests/flutterwave-browser.mjs",
     "test:browser": "node tests/browser.mjs",
     "test:operations:browser": "node tests/operations-browser.mjs && node tests/operation-outcomes-browser.mjs && node tests/operation-pagination-browser.mjs",
     "test:database": "python3 tests/database.py",

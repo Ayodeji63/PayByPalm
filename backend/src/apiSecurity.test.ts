@@ -88,7 +88,7 @@ describe('API security boundaries', () => {
     const response=await fetch(base+'/payment-settings');
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
-    expect(await response.json()).toEqual({paymentMode:'test'});
+    expect(await response.json()).toEqual({paymentMode:'test',paymentProvider:'paystack'});
     expect(mocks.getUser).not.toHaveBeenCalled();
   });
   it('returns an unavailable card balance instead of internal funds',async()=>{

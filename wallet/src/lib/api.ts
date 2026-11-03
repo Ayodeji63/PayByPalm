@@ -251,6 +251,7 @@ export interface Me {
   balanceMinor: null;
   cardBalanceAvailable: false;
   paymentSource: 'linked_card';
+  paymentProvider?: 'paystack' | 'flutterwave';
   paymentMode?: 'test' | 'live';
   currency: string;
   createdAt: string;
@@ -273,6 +274,7 @@ export interface TransactionSummary {
 }
 
 export interface TransactionPage {
+  paymentProvider?: 'paystack' | 'flutterwave';
   paymentMode?: 'test' | 'live';
   transactions: TransactionSummary[];
   total: number;

@@ -22,6 +22,8 @@ const DIST = new URL('../dist/', import.meta.url).pathname;
 
 /** Anything matching these must never appear in a client bundle. */
 const FORBIDDEN = [
+  { name: 'Flutterwave secret key', pattern: /\bFLWSECK(?:_TEST)?-[A-Za-z0-9_-]{10,}/ },
+  { name: 'Reusable Flutterwave card token', pattern: /\bflw-[A-Za-z0-9_-]{8,}/ },
   { name: 'Paystack secret key', pattern: /\bsk_(?:live|test)_[A-Za-z0-9]{10,}/ },
   { name: 'Reusable Paystack authorization', pattern: /\bAUTH_[A-Za-z0-9]{6,}/ },
   {

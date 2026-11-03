@@ -2,7 +2,7 @@ import { useCallback,useEffect,useRef,useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
-import { loadLinkedCards,editLinkedCard,type CardsResponse,type CardLinkAttempt,type PaymentMode } from '../lib/serverCards.js';
+import { loadLinkedCards,editLinkedCard,type CardsResponse,type CardLinkAttempt } from '../lib/serverCards.js';
 import {formatNaira} from '../lib/money.js';
 import { validatedCheckoutUrl } from '../lib/paystack.js';
 import { Button,PageHeader,Skeleton } from '../components/ui.js';
@@ -14,10 +14,12 @@ function refundText(attempt:CardLinkAttempt):string {
  if(attempt.status==='initializing')return 'Checkout is being prepared. Check again before starting another request.';
  if(attempt.status==='init_failed')return 'Checkout could not be opened. Check your payment status before trying again.';
  if(attempt.status==='pending')return 'Waiting for payment confirmation. If you paid, check the status below.';
+ const amount=formatNaira(attempt.amountMinor??(attempt.provider==='flutterwave'?10000:5000));
+ const provider=attempt.provider==='flutterwave'?'Flutterwave':'Paystack';
  const prefix=attempt.status==='unsupported'?'This card could not be saved. ':'Card verified. ';
- if(attempt.refundStatus==='processed')return prefix+'₦50 refund processed by Paystack; your bank may take time to display it.';
- if(['manual_review','failed'].includes(attempt.refundStatus))return prefix+'The ₦50 refund needs attention. Contact support with this reference.';
- return prefix+'The ₦50 refund is being processed. It has not been confirmed complete yet.';
+ if(attempt.refundStatus==='processed')return prefix+`${amount} refund processed by ${provider}; your bank may take time to display it.`;
+ if(['manual_review','failed'].includes(attempt.refundStatus))return prefix+`The ${amount} refund needs attention. Contact support with this reference.`;
+ return prefix+`The ${amount} refund is being processed. It has not been confirmed complete yet.`;
 }
 export default function Cards() {
  const {me}=useAuth();
@@ -26,7 +28,7 @@ export default function Cards() {
  const [loadError,setLoadError]=useState('');const [loading,setLoading]=useState(true);
  const [error,setError]=useState('');const [notice,setNotice]=useState('');const [busy,setBusy]=useState(false);
  const [consent,setConsent]=useState(false);const requestId=useRef<string|null>(null);
- const mode=useRef<PaymentMode|null>(null);
+ const mode=useRef<string|null>(null);
  const checked=useRef<string|null>(null);
  const loadVersion=useRef(0);
  const reload=useCallback(async()=>{
@@ -34,8 +36,8 @@ export default function Cards() {
   try{
    const next=await loadLinkedCards();
    if(version===loadVersion.current){
-    if(mode.current&&mode.current!==next.paymentMode){setConsent(false);requestId.current=null;setNotice(`Payment mode changed to ${next.paymentMode}. Review the payment notice and agree again.`);}
-    mode.current=next.paymentMode;setData(next);setLoadError('');
+    if(mode.current&&mode.current!==`${next.provider}:${next.paymentMode}`){setConsent(false);requestId.current=null;setNotice(`Payments switched to ${next.provider==='flutterwave'?'Flutterwave':'Paystack'} (${next.paymentMode}). Review the payment notice and agree again.`);}
+    mode.current=`${next.provider}:${next.paymentMode}`;setData(next);setLoadError('');
    }
    return next;
   }catch(failure){
@@ -43,7 +45,7 @@ export default function Cards() {
    throw failure;
   }finally{if(version===loadVersion.current)setLoading(false);}
  },[]);
- const reference=searchParams.get('reference')??searchParams.get('trxref');
+ const reference=searchParams.get('reference')??searchParams.get('trxref')??searchParams.get('tx_ref');
  useEffect(()=>{
   setData(null);setLoadError('');setConsent(false);requestId.current=null;mode.current=null;
   const load=()=>{void reload().catch(()=>{});};
@@ -69,13 +71,13 @@ export default function Cards() {
  },[reference,check,setSearchParams]);
  async function link(){
   if(busy||!consent||!data?.enabled)return;setBusy(true);setError('');setNotice('Opening secure checkout…');
-  const expectedMode=data.paymentMode;
+  const expectedMode=data.paymentMode,expectedProvider=data.provider??'paystack';
   try{
    const latest=await reload();
-   if(latest.paymentMode!==expectedMode||!latest.enabled){setBusy(false);return;}
+   if(latest.paymentMode!==expectedMode||latest.provider!==expectedProvider||!latest.enabled){setBusy(false);return;}
    requestId.current??=crypto.randomUUID();
-   const result=await api.post<{checkoutUrl:string|null;reference:string}>('/cards/link',{requestId:requestId.current,consent:true,paymentMode:expectedMode});
-   if(result.checkoutUrl)window.location.assign(validatedCheckoutUrl(result.checkoutUrl));
+   const result=await api.post<{checkoutUrl:string|null;reference:string}>('/cards/link',{requestId:requestId.current,consent:true,paymentMode:expectedMode,paymentProvider:expectedProvider});
+   if(result.checkoutUrl)window.location.assign(validatedCheckoutUrl(result.checkoutUrl,expectedProvider));
    else {requestId.current=null;await reload();setNotice('This request already has a result. Review its status below.');setBusy(false);}
   }catch(failure){setConsent(false);setNotice('');setError(failure instanceof Error?failure.message:'Could not open checkout.');setBusy(false);await reload().catch(()=>{});}
  }
@@ -83,18 +85,19 @@ export default function Cards() {
   if(busy||!data)return;
   if(action==='remove'&&!window.confirm('Remove this saved card from PayByPalm? Any verification refund will continue.'))return;
   setBusy(true);setError('');
-  try{await editLinkedCard(id,action,data.paymentMode);await reload();setNotice(action==='remove'?'Card removed.':'Card updated.');}
+  try{await editLinkedCard(id,action,data.paymentMode,data.provider);await reload();setNotice(action==='remove'?'Card removed.':'Card updated.');}
   catch(failure){await reload().catch(()=>{});setError(failure instanceof Error?failure.message:'Could not update your card.');}
   finally{setBusy(false);}
  }
+ const provider=data?.provider==='flutterwave'?'Flutterwave':'Paystack';
  return <PageTransition><main className="mx-auto max-w-md px-5 pb-28 pt-6">
   <PageHeader title="Payment cards" />
-  <p className="mt-3 text-sm text-gray-600">Save a card through Paystack’s secure checkout. Your card number and CVV never pass through PayByPalm.</p>
+  <p className="mt-3 text-sm text-gray-600">Save a card through {provider}’s secure checkout. Your card number and CVV never pass through PayByPalm.</p>
   {(loadError||error)&&<p role="alert" className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-800">{loadError||error}</p>}
   {reference&&error&&/^pbp_card_[a-f0-9]{32}$/.test(reference)&&<button type="button" className="mt-2 min-h-11 font-semibold text-blue-700" disabled={busy} onClick={()=>void check(reference)}>Retry card verification</button>}
   {notice&&<p role="status" className="mt-4 text-sm text-blue-800">{notice}</p>}
   {!data?<div className="mt-6">{loading&&<Skeleton className="h-32 w-full" />}<button type="button" className="mt-4 min-h-11 font-semibold text-blue-700" disabled={loading} onClick={()=>void reload().catch(()=>{})}>{loading?'Loading cards…':'Reload cards'}</button></div>:<>
-   <p role="status" className={`mt-4 rounded-xl p-3 text-sm ${data.paymentMode==='test'?'bg-amber-50 text-amber-900':'bg-blue-50 text-blue-900'}`}>{data.paymentMode==='test'?'Test mode: use Paystack test cards. No real payment is collected.':'Live mode: use a real card. Payments charge real money.'}</p>
+   <p role="status" className={`mt-4 rounded-xl p-3 text-sm ${data.paymentMode==='test'?'bg-amber-50 text-amber-900':'bg-blue-50 text-blue-900'}`}>{data.paymentMode==='test'?`Test mode: use ${provider} test cards. No real payment is collected.`:'Live mode: use a real card. Payments charge real money.'}</p>
    <section className="mt-7" aria-labelledby="saved-cards-title">
     <h2 id="saved-cards-title" className="text-lg font-bold">Your saved cards</h2>
     {!data.cards.length?<p className="mt-3 text-sm text-gray-600">You haven’t linked a card in {data.paymentMode} mode yet.</p>:<ul className="mt-3 space-y-4">{data.cards.map(card=><li key={card.id} className="rounded-2xl border border-gray-200 bg-white p-4">
@@ -107,7 +110,7 @@ export default function Cards() {
     <h2 id="link-card-title" className="text-lg font-bold">Link a card</h2>
     <p className="mt-2 text-sm text-gray-700">A {formatNaira(data.amountMinor)} verification payment confirms your card. We request a full refund after verifying a successful payment, even if the card cannot be saved. Refund status appears below.</p>
     <p className="mt-3 text-sm text-gray-600">Payments debit your default linked card after palm verification and confirmation. Card balances are unavailable; check your bank app.</p>
-    {data.enabled?<><label className="mt-4 flex items-start gap-3 text-sm"><input className="mt-1 h-5 w-5 shrink-0" type="checkbox" checked={consent} onChange={event=>setConsent(event.target.checked)} /><span>I agree to the {formatNaira(data.amountMinor)} {data.paymentMode==='test'?'test':'real'} verification payment and saving this card for future payments I authorize.</span></label><div className="mt-5"><Button full disabled={busy||!consent} loading={busy} onClick={()=>void link()}>Continue to Paystack · {formatNaira(data.amountMinor)}</Button></div></>:<p className="mt-4 text-sm font-semibold text-blue-800">Payment setup is not complete. You can view existing cards; new cards cannot be linked yet.</p>}
+    {data.enabled?<><label className="mt-4 flex items-start gap-3 text-sm"><input className="mt-1 h-5 w-5 shrink-0" type="checkbox" checked={consent} onChange={event=>setConsent(event.target.checked)} /><span>I agree to the {formatNaira(data.amountMinor)} {data.paymentMode==='test'?'test':'real'} verification payment and saving this card for future payments I authorize.</span></label><div className="mt-5"><Button full disabled={busy||!consent} loading={busy} onClick={()=>void link()}>Continue to {provider} · {formatNaira(data.amountMinor)}</Button></div></>:<p className="mt-4 text-sm font-semibold text-blue-800">Payment setup is not complete. You can view existing cards; new cards cannot be linked yet.</p>}
    </section>
    {!!data.attempts.length&&<section className="mt-8" aria-labelledby="link-history-title"><h2 id="link-history-title" className="text-lg font-bold">Verification payments & refunds</h2><ul className="mt-3 divide-y divide-gray-200">{data.attempts.map(attempt=><li key={attempt.reference} className="py-4"><p className="text-sm text-gray-700">{refundText(attempt)}</p><p className="mt-2 break-all text-xs text-gray-500">Reference: {attempt.reference}</p>{attempt.refundStatus!=='processed'&&<button className="mt-2 min-h-11 text-sm font-semibold text-blue-700" disabled={busy} onClick={()=>void check(attempt.reference)}>Check status</button>}</li>)}</ul></section>}
   </>}

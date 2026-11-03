@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { configSchema } from './config.js';
 
 describe('production payment configuration', () => {
+  it('validates payment selection and Flutterwave backend credentials',()=>{
+    const env={...process.env,PAYMENT_PROVIDER:'flutterwave',PAYMENT_MODE:'test',FLUTTERWAVE_TEST_SECRET_KEY:'FLWSECK_TEST-fixture-X'};
+    const result=configSchema.safeParse(env);expect(result.success).toBe(true);
+    if(result.success)expect(result.data.FLUTTERWAVE_NOAUTH_APPROVED).toBe(false);
+    for(const patch of [{PAYMENT_PROVIDER:'unknown'},{PAYMENT_MODE:'sandbox'},{FLUTTERWAVE_TEST_SECRET_KEY:'FLWSECK-live-X'},{FLUTTERWAVE_LIVE_SECRET_KEY:'FLWSECK_TEST-fixture-X'},{FLUTTERWAVE_WEBHOOK_HASH:'short'},{FLUTTERWAVE_NOAUTH_APPROVED:'yes'},{CARD_TOKEN_ENCRYPTION_KEY:undefined}])expect(configSchema.safeParse({...env,...patch}).success).toBe(false);
+  });
   it('defaults to the original camera and requires an explicit H5 opt-in', () => {
     const env = {...process.env, TENCENT_CAPTURE_MODE: undefined};
     const original = configSchema.safeParse(env);

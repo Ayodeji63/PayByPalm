@@ -1,6 +1,6 @@
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 const state=vi.hoisted(()=>({attempt:null as any,cards:[] as any[],fetch:vi.fn(),rpc:vi.fn()}));
-vi.mock('../config.js',()=>({config:{PAYSTACK_SECRET_KEY:'sk_test_fixture',CARD_TOKEN_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64'),WALLET_BASE_URL:'https://wallet.example.test'}}));
+vi.mock('../config.js',()=>({config:{PAYSTACK_SECRET_KEY:'sk_test_fixture',FLUTTERWAVE_TEST_SECRET_KEY:'FLWSECK_TEST-fixture',CARD_TOKEN_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64'),WALLET_BASE_URL:'https://wallet.example.test'}}));
 vi.mock('../logger.js',()=>({logger:{info:vi.fn(),warn:vi.fn()}}));
 vi.mock('../db/client.js',()=>({db:{
  rpc:state.rpc,
@@ -11,7 +11,7 @@ vi.mock('../db/client.js',()=>({db:{
    if(patch)Object.assign(state.attempt,patch);
    return {data:single?{...state.attempt}:[{...state.attempt}],error:null};
   };
-  const q:any={select:()=>q,eq:(k:string,v:unknown)=>{filters.push([k,v]);return q;},is:(k:string,v:unknown)=>{filters.push([k,v]);return q;},update:(p:any)=>{patch=p;return q;},single:async()=>run(true),maybeSingle:async()=>run(true),then:(resolve:any,reject:any)=>Promise.resolve(run()).then(resolve,reject)};
+  const q:any={insert:(value:any)=>{state.attempt={...value,id:'new',status:'initializing',init_started_at:null,checkout_url:null};return q;},select:()=>q,eq:(k:string,v:unknown)=>{filters.push([k,v]);return q;},is:(k:string,v:unknown)=>{filters.push([k,v]);return q;},update:(p:any)=>{patch=p;return q;},single:async()=>run(true),maybeSingle:async()=>run(true),then:(resolve:any,reject:any)=>Promise.resolve(run()).then(resolve,reject)};
   return q;
  }
 }}));
@@ -24,7 +24,7 @@ function payment(){return {id:123,reference,status:'success',domain:'test',amoun
 function refund(status='pending'){return {id:456,transaction:123,amount:5000,currency:'NGN',domain:'test',status};}
 beforeEach(()=>{
  vi.stubGlobal('fetch',state.fetch);state.fetch.mockReset();state.cards=[];
- state.attempt={id:'attempt',reference,user_id:userId,email:'user@example.test',request_id:'request',domain:'test',status:'pending',refund_status:'not_requested',provider_transaction_id:null,card_id:null};
+ state.attempt={id:'attempt',reference,user_id:userId,email:'user@example.test',request_id:'request',domain:'test',provider:'paystack',amount_minor:5000,status:'pending',refund_status:'not_requested',provider_transaction_id:null,card_id:null};
  state.rpc.mockReset().mockImplementation(async(name,args)=>{
   if(name==='claim_card_link'){
    if(state.attempt.lease_owner)return {data:[],error:null};
@@ -50,9 +50,9 @@ describe('verified card linking',()=>{
   expect(state.rpc).not.toHaveBeenCalled();
  });
  it('does not reuse an earlier environment checkout even with the same request ID',async()=>{
-  state.attempt.domain='live';
-  await expect(initializeCardLink(userId,'user@example.test','request','test')).rejects.toMatchObject({status:409,code:'card_mode_changed'});
-  expect(state.fetch).not.toHaveBeenCalled();
+  state.attempt.domain='live';state.attempt.checkout_url='https://checkout.paystack.com/old';
+  state.fetch.mockImplementation(async(_url,options)=>({ok:true,json:async()=>({status:true,data:{reference:JSON.parse(options.body).reference,authorization_url:'https://checkout.paystack.com/new'}})}));
+  const result=await initializeCardLink(userId,'user@example.test','request','test');expect(result.checkoutUrl).toBe('https://checkout.paystack.com/new');expect(state.attempt.domain).toBe('test');
  });
 
  it.each([
@@ -130,6 +130,21 @@ describe('verified card linking',()=>{
  it.each([{amount:1},{currency:'USD'},{domain:'live'},{transaction:999}])('rejects refund response mismatches %j',async patch=>{
   state.fetch.mockImplementation(async(url)=>({ok:true,json:async()=>({status:true,data:String(url).includes('/transaction/verify/')?payment():{...refund('processed'),...patch}})}));
   await processCardLink(reference);expect(state.attempt.refund_status).toBe('manual_review');
+ });
+ it('recovers Flutterwave linking and refunds while Paystack is active, without duplicate refund POSTs',async()=>{
+  Object.assign(state.attempt,{provider:'flutterwave',amount_minor:10000});
+  const flw={id:123,tx_ref:reference,amount:100,currency:'NGN',status:'successful',payment_type:'card',created_at:new Date().toISOString(),customer:{email:'user@example.test'},meta:{purpose:'card_link',user_id:userId,request_id:'request'},card:{token:'flw-fixture_token123',last_4digits:'4081',expiry:'12/98',issuer:'Test Bank',type:'visa'}};
+  state.fetch.mockImplementation(async(url,options)=>new Response(JSON.stringify({status:'success',data:String(url).includes('/transactions/verify_by_reference')?flw:{id:456,tx_id:123,amount_refunded:100,status:options.method==='POST'?'completed':'completed-mpgs'}})));
+  await processCardLink(reference);expect(state.cards).toHaveLength(1);expect(state.attempt.refund_status).toBe('pending');
+  expect(openAuthorization(userId,state.cards[0].authorization_ciphertext)).toMatchObject({authorization:{provider:'flutterwave'}});
+  await processCardLink(reference);await processCardLink(reference);expect(state.attempt.refund_status).toBe('processed');
+  expect(state.fetch.mock.calls.filter(([,o])=>o.method==='POST')).toHaveLength(1);
+  expect(state.fetch.mock.calls.every(([url])=>String(url).startsWith('https://api.flutterwave.com/v3/'))).toBe(true);
+ });
+ it('recovers a lost Flutterwave refund POST by GET only',async()=>{
+  Object.assign(state.attempt,{provider:'flutterwave',amount_minor:10000,status:'verified',provider_transaction_id:'123',refund_status:'submitting'});
+  state.fetch.mockImplementation(async url=>new Response(JSON.stringify({status:'success',data:String(url).includes('id=123')?[{id:456,tx_id:123,amount_refunded:100,status:'completed-mpgs'}]:[]})));
+  await processCardLink(reference);expect(state.attempt.refund_status).toBe('processed');expect(state.fetch.mock.calls.every(([,o])=>o.method==='GET')).toBe(true);
  });
  it('rejects invented, malformed or expired card fields',()=>{
   for(const patch of [{last4:'abcd'},{exp_year:'2000'},{exp_month:'13'},{authorization_code:'not-a-token'}]){

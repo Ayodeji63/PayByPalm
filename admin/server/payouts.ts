@@ -25,7 +25,7 @@ export function mountPayoutRoutes(app:Express,{config,db,writes,dbFailure}:{conf
   if(r.error)dbFailure(r.error);return r.data as Setup|null;
  }
  async function merchant(id:string){
-  const r=await db.from('merchants').select('id,name,contact_email,contact_phone,address,paystack_subaccount,paystack_test_subaccount,created_at,updated_at').eq('id',id).maybeSingle();
+  const r=await db.from('merchants').select('id,name,contact_email,contact_phone,address,flutterwave_subaccount,flutterwave_test_subaccount,paystack_subaccount,paystack_test_subaccount,created_at,updated_at').eq('id',id).maybeSingle();
   if(r.error)dbFailure(r.error);if(!r.data)throw new Failure(404,'not_found','Save the merchant before configuring its payouts.');return r.data;
  }
  const codeFor=(m:any,mode:PaymentMode)=>mode==='live'?m.paystack_subaccount:m.paystack_test_subaccount;
@@ -57,7 +57,15 @@ export function mountPayoutRoutes(app:Express,{config,db,writes,dbFailure}:{conf
  });
  app.get('/api/merchants/:id/payout',async(req,res)=>{
   const id=z.string().uuid().parse(req.params.id),context=await paymentContext(config),m=await merchant(id);
-  res.json({...paymentSettings(context),setup:safe(await readSetup(id,context.mode)),subaccountCode:codeFor(m,context.mode)});
+  res.json({...paymentSettings(context),setup:context.provider==='flutterwave'?null:safe(await readSetup(id,context.mode)),subaccountCode:context.provider==='flutterwave'?(context.mode==='live'?m.flutterwave_subaccount:m.flutterwave_test_subaccount):codeFor(m,context.mode)});
+ });
+ app.post('/api/merchants/:id/payout/flutterwave',writes,async(req,res)=>{
+  const id=z.string().uuid().parse(req.params.id);
+  const input=z.object({mode:z.enum(['test','live']),code:z.string().regex(/^RS_[A-Za-z0-9]{1,100}$/),expected:z.string().datetime({offset:true})}).strict().parse(req.body);
+  const context=await paymentContext(config);
+  if(context.provider!=='flutterwave'||context.mode!==input.mode)throw new Failure(409,'payment_provider_changed','Payment provider changed. Reload payout setup.');
+  const r=await db.rpc('admin_set_flutterwave_subaccount',{p_actor:res.locals.admin.id,p_merchant:id,p_domain:input.mode,p_code:input.code,p_expected:input.expected});
+  if(r.error)dbFailure(r.error);res.json({merchant:r.data});
  });
  app.post('/api/merchants/:id/payout',writes,async(req,res)=>{
   const id=z.string().uuid().parse(req.params.id);

@@ -7,14 +7,14 @@ import {chargeCardPayment,verifyCardPayment,type CardPaymentAttempt} from './car
 const a:CardPaymentAttempt={transaction_id:'txn',user_id:'payer',card_id:'card',reference:'pbp_pay_ref',domain:'test',amount_minor:10000,currency:'NGN',signature_hash:'hash:sig',authorization_ciphertext:'cipher',status:'submitting'};
 const credentials={email:'original@example.test',authorization:{authorization_code:'AUTH_fixture',reusable:true,signature:'sig'}};
 const success={id:100,reference:a.reference,domain:'test',amount:10000,currency:'NGN',customer:{email:credentials.email},channel:'card',authorization:{signature:'sig'},metadata:{purpose:'palm_card_payment',transaction_id:'txn',user_id:'payer'},status:'success'};
-beforeEach(()=>{vi.clearAllMocks();m.ready.mockReset();m.domain="test";m.open.mockReturnValue(credentials);m.rpc.mockImplementation(async name=>({data:name==='begin_card_payment'?[a]:null,error:null}));m.paystack.mockResolvedValue(success);});
+beforeEach(()=>{vi.clearAllMocks();m.ready.mockReset();m.domain="test";m.open.mockReturnValue(credentials);m.rpc.mockImplementation(async name=>({data:name==='begin_provider_card_payment'?[a]:null,error:null}));m.paystack.mockResolvedValue(success);});
 describe('token charge integrity',()=>{
  it('verifies a live charge against the live card and merchant subaccount before recording success',async()=>{
   m.domain='live';const live={...a,domain:'live',subaccount:'ACCT_livefixture'};
-  m.rpc.mockImplementation(async name=>({data:name==='begin_card_payment'?[live]:null,error:null}));
+  m.rpc.mockImplementation(async name=>({data:name==='begin_provider_card_payment'?[live]:null,error:null}));
   m.paystack.mockResolvedValue({...success,domain:'live',subaccount:{subaccount_code:'ACCT_livefixture'}});
   await chargeCardPayment('txn','terminal');
-  expect(m.rpc).toHaveBeenCalledWith('begin_card_payment',expect.objectContaining({p_domain:'live'}));
+  expect(m.rpc).toHaveBeenCalledWith('begin_provider_card_payment',expect.objectContaining({p_domain:'live'}));
   expect(m.paystack).toHaveBeenCalledWith('/transaction/charge_authorization',expect.objectContaining({subaccount:'ACCT_livefixture',amount:'10000',reference:a.reference}));
   expect(m.paystack).toHaveBeenCalledWith('/transaction/verify/'+a.reference);
   expect(m.rpc).toHaveBeenCalledWith('finish_card_payment',{p_reference:a.reference,p_status:'success',p_provider_id:'100'});
@@ -33,6 +33,6 @@ describe('token charge integrity',()=>{
  it('does not settle ongoing issuer authentication',async()=>{m.paystack.mockResolvedValue({...success,status:'ongoing'});await verifyCardPayment(a);expect(m.rpc).toHaveBeenCalledWith('finish_card_payment',expect.objectContaining({p_status:'pending'}));});
  it('binds a provider decline before marking failure',async()=>{m.paystack.mockResolvedValue({...success,status:'failed',authorization:null});await verifyCardPayment(a);expect(m.rpc).toHaveBeenCalledWith('finish_card_payment',expect.objectContaining({p_status:'failed'}));});
  it('rejects an invalid token fingerprint',async()=>{m.open.mockReturnValue({...credentials,authorization:{...credentials.authorization,signature:'other'}});await expect(chargeCardPayment('txn','terminal')).rejects.toMatchObject({code:'card_payment_pending'});expect(m.paystack).not.toHaveBeenCalled();});
- it('does not contact another payment environment',async()=>{await verifyCardPayment({...a,domain:'live'});expect(m.paystack).not.toHaveBeenCalled();});
- it('routes to the configured merchant',async()=>{m.rpc.mockImplementation(async name=>({data:name==='begin_card_payment'?[{...a,subaccount:'ACCT_fixture'}]:null,error:null}));m.paystack.mockResolvedValue({...success,subaccount:{subaccount_code:'ACCT_fixture'}});await chargeCardPayment('txn','terminal');expect(m.paystack).toHaveBeenCalledWith('/transaction/charge_authorization',expect.objectContaining({subaccount:'ACCT_fixture'}));});
+ it('recovers with the saved environment rather than the active selection',async()=>{await verifyCardPayment({...a,domain:'live'});expect(m.ready).toHaveBeenCalledWith('link','live');expect(m.paystack).toHaveBeenCalledWith('/transaction/verify/'+a.reference,undefined,'live');});
+ it('routes to the configured merchant',async()=>{m.rpc.mockImplementation(async name=>({data:name==='begin_provider_card_payment'?[{...a,subaccount:'ACCT_fixture'}]:null,error:null}));m.paystack.mockResolvedValue({...success,subaccount:{subaccount_code:'ACCT_fixture'}});await chargeCardPayment('txn','terminal');expect(m.paystack).toHaveBeenCalledWith('/transaction/charge_authorization',expect.objectContaining({subaccount:'ACCT_fixture'}));});
 });

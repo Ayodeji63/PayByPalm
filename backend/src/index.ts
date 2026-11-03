@@ -28,6 +28,7 @@ import { terminalRouter } from './routes/terminal.js';
 import { transactionsRouter } from './routes/transactions.js';
 import { cardsRouter } from './routes/cards.js';
 import { paystackWebhookRouter } from './routes/paystackWebhook.js';
+import { flutterwaveWebhookRouter } from './routes/flutterwaveWebhook.js';
 import { startCardPaymentReconciliation } from './services/cardPaymentService.js';
 import { startCardReconciliation } from './services/cardLinkService.js';
 import { walletRouter } from './routes/wallet.js';
@@ -62,6 +63,7 @@ export function createApp(): express.Express {
 
   app.use(ipRateLimit('requests', 300, 60));
   app.use(paystackWebhookRouter);
+  app.use(flutterwaveWebhookRouter);
   app.use(requestBody);
 
   // Carries the X-Mock-User hint to the mock palm provider without widening the

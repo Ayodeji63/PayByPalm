@@ -40,7 +40,16 @@ export const configSchema = z
     RESEND_FROM_EMAIL: optionalSetting(z.string().email()),
 
     PAYSTACK_MODE: z.enum(['test', 'live']).default('test'),
+    PAYMENT_PROVIDER: z.enum(['paystack', 'flutterwave']).default('paystack'),
+    PAYMENT_MODE: optionalSetting(z.enum(['test', 'live'])),
     PAYSTACK_SECRET_KEY: z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/).optional(),
+    PAYSTACK_TEST_SECRET_KEY: optionalSetting(z.string().regex(/^sk_test_[A-Za-z0-9]+$/)),
+    PAYSTACK_LIVE_SECRET_KEY: optionalSetting(z.string().regex(/^sk_live_[A-Za-z0-9]+$/)),
+    FLUTTERWAVE_SECRET_KEY: optionalSetting(z.string().regex(/^FLWSECK(?:_TEST)?-[A-Za-z0-9_-]+$/)),
+    FLUTTERWAVE_TEST_SECRET_KEY: optionalSetting(z.string().regex(/^FLWSECK_TEST-[A-Za-z0-9_-]+$/)),
+    FLUTTERWAVE_LIVE_SECRET_KEY: optionalSetting(z.string().regex(/^FLWSECK-[A-Za-z0-9_-]+$/)),
+    FLUTTERWAVE_WEBHOOK_HASH: optionalSetting(z.string().min(32).max(256)),
+    FLUTTERWAVE_NOAUTH_APPROVED: z.enum(['true','false']).default('false').transform(v=>v==='true'),
     CARD_TOKEN_ENCRYPTION_KEY: z.string().regex(/^[A-Za-z0-9+/]{43}=$/, 'must be a base64 encoded 32-byte key').optional(),
 
     PALM_PROVIDER: z.enum(['ccnet', 'tencent', 'mock']).default('mock'),
@@ -73,6 +82,7 @@ export const configSchema = z
     MAX_IMAGE_BYTES: intFromEnv(2 * 1024 * 1024).refine(n => n > 0 && n <= 8 * 1024 * 1024, 'must be between 1 byte and 8 MiB'),
   })
   .refine(c => !c.PAYSTACK_SECRET_KEY || !!c.CARD_TOKEN_ENCRYPTION_KEY, { message: 'CARD_TOKEN_ENCRYPTION_KEY is required with Paystack', path: ['CARD_TOKEN_ENCRYPTION_KEY'] })
+  .refine(c => !(c.FLUTTERWAVE_SECRET_KEY||c.FLUTTERWAVE_TEST_SECRET_KEY||c.FLUTTERWAVE_LIVE_SECRET_KEY||c.PAYSTACK_TEST_SECRET_KEY||c.PAYSTACK_LIVE_SECRET_KEY) || !!c.CARD_TOKEN_ENCRYPTION_KEY, {message:'CARD_TOKEN_ENCRYPTION_KEY is required with payment credentials',path:['CARD_TOKEN_ENCRYPTION_KEY']})
   .refine(c => !c.PAYSTACK_SECRET_KEY || c.PAYSTACK_SECRET_KEY.startsWith(`sk_${c.PAYSTACK_MODE}_`), { message: 'Paystack key must match PAYSTACK_MODE; test mode rejects live keys', path: ['PAYSTACK_SECRET_KEY'] })
   .refine((c) => c.NODE_ENV !== 'production' || c.PALM_PROVIDER !== 'mock', {
     message: 'Mock payment authorization is forbidden in production',

@@ -4,11 +4,14 @@ import { logger } from '../logger.js';
 import { AppError } from '../errors.js';
 
 export const CARD_LINK_AMOUNT = 5000;
-export function cardLinkEnabled(): boolean { return !!config.PAYSTACK_SECRET_KEY && !!config.CARD_TOKEN_ENCRYPTION_KEY; }
-export function paystackDomain(): 'live'|'test' { return config.PAYSTACK_MODE ?? 'test'; }
-export function requirePaystack(purpose: 'link' | 'payment' = 'link'): void {
- if(config.PAYSTACK_SECRET_KEY && !config.PAYSTACK_SECRET_KEY.startsWith(`sk_${paystackDomain()}_`)) throw new AppError(503,'payment_mode_mismatch','Payment key does not match the configured payment mode.');
- if (!cardLinkEnabled()) throw new AppError(503,purpose === 'payment' ? 'card_payment_not_configured' : 'card_link_not_configured',purpose === 'payment' ? 'Card payments need payment service configuration.' : 'Card linking needs payment service configuration.');
+export function paystackKey(mode:'test'|'live'):string|undefined {
+ return (mode==='test'?config.PAYSTACK_TEST_SECRET_KEY:config.PAYSTACK_LIVE_SECRET_KEY) ?? (config.PAYSTACK_SECRET_KEY?.startsWith(`sk_${mode}_`)?config.PAYSTACK_SECRET_KEY:undefined);
+}
+export function cardLinkEnabled(mode=paystackDomain()): boolean { return !!paystackKey(mode) && !!config.CARD_TOKEN_ENCRYPTION_KEY; }
+export function paystackDomain(): 'live'|'test' { return config.PAYMENT_MODE ?? config.PAYSTACK_MODE ?? 'test'; }
+export function requirePaystack(purpose: 'link' | 'payment' = 'link',mode=paystackDomain()): void {
+ if(config.PAYSTACK_SECRET_KEY && !paystackKey(mode)) throw new AppError(503,'payment_mode_mismatch','Payment key does not match the configured payment mode.');
+ if (!cardLinkEnabled(mode)) throw new AppError(503,purpose === 'payment' ? 'card_payment_not_configured' : 'card_link_not_configured',purpose === 'payment' ? 'Card payments need payment service configuration.' : 'Card linking needs payment service configuration.');
 }
 export function checkoutUrl(value: unknown): string {
  if(typeof value!=='string') throw new AppError(502,'invalid_checkout','Payment checkout could not be opened.');
@@ -17,13 +20,13 @@ export function checkoutUrl(value: unknown): string {
  return url.href;
 }
 /** No automatic POST retry: a timeout can mean the provider accepted the request. */
-export async function paystack(path: string, body?: unknown): Promise<any> {
- requirePaystack();
+export async function paystack(path: string, body?: unknown, mode=paystackDomain()): Promise<any> {
+ requirePaystack('link',mode);
  const started = performance.now();
  try {
   const response=await fetch('https://api.paystack.co'+path,{
    method:body===undefined?'GET':'POST',redirect:'error',signal:AbortSignal.timeout(15000),
-   headers:{Authorization:`Bearer ${config.PAYSTACK_SECRET_KEY}`,'Content-Type':'application/json'},
+   headers:{Authorization:`Bearer ${paystackKey(mode)}`,'Content-Type':'application/json'},
    ...(body===undefined?{}:{body:JSON.stringify(body)}),
   });
   const result=await response.json() as {status?:boolean;data?:unknown};
@@ -51,7 +54,6 @@ export function openAuthorization(userId: string, value: string): unknown {
 }
 export function cardSignature(value: string): string { return createHmac('sha256',key()).update(value).digest('hex'); }
 export function validPaystackSignature(raw: Buffer, signature: string | undefined): boolean {
- if(!config.PAYSTACK_SECRET_KEY||!signature||! /^[a-fA-F0-9]{128}$/.test(signature)) return false;
- const expected=createHmac('sha512',config.PAYSTACK_SECRET_KEY).update(raw).digest();
- return timingSafeEqual(expected,Buffer.from(signature,'hex'));
+ if(!signature||! /^[a-fA-F0-9]{128}$/.test(signature)) return false;
+ return [paystackKey('test'),paystackKey('live')].some(secret=>secret&&timingSafeEqual(createHmac('sha512',secret).update(raw).digest(),Buffer.from(signature,'hex')));
 }

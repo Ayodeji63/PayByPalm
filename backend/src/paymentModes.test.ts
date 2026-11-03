@@ -31,7 +31,7 @@ describe('backend-owned payment modes',()=>{
   const result=await listCards('owner');
   expect(result).toMatchObject({paymentMode:mode,testMode:mode==='test',cards:[],attempts:[]});
   expect(m.queries.map(q=>q.table)).toEqual(['linked_cards','card_link_attempts']);
-  for(const q of m.queries)expect(q.filters).toEqual([['user_id','owner'],['domain',mode]]);
+  for(const q of m.queries)expect(q.filters).toEqual([['user_id','owner'],['domain',mode],['provider','paystack']]);
   expect(m.queries[0]!.fields).not.toMatch(/authorization|signature|email|\*/);
  });
  it.each(['test','live'])('limits transaction history and totals to owner/current %s mode',async mode=>{

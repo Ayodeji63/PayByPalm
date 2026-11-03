@@ -7,28 +7,31 @@ export class ProviderFailure extends Failure {
  constructor(readonly definitive:boolean){super(502,'paystack_unavailable',definitive?'Paystack did not accept this request. Check the account details and try again.':'Paystack could not confirm the result. Check status before trying again.');}
 }
 export type PaymentMode='test'|'live';
-export type PaymentContext={mode:PaymentMode;secret:string|undefined};
-export async function backendPaymentMode(config:Config):Promise<PaymentMode>{
+export type PaymentContext={mode:PaymentMode;secret:string|undefined;provider?:'paystack'|'flutterwave'};
+export async function backendPaymentSelection(config:Config){
  try{
   const response=await fetch(config.PAYMENT_API_BASE_URL+'/payment-settings',{
    headers:{Accept:'application/json'},redirect:'error',cache:'no-store',signal:AbortSignal.timeout(8000),
   });
   if(!response.ok)throw Error();
-  const value=z.object({paymentMode:z.enum(['test','live'])}).strict().parse(await response.json());
-  return value.paymentMode;
+  const value=z.object({paymentMode:z.enum(['test','live']),paymentProvider:z.enum(['paystack','flutterwave']).default('paystack')}).strict().parse(await response.json());
+  return value;
  }catch{throw new Failure(503,'payment_mode_unavailable','The payment backend’s mode could not be checked. Bank payouts are unavailable until it reconnects.');}
 }
+export async function backendPaymentMode(config:Config):Promise<PaymentMode>{const selection=await backendPaymentSelection(config);if(selection.paymentProvider!=='paystack')throw new Failure(409,'payment_provider_changed','Paystack payout setup is unavailable while Flutterwave is selected.');return selection.paymentMode;}
 export async function paymentContext(config:Config):Promise<PaymentContext>{
- const mode=await backendPaymentMode(config);
+ const {paymentMode:mode,paymentProvider}=await backendPaymentSelection(config);
+ if(paymentProvider==='flutterwave')return {mode,provider:paymentProvider,secret:undefined};
  const secret=(mode==='live'?config.PAYSTACK_LIVE_SECRET_KEY:config.PAYSTACK_TEST_SECRET_KEY)??
   (config.PAYSTACK_SECRET_KEY?.startsWith(`sk_${mode}_`)?config.PAYSTACK_SECRET_KEY:undefined);
- return {mode,secret};
+ return {mode,provider:paymentProvider,secret};
 }
-export function paymentSettings(context:PaymentContext){return {mode:context.mode,enabled:!!context.secret};}
+export function paymentSettings(context:PaymentContext){return {provider:context.provider??'paystack',mode:context.mode,enabled:!!context.secret};}
 export async function assertPaymentMode(config:Config,mode:PaymentMode){
  if(await backendPaymentMode(config)!==mode)throw new Failure(409,'payment_mode_changed','Payment mode changed. Reload payout setup and verify the bank account again.');
 }
 export function requirePaymentKey(context:PaymentContext){
+ if(context.provider==='flutterwave')throw new Failure(409,'payment_provider_changed','Use the Flutterwave dashboard to configure this merchant’s subaccount.');
  if(!context.secret?.startsWith(`sk_${context.mode}_`))throw new Failure(503,'paystack_setup_required',`Configure the ${context.mode} Paystack secret on the admin server to enable bank payouts.`);
 }
 export function provider(context:PaymentContext){

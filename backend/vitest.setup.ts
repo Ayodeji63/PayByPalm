@@ -13,9 +13,12 @@
 
 import 'dotenv/config';
 
+for (const key of ['PAYMENT_MODE','PAYSTACK_TEST_SECRET_KEY','PAYSTACK_LIVE_SECRET_KEY','FLUTTERWAVE_SECRET_KEY','FLUTTERWAVE_TEST_SECRET_KEY','FLUTTERWAVE_LIVE_SECRET_KEY','FLUTTERWAVE_WEBHOOK_HASH','FLUTTERWAVE_NOAUTH_APPROVED']) delete process.env[key];
+
 const TEST_ENV: Record<string, string> = {
   NODE_ENV: 'test',
   PAYSTACK_MODE: 'test',
+  PAYMENT_PROVIDER: 'paystack',
   PAYSTACK_SECRET_KEY: 'sk_test_inert',
   CARD_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32,1).toString('base64'),
   AUTH_DATABASE_URL: 'postgresql://test:inert@localhost:5432/test',

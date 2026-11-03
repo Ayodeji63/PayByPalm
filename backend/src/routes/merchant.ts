@@ -5,7 +5,8 @@ import { db } from "../db/client.js";
 import { AppError } from "../errors.js";
 import { userAuth, requireUser } from "../middleware/userAuth.js";
 import { userRateLimit } from "../middleware/abuseLimits.js";
-import { paystack, paystackDomain } from "../services/paystack.js";
+import { paystack } from "../services/paystack.js";
+import { paymentMode as paystackDomain,paymentProvider } from "../services/paymentGateway.js";
 
 export const merchantRouter: Router = Router();
 merchantRouter.use(
@@ -136,7 +137,7 @@ async function merchant(c: Context) {
   const result = await db
     .from("merchants")
     .select(
-      "id,name,contact_email,contact_phone,address,paystack_subaccount,paystack_test_subaccount",
+      "id,name,contact_email,contact_phone,address,paystack_subaccount,paystack_test_subaccount,flutterwave_subaccount,flutterwave_test_subaccount",
     )
     .eq("id", c.input.merchantId)
     .maybeSingle();
@@ -211,6 +212,7 @@ merchantRouter.get("/merchant/terminals", async (req, res) => {
 });
 async function payoutSettings(c: Context) {
   const m = await merchant(c);
+  if(paymentProvider()==='flutterwave')return {paymentMode:c.mode,paymentProvider:'flutterwave',business:{id:m.id,name:m.name,email:m.contact_email,phone:m.contact_phone,address:m.address},payout:null,payoutConfigured:!!(c.mode==='live'?m.flutterwave_subaccount:m.flutterwave_test_subaccount)};
   const setup = await db
     .from("merchant_payout_setups")
     .select(
@@ -250,9 +252,9 @@ const settlement = z.object({
   settlement_date: z.string().datetime({ offset: true }),
 });
 merchantRouter.get("/merchant/settlements", async (req, res) => {
-  const c = await context(req),
-    m = await merchant(c),
-    code =
+  const c=await context(req);
+  if(paymentProvider()==='flutterwave')throw new AppError(409,'settlement_dashboard_required','View Flutterwave settlement status in its dashboard. PayByPalm payment history remains available.');
+  const m=await merchant(c),code =
       c.mode === "live" ? m.paystack_subaccount : m.paystack_test_subaccount;
   if (!code) {
     res.json({

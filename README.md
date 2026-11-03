@@ -5,7 +5,7 @@ merchant terminal, the customer scans an enrolled palm, reviews the payer, card
 and amount, then taps **Pay**. The backend requests the card charge and displays
 success only after verifying the payment result.
 
-The current implementation uses **CCNet for palm matching**, **Paystack for card
+The current implementation uses **CCNet for palm matching**, **Paystack or Flutterwave v3 for card
 payments**, **Better Auth for accounts and sessions**, and **Supabase PostgreSQL
 for application data**. The Raspberry Pi runs the terminal interface; the CCNet
 model runs separately on a PC in Docker, exposed to the backend through ngrok.
@@ -14,6 +14,13 @@ This is a prototype under active development. The current matching thresholds
 are provisional, and real Pi performance, biometric error rates and liveness
 protection have not been established for production deployment. This README
 describes the code in this checkout; publishing and deploying it are separate steps.
+
+Card payments are selected with `PAYMENT_PROVIDER=paystack|flutterwave` (Paystack
+by default). Cards, defaults and recovery stay separate by provider and test/live
+mode. See the [payment provider deployment and switching guide](backend/PAYMENT_PROVIDERS.md)
+for migration 0031, Render settings, Flutterwave NOAUTH approval, merchant subaccounts
+and card relinking. Flutterwave uses a ₦100 card-verification payment; Paystack
+retains ₦50. Both request a refund after successful verification.
 
 ## Contents
 
